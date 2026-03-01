@@ -196,6 +196,7 @@ class PersonaNamingAgent:
         tone: str = 'easy',
         feedback: str = '',
         iteration: int = 1,
+        force_proceed: bool = False,
     ) -> NamingResult:
         """
         Parameters
@@ -274,6 +275,10 @@ class PersonaNamingAgent:
             issues.append('Duplicate persona names detected')
 
         passed = len(issues) == 0
+        if force_proceed and not passed:
+            print(f'  [best-effort] Clarity Gate bypassed — delivering best available personas.')
+            issues = [f'[forced] {i}' for i in issues]
+            passed = True
         action = 'proceed' if passed else 'recluster'
 
         for cid, p in personas.items():

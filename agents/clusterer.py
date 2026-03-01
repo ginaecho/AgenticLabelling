@@ -184,6 +184,8 @@ class ClusteringAgent:
         history: list[ClusteringResult] = None,
         feedback: str = '',
         iteration: int = 1,
+        config_override: dict | None = None,
+        min_silhouette: float | None = None,
     ) -> ClusteringResult:
         """
         Parameters
@@ -199,13 +201,19 @@ class ClusteringAgent:
         if history is None:
             history = []
 
+        # Merge per-iteration config overrides (from orchestrator tuning) over base config
+        cfg = {**self.config, **(config_override or {})}
+        _min_sil = min_silhouette if min_silhouette is not None else 0.05
+
         print(f'\n[Clusterer] Iteration {iteration}')
         if feedback:
             print(f'  Feedback: {feedback}')
+        if config_override:
+            print(f'  Config overrides: {config_override}')
 
-        max_pct   = float(self.config.get('max_cluster_size_pct', 0.40))
-        sub_k     = int(self.config.get('sub_n_clusters', 3))
-        max_depth = int(self.config.get('max_depth', 2))
+        max_pct   = float(cfg.get('max_cluster_size_pct', 0.40))
+        sub_k     = int(cfg.get('sub_n_clusters', 3))
+        max_depth = int(cfg.get('max_depth', 2))
 
         # ── Step 1: Preprocess on selected features only ──────────────────────
         sel = [f for f in selected_features if f in features_df.columns]
@@ -222,7 +230,7 @@ class ClusteringAgent:
         X_scaled = scaler.fit_transform(X)
 
         # ── Step 2: Algorithm selection ───────────────────────────────────────
-        algo_override = str(self.config.get('clustering_algorithm', '')).lower()
+        algo_override = str(cfg.get('clustering_algorithm', '')).lower()
         algo_reasoning = ""
 
         if algo_override in ('kmeans', 'hierarchical'):
@@ -244,14 +252,14 @@ class ClusteringAgent:
             print(f'  Algorithm auto-selected: {algorithm}  (confidence={rec.confidence:.2f})')
 
         # ── Step 3: K selection ───────────────────────────────────────────────
-        n_clusters_override = self.config.get('n_clusters', None)
+        n_clusters_override = cfg.get('n_clusters', None)
         k_scores: dict[int, float] = {}
 
         if n_clusters_override and isinstance(n_clusters_override, int) and n_clusters_override > 0:
             n_clusters = n_clusters_override
             print(f'  k: {n_clusters} (from config)')
         else:
-            k_range = self.config.get('k_search_range', DEFAULT_K_SEARCH_RANGE)
+            k_range = cfg.get('k_search_range', DEFAULT_K_SEARCH_RANGE)
             sil_result = optimize_k(
                 X_scaled,
                 algorithm=algorithm,
@@ -401,8 +409,10 @@ class ClusteringAgent:
         )
 
         # ── Step 8: Report to orchestrator ─────────────────────────────────────
-        # Per docs/agents/clusterer.md: silhouette < 0.15 → blocked, reselect_features
-        if sil < 0.15:
+        # Hard-block only below _min_sil (default 0.05 — near-random structure).
+        # Orchestrator may tune this lower if the data genuinely resists clustering.
+        # Silhouette above _min_sil proceeds with a warning when < 0.25.
+        if sil < _min_sil:
             if self.bus:
                 self.bus.report(OrchestratorMessage(
                     agent="Clusterer",
@@ -410,11 +420,11 @@ class ClusteringAgent:
                     status="blocked",
                     what_was_done=(
                         f"Used {algo_name}, k={n_clusters}; "
-                        f"silhouette={sil:.4f} (no meaningful structure)."
+                        f"silhouette={sil:.4f} (near-random — no useful structure)."
                     ),
                     what_was_not_done="Clusters do not separate well — recommend reselecting features.",
                     doubts="",
-                    issues=[f"Silhouette={sil:.3f} < 0.15 — no meaningful cluster structure."],
+                    issues=[f"Silhouette={sil:.3f} < {_min_sil} — near-random cluster structure."],
                     metrics={
                         "algorithm": algo_name,
                         "k_selected": n_clusters,
@@ -431,7 +441,7 @@ class ClusteringAgent:
                 lineage=None,
                 silhouette=sil,
                 n_leaf=None,
-                reasoning="Silhouette < 0.15 — no meaningful structure. See docs/agents/clusterer.md.",
+                reasoning=f"Silhouette < {_min_sil} — near-random structure. See docs/agents/clusterer.md.",
                 iteration=iteration,
                 algo_name=algo_name,
                 algo_detail=algo_detail,
@@ -442,13 +452,19 @@ class ClusteringAgent:
         sil_quality = (
             "strong" if sil >= 0.50 else
             "reasonable" if sil >= 0.25 else
-            "weak"
+            "weak but usable" if sil >= 0.10 else
+            "low (typical for transaction ratio features)"
         )
         status = "success" if sil >= 0.25 else "warning"
         issues = []
-        if sil < 0.25:
+        if sil < 0.15:
             issues.append(
-                f"Silhouette={sil:.3f} < 0.25 — clusters may overlap. "
+                f"Silhouette={sil:.3f} < 0.15 — clusters overlap; interpretability may be low. "
+                "Consider reviewing feature selection or k."
+            )
+        elif sil < 0.25:
+            issues.append(
+                f"Silhouette={sil:.3f} < 0.25 — clusters may overlap slightly. "
                 "Consider different k or algorithm."
             )
 

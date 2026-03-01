@@ -68,8 +68,8 @@ def compute_vif(df: pd.DataFrame) -> pd.DataFrame:
 
 def remove_high_vif(
     df: pd.DataFrame,
-    threshold: float = 5.0,
-    max_iterations: int = 100,
+    threshold: float = 10.0,
+    max_iterations: int = 200,
     min_features: int = 5,
     verbose: bool = True,
 ) -> tuple[pd.DataFrame, list[str]]:

@@ -77,6 +77,16 @@ if result.get('status') in ('blocked', 'quit'):
     print(f"\n[run_pipeline] Pipeline ended with status={result['status']} — no outputs to display.")
     sys.exit(0)
 
+# ── Banner for best-effort fallback ───────────────────────────────────────────
+if result.get('status') == 'best_effort':
+    sil = result.get('silhouette', 0)
+    print(f'\n{"⚠" * 65}')
+    print(f'  BEST-EFFORT RESULT (max iterations reached)')
+    print(f'  No iteration passed all quality gates. Using the best clustering')
+    print(f'  found (silhouette={sil:.4f}). Persona names are delivered with')
+    print(f'  force_proceed=True — confidence scores may be lower than usual.')
+    print(f'{"⚠" * 65}\n')
+
 # ── Load saved outputs ────────────────────────────────────────────────────────
 _personas_path = pathlib.Path('outputs/personas.json')
 if not _personas_path.exists():
@@ -418,14 +428,16 @@ print("""
 """)
 
 by_agent = claude_usage.get('by_agent', {})
-ORDER    = ['FeatureSelector', 'Clusterer', 'PersonaNamer', 'Classifier']
+ORDER    = ['Orchestrator', 'FeatureSelector', 'Clusterer', 'PersonaNamer', 'Classifier']
 ROLES    = {
+    'Orchestrator':    'Parameter tuning between iterations',
     'FeatureSelector': 'Feature-subset decision',
     'Clusterer':       'Oversized-cluster routing',
     'PersonaNamer':    'Cluster naming + description',
     'Classifier':      'Low-F1 root-cause routing',
 }
 AGENT_LABELS = {
+    'Orchestrator':    '⚙ Orchestrator',
     'FeatureSelector': '① FeatureSelector',
     'Clusterer':       '② Clusterer',
     'PersonaNamer':    '③ PersonaNamer',
@@ -470,6 +482,8 @@ if timing:
     print('  ' + '─' * 76)
     for name in ORDER:
         info   = agents.get(name, {'calls': 0, 'total_s': 0.0, 'per_call_s': []})
+        if not info['calls']:
+            continue
         calls  = info['calls']
         tot    = info['total_s']
         avg    = round(tot / calls, 1) if calls else 0.0

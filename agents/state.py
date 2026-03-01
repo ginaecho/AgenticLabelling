@@ -128,6 +128,22 @@ class PipelineState:
     best_clustering_result: Optional[ClusteringResult] = None
     best_classifier_result: Optional[ClassifierResult] = None
 
+    # Best clustering by raw silhouette — tracked even when naming/classifier fail.
+    # Used as fallback at max_iterations when no naming result was ever approved.
+    best_silhouette_cluster: Optional[ClusteringResult] = None
+    best_silhouette_value: float = -1.0
+    best_silhouette_features: list[str] = field(default_factory=list)
+
+    # Dynamic tuning parameters — Claude adjusts these after each failed iteration
+    # so agents are NOT locked into hardcoded thresholds.
+    tuning_params: dict = field(default_factory=lambda: {
+        'vif_threshold': 10.0,    # higher = keep more correlated features
+        'k_range': None,          # None = use config default
+        'algorithm': None,        # None = use config/auto-select
+        'min_silhouette': 0.05,   # hard-block below this; Claude may raise/lower
+        'feature_focus': '',      # hint injected into FeatureSelector prompt
+    })
+
     def update_features(self, fs_result: FeatureSelectionResult) -> None:
         self.selected_features = fs_result.selected_features
         self.needs_feature_selection = False
@@ -137,6 +153,15 @@ class PipelineState:
         self.needs_feature_selection = True
         self.fs_feedback = reason
         self.cluster_feedback = ''   # reset cluster feedback after going back
+
+    def update_best_silhouette(self, cr: ClusteringResult, selected_features: list[str]) -> None:
+        """Track the best clustering by raw silhouette, regardless of naming/classifier outcome.
+        Used at max_iterations to deliver a full analysis on the most-separated result."""
+        sil = cr.silhouette if cr.silhouette is not None else -1.0
+        if cr.profiles is not None and sil > self.best_silhouette_value:
+            self.best_silhouette_value = sil
+            self.best_silhouette_cluster = cr
+            self.best_silhouette_features = list(selected_features)
 
     def update_best(
         self,

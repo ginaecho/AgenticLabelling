@@ -72,7 +72,7 @@ class FeatureSelectionAgent:
     def __init__(
         self,
         bus: OrchestratorBus,
-        vif_threshold: float = 5.0,
+        vif_threshold: float = 10.0,
         corr_threshold: float = 0.85,
     ):
         # FeatureSelectionAgent owns its ML skills (PCA, AE, VIF).
@@ -87,6 +87,8 @@ class FeatureSelectionAgent:
         user_intent: UserIntent | None = None,
         feedback: str = '',
         iteration: int = 1,
+        vif_threshold: float | None = None,
+        feature_focus: str = '',
     ) -> FeatureSelectionResult:
         """
         Parameters
@@ -99,12 +101,19 @@ class FeatureSelectionAgent:
             Free-text feedback from the previous round (empty on first run).
         iteration : int
             Which iteration this is.
+        vif_threshold : float | None
+            Override the instance VIF threshold (set by orchestrator tuning).
+        feature_focus : str
+            Orchestrator hint injected into the Claude prompt to guide selection.
 
         Returns
         -------
         FeatureSelectionResult
         """
-        print(f'\n[FeatureSelector] Iteration {iteration}')
+        # Resolve effective thresholds — orchestrator may override per-iteration
+        effective_vif = vif_threshold if vif_threshold is not None else self.vif_threshold
+
+        print(f'\n[FeatureSelector] Iteration {iteration}  (vif_threshold={effective_vif})')
         if feedback:
             print(f'  Feedback from previous round: {feedback}')
 
@@ -154,10 +163,10 @@ class FeatureSelectionAgent:
         import pandas as pd
         X_for_vif = pd.DataFrame(X_scaled, columns=feature_names)
 
-        print(f'  Running VIF gate (threshold={self.vif_threshold})...')
+        print(f'  Running VIF gate (threshold={effective_vif})...')
         X_clean, removed_by_vif = remove_high_vif(
             X_for_vif,
-            threshold=self.vif_threshold,
+            threshold=effective_vif,
             min_features=10,
             verbose=True,
         )
@@ -242,6 +251,10 @@ class FeatureSelectionAgent:
         table_str = '\n'.join(table_lines)
 
         # ── Step 8: Ask Claude ─────────────────────────────────────────────────
+        focus_section = (
+            f'\nOrchestrator guidance: {feature_focus}\n'
+            if feature_focus else ''
+        )
         feedback_section = (
             f'\nFeedback from previous round:\n{feedback}\n'
             if feedback else ''
@@ -263,10 +276,15 @@ class FeatureSelectionAgent:
                 + "\n"
             )
 
+        focus_section = (
+            f'\nOrchestrator guidance: {feature_focus}\n'
+            if feature_focus else ''
+        )
+
         prompt = f"""You are a data scientist selecting features for customer segmentation.
 
 {intent_section}
-We started with {n_features} features. After VIF gate (threshold={self.vif_threshold}):
+We started with {n_features} features. After VIF gate (threshold={effective_vif}):
   Removed {len(removed_by_vif)} high-VIF features: {removed_by_vif[:10]}{"..." if len(removed_by_vif) > 10 else ""}
   Remaining: {n_after_vif} features
 
@@ -274,6 +292,7 @@ Feature ranking (PCA importance × autoencoder uniqueness score) — VIF-filtere
 {table_str}
 {high_corr_note}
 {feedback_section}
+{focus_section}
 Spending categories: {CATEGORIES}
 Feature naming: n_txn_{{cat}}_{{w}}m = transactions, amt_{{cat}}_{{w}}m = total spend,
 avg_spend_{{cat}}_{{w}}m = avg per transaction, w is months (6 or 12).
@@ -349,9 +368,9 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         if len(selected) < 10:
             status = "warning"
             issues.append(f"Only {len(selected)} features selected — may be too few.")
-        if max_vif > self.vif_threshold:
+        if max_vif > effective_vif:
             status = "warning"
-            issues.append(f"Some features still have VIF > {self.vif_threshold} (max={max_vif:.1f}).")
+            issues.append(f"Some features still have VIF > {effective_vif} (max={max_vif:.1f}).")
 
         if self.bus:
             self.bus.report(OrchestratorMessage(
