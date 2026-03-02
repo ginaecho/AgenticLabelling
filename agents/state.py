@@ -7,12 +7,42 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 
+# ── New: intent & dataset profile ─────────────────────────────────────────────
+
+@dataclass
+class UserIntent:
+    """Clustering intent captured from the user (from UserInputAgent)."""
+    target_entity: str         # what is being clustered
+    business_purpose: str      # why we are clustering
+    dataset_path: str          # path to the feature parquet/CSV
+    constraints: str = ""      # optional free-text constraints
+
+
+@dataclass
+class DatasetProfile:
+    """Structured profile of the raw dataset (from DatasetExaminerAgent)."""
+    n_rows: int
+    n_cols: int
+    column_types: dict[str, str]
+    missing_rates: dict[str, float]
+    distribution_summary: dict[str, dict[str, float]]
+    high_cardinality_cols: list[str]
+    suggested_feature_groups: list[str]
+    feature_group_reasoning: str
+    warnings: list[str] = field(default_factory=list)
+    algo_hint: str = ""        # 'hierarchical' | 'kmeans'
+
+
+# ── Existing result dataclasses ────────────────────────────────────────────────
+
 @dataclass
 class FeatureSelectionResult:
     selected_features: list[str]
     n_features: int
     pca_scores: dict[str, float]       # feature -> pca importance score
     ae_scores: dict[str, float]        # feature -> autoencoder reconstruction error
+    vif_table: dict[str, float]        # feature -> VIF value (NEW)
+    removed_by_vif: list[str]          # features removed by VIF gate (NEW)
     reasoning: str
     iteration: int
 
@@ -29,6 +59,8 @@ class ClusteringResult:
     iteration: int
     algo_name: str = ''
     algo_detail: str = ''
+    k_scores: dict = field(default_factory=dict)   # {k: silhouette_score} from optimizer (NEW)
+    algo_reasoning: str = ''                        # from algo_recommender (NEW)
 
 
 @dataclass
@@ -62,9 +94,15 @@ class HumanDecision:
     feedback: str = ''
 
 
+# ── Pipeline state ─────────────────────────────────────────────────────────────
+
 @dataclass
 class PipelineState:
     config: dict
+
+    # ── Intent & dataset (NEW) ──────────────────────────────────────────────
+    user_intent: Optional[UserIntent] = None
+    dataset_profile: Optional[DatasetProfile] = None
 
     # Current feature selection
     selected_features: list[str] = field(default_factory=list)
@@ -90,6 +128,22 @@ class PipelineState:
     best_clustering_result: Optional[ClusteringResult] = None
     best_classifier_result: Optional[ClassifierResult] = None
 
+    # Best clustering by raw silhouette — tracked even when naming/classifier fail.
+    # Used as fallback at max_iterations when no naming result was ever approved.
+    best_silhouette_cluster: Optional[ClusteringResult] = None
+    best_silhouette_value: float = -1.0
+    best_silhouette_features: list[str] = field(default_factory=list)
+
+    # Dynamic tuning parameters — Claude adjusts these after each failed iteration
+    # so agents are NOT locked into hardcoded thresholds.
+    tuning_params: dict = field(default_factory=lambda: {
+        'vif_threshold': 10.0,    # higher = keep more correlated features
+        'k_range': None,          # None = use config default
+        'algorithm': None,        # None = use config/auto-select
+        'min_silhouette': 0.05,   # hard-block below this; Claude may raise/lower
+        'feature_focus': '',      # hint injected into FeatureSelector prompt
+    })
+
     def update_features(self, fs_result: FeatureSelectionResult) -> None:
         self.selected_features = fs_result.selected_features
         self.needs_feature_selection = False
@@ -99,6 +153,15 @@ class PipelineState:
         self.needs_feature_selection = True
         self.fs_feedback = reason
         self.cluster_feedback = ''   # reset cluster feedback after going back
+
+    def update_best_silhouette(self, cr: ClusteringResult, selected_features: list[str]) -> None:
+        """Track the best clustering by raw silhouette, regardless of naming/classifier outcome.
+        Used at max_iterations to deliver a full analysis on the most-separated result."""
+        sil = cr.silhouette if cr.silhouette is not None else -1.0
+        if cr.profiles is not None and sil > self.best_silhouette_value:
+            self.best_silhouette_value = sil
+            self.best_silhouette_cluster = cr
+            self.best_silhouette_features = list(selected_features)
 
     def update_best(
         self,

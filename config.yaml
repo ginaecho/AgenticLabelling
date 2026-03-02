@@ -8,7 +8,8 @@
 # Default: 10  |  Recommended range: 4–15
 # Fewer clusters → broader, easier-to-action personas
 # More clusters  → finer segmentation, more specific personas
-n_clusters: 6
+n_clusters: ~   # null → auto-select k via silhouette optimizer (recommended)
+                # Set an integer (e.g. 6) only to force a specific k
 
 # Clustering algorithm to use.
 # Options:
@@ -17,7 +18,7 @@ n_clusters: 6
 #                   that branch into "regional" vs "cross-continent" travellers).
 #   kmeans        — K-Means. Assigns customers to the nearest centroid.
 #                   Fast and interpretable, well-suited for large datasets.
-clustering_algorithm: hierarchical
+clustering_algorithm: kmeans
 
 # ── Hierarchical Deepening Loop ───────────────────────────────────────────────
 #
