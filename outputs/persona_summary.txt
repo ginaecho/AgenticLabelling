@@ -29,8 +29,6 @@ Cluster 0  (220 customers, 22.4% of total)  CV-F1=0.962
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :    1,300.1   ≈ 0.99x
     High-value %  :        0.0%
     Active months :       18.0
@@ -59,8 +57,6 @@ Cluster 1  (102 customers, 10.4% of total)  CV-F1=0.949
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :    1,230.4   ≈ 0.93x
     High-value %  :        0.0%
     Active months :       18.0
@@ -87,8 +83,6 @@ Cluster 2  (28 customers, 2.8% of total)  CV-F1=1.000
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :       10.3   ▼ 0.01x
     High-value %  :        0.0%
     Active months :        1.1
@@ -118,8 +112,6 @@ Cluster 3  (208 customers, 21.2% of total)  CV-F1=0.922
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :      945.4   ▼ 0.72x
     High-value %  :        0.0%
     Active months :       18.0
@@ -147,8 +139,6 @@ Cluster 4  (17 customers, 1.7% of total)  CV-F1=1.000
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :        9.1   ▼ 0.01x
     High-value %  :        0.0%
     Active months :        1.0
@@ -180,8 +170,6 @@ Cluster 5  (30 customers, 3.1% of total)  CV-F1=1.000
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :        9.9   ▼ 0.01x
     High-value %  :        0.0%
     Active months :        1.0
@@ -212,8 +200,6 @@ Cluster 6  (378 customers, 38.5% of total)  CV-F1=0.967
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Avg txn size  : $     0.00   ▼ 0.00x
-    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :    1,819.5   ▲ 1.38x
     High-value %  :        0.0%
     Active months :       18.0
