@@ -192,8 +192,9 @@ def save_outputs(cluster_result, naming_result, classifier_result, bus: Orchestr
             }, f, indent=2)
         print('  Saved outputs/silhouette_curve.json')
 
-    # Save pipeline log
+    # Save pipeline log (JSON + human-readable .txt for agent conversations)
     bus.save_log('outputs/pipeline_log.json')
+    bus.save_log_txt('outputs/agents_conversation.txt')
 
 
 class Orchestrator:
@@ -606,6 +607,10 @@ class Orchestrator:
                 state.cluster_feedback = f'Clarity Gate failed: {"; ".join(nr.issues)}'
                 state.naming_feedback = ''
                 print(f'\n[Orchestrator] Clarity Gate failed → re-clustering.')
+                # Tune params — clarity failures usually mean clusters are too similar;
+                # Claude may suggest reducing k, switching algorithm, or refocusing features.
+                new_params = self._ask_parameter_tuning(iteration, run_history, state)
+                state.tuning_params.update(new_params)
                 continue
 
             # ── (5) Classifier Validation ──────────────────────────────────────
