@@ -1,206 +1,148 @@
 =================================================================
 PERSONA SUMMARY
 =================================================================
-  7 personas  |  983 customers  |  silhouette=0.1541427183115477  |  CV F1 (macro)=0.9713246684560138
+  5 personas  |  983 customers  |  silhouette=0.11890050144865724  |  CV F1 (macro)=0.9548703472486112
 =================================================================
 -----------------------------------------------------------------
 
-Cluster 0  (220 customers, 22.4% of total)  CV-F1=0.962
-  Persona  : The High-Frequency Everyday Swiper
-  Tagline  : Card in hand for almost every daily purchase
-  Dominant : ['everyday essentials', 'frequent small purchases', 'routine daily spending']
+Cluster 1  (28 customers, 2.8% of total)  CV-F1=1.000
+  Persona  : The Occasional Light Transactor
+  Tagline  : Rarely swipes, spends almost nothing
+  Dominant : ['low-frequency spending', 'minimal engagement', 'passive account holders']
   Traits:
-    • Swipes their card multiple times nearly every day
-    • Transaction frequency sits above most other clusters except
-      Cluster 6
-    • Likely uses card as default payment method for almost everything
-    • Very short gap between transactions — less than a quarter of a day
-      on average
-    • Consistent, habitual spending rhythm rather than occasional
-      splurges
+    • Fewer than 11 transactions per year on average
+    • Near-zero recorded spend across all categories
+    • Transacts roughly every 35 days or more
+    • No high-value purchases detected
+    • Likely dormant or near-dormant account holders
 
   Description:
-    This group of 220 customers makes around 1,300 transactions a year —
-    roughly 3-4 card swipes every single day. With transactions
-    happening every 0.23 days on average, these are people who reach for
-    their card constantly for routine purchases. Spend and value data
-    are masked, but the sheer volume of activity marks them as habitual,
-    high-frequency users.
+    This small group of 28 customers averages just over 10 transactions
+    a year — less than once a month. Their average spend and transaction
+    value are both effectively zero in recorded data, suggesting either
+    very low-value purchases or data gaps. They are the least active
+    segment in the entire portfolio.
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Txns/yr       :    1,300.1   ≈ 0.99x
-    High-value %  :        0.0%
-    Active months :       18.0
------------------------------------------------------------------
-
-Cluster 1  (102 customers, 10.4% of total)  CV-F1=0.949
-  Persona  : The Regular Daily Payer (Slightly Less Active)
-  Tagline  : Almost as card-busy as Cluster 0, but a little more selective
-  Dominant : ['everyday essentials', 'routine daily spending', 'small frequent purchases']
-  Traits:
-    • Averages around 1,230 card transactions per year — roughly 3-4 per
-      day
-    • Slightly longer average gap between purchases than Cluster 0
-    • Smaller group than Cluster 0, suggesting a distinct but related
-      habit pattern
-    • Card is still the clear default payment method
-    • High frequency but marginally less intensive than Cluster 0 peers
-
-  Description:
-    These 102 customers make about 1,230 transactions a year — just a
-    touch fewer than Cluster 0, with a slightly longer gap of 0.25 days
-    between purchases. The behaviour is very similar to Cluster 0 but at
-    a marginally lower tempo, suggesting they skip a few daily micro-
-    transactions that Cluster 0 doesn't. Think of them as the same
-    habitual swiper, occasionally paying cash or skipping a small stop.
-
-  Key metrics driving this persona:
-  ● Overall vs dataset average:
-    Txns/yr       :    1,230.4   ≈ 0.93x
-    High-value %  :        0.0%
-    Active months :       18.0
------------------------------------------------------------------
-
-Cluster 2  (28 customers, 2.8% of total)  CV-F1=1.000
-  Persona  : The Once-a-Month Low-Activity Account Holder
-  Tagline  : Barely touches their account — just a handful of times a year
-  Dominant : ['infrequent or occasional spending', 'possible account-keeping only', 'low engagement']
-  Traits:
-    • Only around 10 transactions in an entire year
-    • One of the smallest segments — just 28 customers
-    • Account appears largely inactive compared to all other clusters
-    • May use a different bank or payment method for most spending
-    • Low engagement makes them a churn or dormancy risk
-
-  Description:
-    With only about 10 transactions per year, these 28 customers use
-    their bank account or card extremely rarely — roughly once a month
-    or less. The near-zero days-between figure is likely a data artefact
-    given such low volume, but the key story is clear: this is a dormant
-    or near-dormant segment. They may keep the account for a specific
-    niche purpose or rarely use this card.
-
-  Key metrics driving this persona:
-  ● Overall vs dataset average:
+    Avg txn size  : $     0.00   ▼ 0.00x
+    Total spend/yr: $     0.00   ▼ 0.00x
     Txns/yr       :       10.3   ▼ 0.01x
     High-value %  :        0.0%
     Active months :        1.1
 -----------------------------------------------------------------
 
-Cluster 3  (208 customers, 21.2% of total)  CV-F1=0.922
-  Persona  : The Frequent-but-Not-Daily Card User
-  Tagline  : Cards out most days, but not quite every single transaction
-  Dominant : ['regular card spending', 'mixed daily purchases', 'moderate-frequency routine shopping']
+Cluster 2  (47 customers, 4.8% of total)  CV-F1=1.000
+  Persona  : The Slightly More Active Low-Value User
+  Tagline  : A little more frequent, but still barely spending
+  Dominant : ['low-frequency spending', 'minimal engagement', 'secondary account users']
   Traits:
-    • Around 945 transactions per year — active but not at daily-
-      multiple-swipe level
-    • Longer average gap between purchases than Clusters 0 and 1
-    • Second-largest segment at 208 customers — a significant mainstream
-      group
-    • Likely mixes card with cash or other payment methods occasionally
-    • Regular but slightly more measured spending cadence than top-
-      frequency clusters
+    • Roughly 9–10 transactions per year — under one per month
+    • Near-zero total and average spend recorded
+    • Very similar to Cluster 1 but slightly larger group
+    • No high-value transactions at all
+    • Possibly uses this account as a backup or secondary card
 
   Description:
-    These 208 customers clock around 945 transactions a year — roughly
-    2-3 per day on average, with a slightly longer 0.34-day gap between
-    purchases. Compared to Clusters 0 and 1, they use their card a bit
-    less relentlessly, suggesting they mix card payments with other
-    methods or simply shop a little less often. Still very active, just
-    not at the near-constant pace of the top clusters.
+    With 47 customers and around 9.6 transactions per year, this group
+    is marginally more common than Cluster 1 but behaves almost
+    identically in terms of spend. The transaction frequency is
+    fractionally lower than Cluster 1, yet the pattern of near-zero
+    spend is the same. This cluster may represent infrequent personal
+    account users who rely on another primary account.
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Txns/yr       :      945.4   ▼ 0.72x
+    Avg txn size  : $     0.00   ▼ 0.00x
+    Total spend/yr: $     0.00   ▼ 0.00x
+    Txns/yr       :        9.6   ▼ 0.01x
+    High-value %  :        0.0%
+    Active months :        1.0
+-----------------------------------------------------------------
+
+Cluster 3  (280 customers, 28.5% of total)  CV-F1=0.919
+  Persona  : The Moderate-Frequency Everyday Transactor
+  Tagline  : Shops regularly but less intensely than siblings
+  Dominant : ['daily essentials', 'moderate-frequency retail', 'routine purchases']
+  Traits:
+    • ~994 transactions per year — lowest of the three sub-clusters
+    • Transacts roughly every 8 hours on average
+    • 28.5% of all customers — a substantial but not dominant share
+    • No high-value purchases flagged
+    • Regular but not obsessive spending rhythm compared to siblings
+
+  Description:
+    With about 994 transactions per year, these 280 customers transact
+    roughly every 8–9 hours on average — busy, but noticeably less so
+    than siblings in Clusters 4 and 5. Compared to Cluster 4's 1,136 and
+    Cluster 5's 2,293 annual transactions, this group shows the lightest
+    transaction cadence of the three sub-clusters. They likely cover
+    daily essentials but skip the very high-frequency micro-purchases
+    that define their siblings.
+
+  Key metrics driving this persona:
+  ● Overall vs dataset average:
+    Avg txn size  : $     0.00   ▼ 0.00x
+    Total spend/yr: $     0.00   ▼ 0.00x
+    Txns/yr       :      993.5   ▼ 0.75x
     High-value %  :        0.0%
     Active months :       18.0
 -----------------------------------------------------------------
 
-Cluster 4  (17 customers, 1.7% of total)  CV-F1=1.000
-  Persona  : The Very Occasional Single-Purpose User
-  Tagline  : Barely uses the account — just a few times a year, if that
-  Dominant : ['near-dormant account usage', 'very rare or one-off transactions', 'backup or legacy account']
+Cluster 4  (365 customers, 37.1% of total)  CV-F1=0.928
+  Persona  : The High-Cadence Daily Spender
+  Tagline  : Shops more often than most, but not as relentlessly as the top tier
+  Dominant : ['daily retail', 'frequent convenience spending', 'routine consumer goods']
   Traits:
-    • Fewest transactions of any cluster — roughly 9 per year
-    • Smallest customer group in the entire pipeline at just 17 people
-    • Near-dormant status suggests the account is not a primary
-      financial tool
-    • Slightly less active even than the similarly quiet Cluster 2
-    • High risk of account closure or complete disengagement
+    • ~1,136 transactions per year — middle of the three sub-clusters
+    • Transacts roughly every 6–7 hours on average
+    • Largest single cluster at 37.1% of all customers
+    • More active than Cluster 3 but far below Cluster 5's pace
+    • Consistent purchasing pattern with no high-value outliers
 
   Description:
-    At only 9 transactions per year across just 17 customers, this is
-    the smallest and least active segment in the pipeline. Like Cluster
-    2, this looks like a near-dormant account, but the group is even
-    smaller and slightly less active. These customers may hold the
-    account for a very specific or rare use case — perhaps an annual fee
-    payment or a backup card they almost never reach for.
+    These 365 customers — the largest single group — clock about 1,136
+    transactions per year, placing them clearly above Cluster 3 (994)
+    but well below Cluster 5 (2,293). They transact roughly every 6–7
+    hours, suggesting consistent daily purchasing across routine
+    categories. Think of them as the 'always-on' everyday shopper who is
+    active but not in hyper-transaction mode.
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Txns/yr       :        9.1   ▼ 0.01x
+    Avg txn size  : $     0.00   ▼ 0.00x
+    Total spend/yr: $     0.00   ▼ 0.00x
+    Txns/yr       :    1,136.3   ▼ 0.86x
     High-value %  :        0.0%
-    Active months :        1.0
+    Active months :       18.0
 -----------------------------------------------------------------
 
-Cluster 5  (30 customers, 3.1% of total)  CV-F1=1.000
-  Persona  : The Infrequent Low-Volume Transactor (Zero-Gap Burst Pattern)
-  Tagline  : Barely active overall, but transactions cluster together when they do happen
-  Dominant : ['burst or event-driven spending', 'infrequent but clustered transactions', 'occasional shopping sessions']
+Cluster 5  (263 customers, 26.8% of total)  CV-F1=0.927
+  Persona  : The Ultra-High-Frequency Micro-Transactor
+  Tagline  : Swipes constantly — nearly every hour of the day
+  Dominant : ['micro-transactions', 'automated or subscription billing', 'ultra-frequent retail']
   Traits:
-    • Only about 10 transactions per year — very low overall activity
-    • Near-zero average days between transactions points to same-day
-      burst shopping
-    • Distinct from Clusters 2 and 4 in that activity is bunched, not
-      spread out
-    • Likely makes several purchases in one sitting, then goes dormant
-      again
-    • May be using the card for specific events like travel or a
-      particular store
+    • ~2,293 transactions per year — more than double Cluster 4's rate
+    • Average of just over 1 hour between transactions
+    • 26.8% of all customers — a sizeable ultra-active minority
+    • Likely driven by micro-payments, transit taps, or subscription
+      auto-charges
+    • Zero high-value transactions despite enormous volume
 
   Description:
-    These 30 customers average about 10 transactions a year — similar to
-    Clusters 2 and 4 — but the average gap of 0.0 days between
-    transactions suggests their rare activity comes in tight bursts:
-    multiple purchases happening on the same day, then nothing for a
-    long stretch. Think of someone who uses the card for a single
-    shopping trip or event a few times a year, then puts it away
-    entirely.
+    At 2,293 transactions per year, these 263 customers are in a league
+    of their own compared to siblings Cluster 3 (994) and Cluster 4
+    (1,136) — they transact more than twice as often. With an average of
+    just 0.04 days between purchases (roughly once every hour), this
+    looks like either heavily automated payments, subscription micro-
+    billing, or someone who genuinely taps their card for every tiny
+    purchase throughout the day.
 
   Key metrics driving this persona:
   ● Overall vs dataset average:
-    Txns/yr       :        9.9   ▼ 0.01x
-    High-value %  :        0.0%
-    Active months :        1.0
------------------------------------------------------------------
-
-Cluster 6  (378 customers, 38.5% of total)  CV-F1=0.967
-  Persona  : The Power Daily Multi-Swiper
-  Tagline  : Card in hand all day, every day — the most active group by far
-  Dominant : ['ultra-high frequency daily spending', 'all-day routine card use', 'habitual payment-by-card for everything']
-  Traits:
-    • Highest transaction volume of all clusters — around 1,820 per year
-    • Largest single segment at 378 customers (38.5% of the base)
-    • Shortest average gap between purchases at just 0.14 days —
-      multiple swipes daily
-    • Card is almost certainly their primary and near-exclusive payment
-      method
-    • Likely earns rewards points or cashback — possibly motivated to
-      maximise card use
-
-  Description:
-    At nearly 1,820 transactions per year, this group of 378 customers
-    is the busiest in the entire pipeline — and also the largest, making
-    up 38.5% of all customers. That works out to roughly 5 card uses per
-    day, with only 0.14 days between transactions on average. These are
-    likely people who use their bank card for absolutely everything:
-    morning coffee, lunch, afternoon errands, evening shopping, and
-    everything in between.
-
-  Key metrics driving this persona:
-  ● Overall vs dataset average:
-    Txns/yr       :    1,819.5   ▲ 1.38x
+    Avg txn size  : $     0.00   ▼ 0.00x
+    Total spend/yr: $     0.00   ▼ 0.00x
+    Txns/yr       :    2,292.8   ▲ 1.74x
     High-value %  :        0.0%
     Active months :       18.0
 

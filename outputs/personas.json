@@ -1,1324 +1,17 @@
 {
-  "0": {
-    "cluster_stats": {
-      "cluster_id": 0,
-      "n_customers": 152,
-      "pct_of_total": 0.155,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3680.35,
-          "avg_spend_12m": 51.49,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1672.68,
-          "consec_months": 15.9,
-          "rel_n_txn": 0,
-          "rel_amt": 0.84,
-          "rel_consec": 1.1
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2724.39,
-          "avg_spend_12m": 47.55,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1234.28,
-          "consec_months": 15.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.81,
-          "rel_consec": 1.07
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 8215.83,
-          "avg_spend_12m": 60.8,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3716.2,
-          "consec_months": 17.6,
-          "rel_n_txn": 0,
-          "rel_amt": 1.36,
-          "rel_consec": 1.18
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 611.64,
-          "avg_spend_12m": 49.59,
-          "n_txn_6m": 0,
-          "total_amt_6m": 284.77,
-          "consec_months": 4.8,
-          "rel_n_txn": 0,
-          "rel_amt": 0.35,
-          "rel_consec": 0.53
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 11791.94,
-          "avg_spend_12m": 126.59,
-          "n_txn_6m": 0,
-          "total_amt_6m": 5375.08,
-          "consec_months": 17.2,
-          "rel_n_txn": 0,
-          "rel_amt": 1.13,
-          "rel_consec": 1.11
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3782.09,
-          "avg_spend_12m": 50.53,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1765.01,
-          "consec_months": 16.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.12,
-          "rel_consec": 1.17
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4632.35,
-          "avg_spend_12m": 50.64,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2098.6,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.89,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4523.58,
-          "avg_spend_12m": 49.89,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2023.43,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.96,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4475.17,
-          "avg_spend_12m": 76.43,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2049.23,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.21,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2059.9,
-          "avg_spend_12m": 49.18,
-          "n_txn_6m": 0,
-          "total_amt_6m": 761.85,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.56,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3531.5,
-          "avg_spend_12m": 49.35,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1630.14,
-          "consec_months": 16.1,
-          "rel_n_txn": 0,
-          "rel_amt": 1.12,
-          "rel_consec": 1.12
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5631.44,
-          "avg_spend_12m": 76.4,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2584.22,
-          "consec_months": 16.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.91,
-          "rel_consec": 1.13
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4215.91,
-          "avg_spend_12m": 63.11,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1821.79,
-          "consec_months": 16.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.62,
-          "rel_consec": 1.08
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2119.71,
-          "avg_spend_12m": 59.46,
-          "n_txn_6m": 0,
-          "total_amt_6m": 708.3,
-          "consec_months": 12.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.65,
-          "rel_consec": 1.21
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Quiet Mainstream Spender",
-      "tagline": "Shows up regularly, nothing flashy",
-      "description": "This is the largest group at 15.5% of all customers. Their transaction data came through blank, so we can't pin down exact habits. Based on cluster size alone, they likely represent a broad middle-ground of everyday banking activity.",
-      "dominant_categories": [
-        "everyday purchases",
-        "routine bills",
-        "general retail"
-      ],
-      "traits": [
-        "Largest single cluster in the dataset",
-        "Likely reflects average or near-average spending patterns",
-        "No extreme highs or lows in any dimension",
-        "Possibly a catch-all for customers who don't fit niche patterns",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
   "1": {
     "cluster_stats": {
       "cluster_id": 1,
-      "n_customers": 14,
-      "pct_of_total": 0.014,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4522.91,
-          "avg_spend_12m": 55.83,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2128.42,
-          "consec_months": 16.9,
-          "rel_n_txn": 0,
-          "rel_amt": 1.03,
-          "rel_consec": 1.17
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3971.76,
-          "avg_spend_12m": 59.9,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1908.05,
-          "consec_months": 16.9,
-          "rel_n_txn": 0,
-          "rel_amt": 1.17,
-          "rel_consec": 1.18
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 7357.34,
-          "avg_spend_12m": 63.67,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3205.25,
-          "consec_months": 17.4,
-          "rel_n_txn": 0,
-          "rel_amt": 1.22,
-          "rel_consec": 1.17
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1526.96,
-          "avg_spend_12m": 58.11,
-          "n_txn_6m": 0,
-          "total_amt_6m": 718.82,
-          "consec_months": 8.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.86,
-          "rel_consec": 0.93
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 12915.25,
-          "avg_spend_12m": 117.51,
-          "n_txn_6m": 0,
-          "total_amt_6m": 5875.79,
-          "consec_months": 17.5,
-          "rel_n_txn": 0,
-          "rel_amt": 1.24,
-          "rel_consec": 1.13
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3636.87,
-          "avg_spend_12m": 47.71,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1559.75,
-          "consec_months": 15.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.08,
-          "rel_consec": 1.09
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5728.5,
-          "avg_spend_12m": 52.52,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2587.88,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.1,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5852.71,
-          "avg_spend_12m": 58.46,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2699.33,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.24,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3948.68,
-          "avg_spend_12m": 72.39,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1756.42,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.07,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3377.43,
-          "avg_spend_12m": 54.44,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1586.22,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.92,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4145.23,
-          "avg_spend_12m": 48.81,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1985.35,
-          "consec_months": 16.9,
-          "rel_n_txn": 0,
-          "rel_amt": 1.31,
-          "rel_consec": 1.17
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5338.05,
-          "avg_spend_12m": 74.39,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2287.85,
-          "consec_months": 16.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.86,
-          "rel_consec": 1.13
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5555.36,
-          "avg_spend_12m": 53.62,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2545.34,
-          "consec_months": 17.1,
-          "rel_n_txn": 0,
-          "rel_amt": 0.82,
-          "rel_consec": 1.13
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 18921.61,
-          "avg_spend_12m": 707.12,
-          "n_txn_6m": 0,
-          "total_amt_6m": 11051.55,
-          "consec_months": 11.4,
-          "rel_n_txn": 0,
-          "rel_amt": 5.84,
-          "rel_consec": 1.1
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Rare but Distinct Transactor",
-      "tagline": "Small group, stands out for some reason",
-      "description": "Only 14 customers land here \u2014 just 1.4% of all customers. That tiny size suggests something specific sets them apart, but without actual spend figures we can only guess. They may be low-frequency, high-value buyers or a very niche behavioural type.",
-      "dominant_categories": [
-        "unknown",
-        "possible high-value purchases",
-        "infrequent activity"
-      ],
-      "traits": [
-        "One of the smallest clusters in the entire set",
-        "Tight grouping suggests a very specific shared behaviour",
-        "Possibly infrequent but notable transaction patterns",
-        "Could represent a premium or outlier customer type",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "2": {
-    "cluster_stats": {
-      "cluster_id": 2,
-      "n_customers": 41,
-      "pct_of_total": 0.042,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2123.14,
-          "avg_spend_12m": 52.91,
-          "n_txn_6m": 0,
-          "total_amt_6m": 972.36,
-          "consec_months": 11.9,
-          "rel_n_txn": 0,
-          "rel_amt": 0.48,
-          "rel_consec": 0.82
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1936.4,
-          "avg_spend_12m": 60.89,
-          "n_txn_6m": 0,
-          "total_amt_6m": 855.63,
-          "consec_months": 10.7,
-          "rel_n_txn": 0,
-          "rel_amt": 0.57,
-          "rel_consec": 0.75
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4556.33,
-          "avg_spend_12m": 62.23,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2107.55,
-          "consec_months": 16.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.75,
-          "rel_consec": 1.08
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 294.45,
-          "avg_spend_12m": 63.29,
-          "n_txn_6m": 0,
-          "total_amt_6m": 84.83,
-          "consec_months": 2.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.17,
-          "rel_consec": 0.27
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6880.62,
-          "avg_spend_12m": 123.22,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3179.22,
-          "consec_months": 14.6,
-          "rel_n_txn": 0,
-          "rel_amt": 0.66,
-          "rel_consec": 0.95
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1900.29,
-          "avg_spend_12m": 46.39,
-          "n_txn_6m": 0,
-          "total_amt_6m": 817.92,
-          "consec_months": 12.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.56,
-          "rel_consec": 0.86
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2737.8,
-          "avg_spend_12m": 52.38,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1257.76,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.53,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2965.22,
-          "avg_spend_12m": 60.6,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1303.12,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.63,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2401.75,
-          "avg_spend_12m": 84.45,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1142.02,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.65,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1555.53,
-          "avg_spend_12m": 62.03,
-          "n_txn_6m": 0,
-          "total_amt_6m": 639.89,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.42,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1976.52,
-          "avg_spend_12m": 48.55,
-          "n_txn_6m": 0,
-          "total_amt_6m": 890.87,
-          "consec_months": 14.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.63,
-          "rel_consec": 0.97
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3291.28,
-          "avg_spend_12m": 95.67,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1318.39,
-          "consec_months": 12.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.53,
-          "rel_consec": 0.85
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2987.17,
-          "avg_spend_12m": 69.98,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1125.32,
-          "consec_months": 13.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.44,
-          "rel_consec": 0.88
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1105.0,
-          "avg_spend_12m": 57.01,
-          "n_txn_6m": 0,
-          "total_amt_6m": 481.2,
-          "consec_months": 7.5,
-          "rel_n_txn": 0,
-          "rel_amt": 0.34,
-          "rel_consec": 0.73
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Occasional Mid-Tier Shopper",
-      "tagline": "Buys sometimes, not often, not rarely",
-      "description": "At 4.2% of customers, this is a modest-sized group. Their placement in a 14-cluster solution hints at a recognisable pattern distinct from the larger mainstream groups. Without spend data, we suspect moderate frequency with unremarkable transaction sizes.",
-      "dominant_categories": [
-        "general retail",
-        "occasional dining",
-        "standard household"
-      ],
-      "traits": [
-        "Mid-sized cluster suggesting moderate behavioural consistency",
-        "Likely sits between casual and active spenders",
-        "Does not appear to cluster with the largest groups",
-        "Possibly irregular purchase timing",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "3": {
-    "cluster_stats": {
-      "cluster_id": 3,
-      "n_customers": 7,
-      "pct_of_total": 0.007,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.0
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 39.24,
-          "avg_spend_12m": 39.24,
-          "n_txn_6m": 0,
-          "total_amt_6m": 39.24,
-          "consec_months": 0.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.01,
-          "rel_consec": 0.02
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2.32,
-          "avg_spend_12m": 2.32,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2.32,
-          "consec_months": 0.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.02
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3.38,
-          "avg_spend_12m": 3.38,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3.38,
-          "consec_months": 0.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.05
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 933.62,
-          "avg_spend_12m": 297.64,
-          "n_txn_6m": 0,
-          "total_amt_6m": 933.62,
-          "consec_months": 1.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.09,
-          "rel_consec": 0.06
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.0
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2.87,
-          "avg_spend_12m": 2.87,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2.87,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 957.14,
-          "avg_spend_12m": 595.08,
-          "n_txn_6m": 0,
-          "total_amt_6m": 957.14,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.26,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3.12,
-          "avg_spend_12m": 3.12,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3.12,
-          "consec_months": 0.1,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.01
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2157.63,
-          "avg_spend_12m": 874.37,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2157.63,
-          "consec_months": 0.9,
-          "rel_n_txn": 0,
-          "rel_amt": 0.35,
-          "rel_consec": 0.06
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1140.6,
-          "avg_spend_12m": 635.83,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1140.6,
-          "consec_months": 0.6,
-          "rel_n_txn": 0,
-          "rel_amt": 0.17,
-          "rel_consec": 0.04
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1.59,
-          "avg_spend_12m": 1.59,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1.59,
-          "consec_months": 0.1,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.01
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Highly Specific Micro-Segment",
-      "tagline": "Tiny group, very tightly defined behaviour",
-      "description": "Just 7 customers \u2014 0.7% of the base. A cluster this small in a k=14 solution almost always means the algorithm found something genuinely unusual. These customers likely share a very specific and uncommon spending pattern that sets them apart from everyone else.",
-      "dominant_categories": [
-        "unknown niche behaviour",
-        "possible outlier transactions",
-        "unique category mix"
-      ],
-      "traits": [
-        "Second smallest cluster in the dataset",
-        "Extreme tightness implies a very narrow behavioural profile",
-        "Could represent a special customer type like a business account or bulk buyer",
-        "Unlikely to overlap with any mainstream segment",
-        "Very low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "4": {
-    "cluster_stats": {
-      "cluster_id": 4,
-      "n_customers": 96,
-      "pct_of_total": 0.098,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          3,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5730.99,
-          "avg_spend_12m": 74.84,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2630.12,
-          "consec_months": 16.1,
-          "rel_n_txn": 0,
-          "rel_amt": 1.31,
-          "rel_consec": 1.11
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4346.46,
-          "avg_spend_12m": 59.71,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1944.6,
-          "consec_months": 16.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.29,
-          "rel_consec": 1.13
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2714.0,
-          "avg_spend_12m": 68.9,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1249.98,
-          "consec_months": 12.8,
-          "rel_n_txn": 0,
-          "rel_amt": 0.45,
-          "rel_consec": 0.86
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1869.66,
-          "avg_spend_12m": 50.57,
-          "n_txn_6m": 0,
-          "total_amt_6m": 857.17,
-          "consec_months": 12.4,
-          "rel_n_txn": 0,
-          "rel_amt": 1.06,
-          "rel_consec": 1.37
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 11262.2,
-          "avg_spend_12m": 102.72,
-          "n_txn_6m": 0,
-          "total_amt_6m": 5229.19,
-          "consec_months": 17.1,
-          "rel_n_txn": 0,
-          "rel_amt": 1.08,
-          "rel_consec": 1.11
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4818.79,
-          "avg_spend_12m": 73.27,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2234.82,
-          "consec_months": 15.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.43,
-          "rel_consec": 1.09
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 8581.51,
-          "avg_spend_12m": 78.99,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3981.9,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.65,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4007.8,
-          "avg_spend_12m": 51.07,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1836.45,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.85,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2917.7,
-          "avg_spend_12m": 128.42,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1443.66,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.79,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2567.21,
-          "avg_spend_12m": 36.53,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1143.16,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.7,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2834.23,
-          "avg_spend_12m": 72.69,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1295.42,
-          "consec_months": 12.7,
-          "rel_n_txn": 0,
-          "rel_amt": 0.9,
-          "rel_consec": 0.89
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 8577.37,
-          "avg_spend_12m": 122.69,
-          "n_txn_6m": 0,
-          "total_amt_6m": 4213.36,
-          "consec_months": 15.6,
-          "rel_n_txn": 0,
-          "rel_amt": 1.38,
-          "rel_consec": 1.09
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 10156.49,
-          "avg_spend_12m": 138.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 4763.82,
-          "consec_months": 15.6,
-          "rel_n_txn": 0,
-          "rel_amt": 1.5,
-          "rel_consec": 1.03
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 15945.86,
-          "avg_spend_12m": 479.27,
-          "n_txn_6m": 0,
-          "total_amt_6m": 7370.33,
-          "consec_months": 10.7,
-          "rel_n_txn": 0,
-          "rel_amt": 4.92,
-          "rel_consec": 1.04
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Consistent Everyday Transactor",
-      "tagline": "Steady and predictable, week in, week out",
-      "description": "Nearly 10% of all customers belong here, making this a sizeable and likely well-defined group. The cluster's distinct placement away from the two largest groups (Clusters 0 and 9) suggests a recognisable rhythm of regular spending. They are probably reliable, habitual buyers.",
-      "dominant_categories": [
-        "groceries",
-        "fuel",
-        "regular household essentials"
-      ],
-      "traits": [
-        "Nearly one in ten customers fits this profile",
-        "Likely characterised by steady transaction frequency",
-        "Probably shows consistent month-over-month behaviour",
-        "Distinguished from the largest clusters by some measurable habit",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "5": {
-    "cluster_stats": {
-      "cluster_id": 5,
-      "n_customers": 83,
-      "pct_of_total": 0.084,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2874.45,
-          "avg_spend_12m": 53.67,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1229.67,
-          "consec_months": 14.5,
-          "rel_n_txn": 0,
-          "rel_amt": 0.65,
-          "rel_consec": 1.0
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2726.72,
-          "avg_spend_12m": 54.96,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1237.14,
-          "consec_months": 14.1,
-          "rel_n_txn": 0,
-          "rel_amt": 0.81,
-          "rel_consec": 0.99
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5776.77,
-          "avg_spend_12m": 62.94,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2580.84,
-          "consec_months": 16.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.95,
-          "rel_consec": 1.1
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 815.66,
-          "avg_spend_12m": 57.63,
-          "n_txn_6m": 0,
-          "total_amt_6m": 379.11,
-          "consec_months": 5.7,
-          "rel_n_txn": 0,
-          "rel_amt": 0.46,
-          "rel_consec": 0.63
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 7885.99,
-          "avg_spend_12m": 111.76,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3680.82,
-          "consec_months": 15.6,
-          "rel_n_txn": 0,
-          "rel_amt": 0.76,
-          "rel_consec": 1.01
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2525.33,
-          "avg_spend_12m": 49.68,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1169.13,
-          "consec_months": 13.5,
-          "rel_n_txn": 0,
-          "rel_amt": 0.75,
-          "rel_consec": 0.97
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3721.12,
-          "avg_spend_12m": 54.12,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1677.16,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.71,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3974.74,
-          "avg_spend_12m": 58.65,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1802.9,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.84,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2715.6,
-          "avg_spend_12m": 73.92,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1221.69,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.74,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2752.87,
-          "avg_spend_12m": 69.81,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1717.0,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.75,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2585.48,
-          "avg_spend_12m": 44.86,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1159.96,
-          "consec_months": 15.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.82,
-          "rel_consec": 1.04
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4101.96,
-          "avg_spend_12m": 86.6,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1933.37,
-          "consec_months": 13.6,
-          "rel_n_txn": 0,
-          "rel_amt": 0.66,
-          "rel_consec": 0.95
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4075.99,
-          "avg_spend_12m": 69.38,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1946.29,
-          "consec_months": 15.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.6,
-          "rel_consec": 1.02
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1376.54,
-          "avg_spend_12m": 45.13,
-          "n_txn_6m": 0,
-          "total_amt_6m": 518.25,
-          "consec_months": 9.1,
-          "rel_n_txn": 0,
-          "rel_amt": 0.42,
-          "rel_consec": 0.88
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Active But Unremarkable Regular",
-      "tagline": "Buys often, keeps things ordinary",
-      "description": "At 8.4% this is a sizeable cluster, likely representing a group of fairly active spenders who don't push into extreme territory on any single dimension. They are probably frequent enough to stand apart from casual users but not distinctive enough to land in a niche cluster.",
-      "dominant_categories": [
-        "everyday retail",
-        "dining",
-        "transport"
-      ],
-      "traits": [
-        "Large enough to represent a broad customer archetype",
-        "Likely moderate-to-high transaction frequency",
-        "Spending probably spans several common categories",
-        "No single dominant behaviour strong enough to single out",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "6": {
-    "cluster_stats": {
-      "cluster_id": 6,
       "n_customers": 28,
       "pct_of_total": 0.028,
       "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
+      "algorithm_detail": "K-Means  |  k=3  |  init=k-means++  |  n_init=15",
       "lineage": {
         "depth": 0,
         "parent": null,
         "siblings": [
           0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
+          2
         ],
         "pct_of_parent": 1.0,
         "is_sub_cluster": false
@@ -1396,10 +89,10 @@
           "avg_spend_12m": 0.0,
           "n_txn_6m": 0,
           "total_amt_6m": 0.0,
-          "consec_months": 0,
+          "consec_months": 0.0,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.0
         },
         "kids_pets": {
           "n_txn_12m": 0,
@@ -1407,10 +100,10 @@
           "avg_spend_12m": 0.0,
           "n_txn_6m": 0,
           "total_amt_6m": 0.0,
-          "consec_months": 0,
+          "consec_months": 0.1,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.01
         },
         "misc_net": {
           "n_txn_12m": 0,
@@ -1418,10 +111,10 @@
           "avg_spend_12m": 0.0,
           "n_txn_6m": 0,
           "total_amt_6m": 0.0,
-          "consec_months": 0,
+          "consec_months": 0.9,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.07
         },
         "misc_pos": {
           "n_txn_12m": 0,
@@ -1429,10 +122,10 @@
           "avg_spend_12m": 0.0,
           "n_txn_6m": 0,
           "total_amt_6m": 0.0,
-          "consec_months": 0,
+          "consec_months": 0.1,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.01
         },
         "personal_care": {
           "n_txn_12m": 0,
@@ -1485,56 +178,45 @@
         "max_txn_amt": 0,
         "pct_high_value": 0,
         "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
+        "total_txn_count": 10.32,
+        "active_months": 1.07,
         "n_unique_categories": 0,
         "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
+        "avg_days_between_txn": 0.01
       }
     },
     "persona": {
-      "name": "The Selective Periodic Buyer",
-      "tagline": "Picks their moments, doesn't spend randomly",
-      "description": "This group of 28 customers (2.8%) is small enough to suggest a fairly specific shared trait. Their separation into their own cluster implies they buy in a pattern \u2014 perhaps concentrated into certain times of the month or around particular categories \u2014 rather than spreading spending evenly.",
+      "name": "The Occasional Light Transactor",
+      "tagline": "Rarely swipes, spends almost nothing",
+      "description": "This small group of 28 customers averages just over 10 transactions a year \u2014 less than once a month. Their average spend and transaction value are both effectively zero in recorded data, suggesting either very low-value purchases or data gaps. They are the least active segment in the entire portfolio.",
       "dominant_categories": [
-        "possible periodic big-spend",
-        "select retail categories",
-        "irregular timing"
+        "low-frequency spending",
+        "minimal engagement",
+        "passive account holders"
       ],
       "traits": [
-        "Small cluster suggesting a focused behavioural profile",
-        "Likely shows uneven timing between purchases",
-        "May concentrate spending around specific triggers or dates",
-        "Distinct from the larger everyday-spending clusters",
-        "Low confidence due to missing numeric data"
+        "Fewer than 11 transactions per year on average",
+        "Near-zero recorded spend across all categories",
+        "Transacts roughly every 35 days or more",
+        "No high-value purchases detected",
+        "Likely dormant or near-dormant account holders"
       ],
-      "confidence": 1
+      "confidence": 2
     }
   },
-  "7": {
+  "2": {
     "cluster_stats": {
-      "cluster_id": 7,
-      "n_customers": 35,
-      "pct_of_total": 0.036,
+      "cluster_id": 2,
+      "n_customers": 47,
+      "pct_of_total": 0.048,
       "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
+      "algorithm_detail": "K-Means  |  k=3  |  init=k-means++  |  n_init=15",
       "lineage": {
         "depth": 0,
         "parent": null,
         "siblings": [
           0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          8,
-          9,
-          10,
-          11,
-          12,
-          13
+          1
         ],
         "pct_of_parent": 1.0,
         "is_sub_cluster": false
@@ -1542,43 +224,43 @@
       "category_stats": {
         "entertainment": {
           "n_txn_12m": 0,
-          "total_amt_12m": 69.44,
-          "avg_spend_12m": 69.44,
+          "total_amt_12m": 96.75,
+          "avg_spend_12m": 96.75,
           "n_txn_6m": 0,
-          "total_amt_6m": 22.8,
+          "total_amt_6m": 62.03,
           "consec_months": 0.2,
           "rel_n_txn": 0,
           "rel_amt": 0.02,
-          "rel_consec": 0.01
+          "rel_consec": 0.02
         },
         "food_dining": {
           "n_txn_12m": 0,
-          "total_amt_12m": 10.91,
-          "avg_spend_12m": 10.91,
+          "total_amt_12m": 18.86,
+          "avg_spend_12m": 16.41,
           "n_txn_6m": 0,
-          "total_amt_6m": 3.56,
+          "total_amt_6m": 13.38,
           "consec_months": 0.1,
           "rel_n_txn": 0,
-          "rel_amt": 0.0,
+          "rel_amt": 0.01,
           "rel_consec": 0.01
         },
         "gas_transport": {
           "n_txn_12m": 0,
-          "total_amt_12m": 7.72,
-          "avg_spend_12m": 5.72,
+          "total_amt_12m": 6.51,
+          "avg_spend_12m": 5.02,
           "n_txn_6m": 0,
-          "total_amt_6m": 3.62,
-          "consec_months": 0.6,
+          "total_amt_6m": 3.46,
+          "consec_months": 0.5,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0.04
+          "rel_consec": 0.03
         },
         "grocery_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 0.61,
-          "avg_spend_12m": 0.61,
+          "total_amt_12m": 0.96,
+          "avg_spend_12m": 0.96,
           "n_txn_6m": 0,
-          "total_amt_6m": 0.61,
+          "total_amt_6m": 0.96,
           "consec_months": 0.1,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
@@ -1586,10 +268,10 @@
         },
         "grocery_pos": {
           "n_txn_12m": 0,
-          "total_amt_12m": 699.07,
-          "avg_spend_12m": 271.18,
+          "total_amt_12m": 723.78,
+          "avg_spend_12m": 278.57,
           "n_txn_6m": 0,
-          "total_amt_6m": 254.59,
+          "total_amt_6m": 392.78,
           "consec_months": 0.9,
           "rel_n_txn": 0,
           "rel_amt": 0.07,
@@ -1608,54 +290,54 @@
         },
         "home": {
           "n_txn_12m": 0,
-          "total_amt_12m": 13.75,
-          "avg_spend_12m": 13.75,
+          "total_amt_12m": 10.24,
+          "avg_spend_12m": 10.24,
           "n_txn_6m": 0,
-          "total_amt_6m": 7.41,
-          "consec_months": 0,
+          "total_amt_6m": 5.52,
+          "consec_months": 0.0,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.0
         },
         "kids_pets": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1.21,
-          "avg_spend_12m": 1.21,
+          "total_amt_12m": 1.33,
+          "avg_spend_12m": 1.33,
           "n_txn_6m": 0,
-          "total_amt_6m": 1.21,
-          "consec_months": 0,
+          "total_amt_6m": 1.33,
+          "consec_months": 0.1,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.0
         },
         "misc_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1114.25,
-          "avg_spend_12m": 635.52,
+          "total_amt_12m": 1041.5,
+          "avg_spend_12m": 613.84,
           "n_txn_6m": 0,
-          "total_amt_6m": 459.2,
-          "consec_months": 0,
+          "total_amt_6m": 553.69,
+          "consec_months": 0.8,
           "rel_n_txn": 0,
-          "rel_amt": 0.3,
-          "rel_consec": 0
+          "rel_amt": 0.28,
+          "rel_consec": 0.06
         },
         "misc_pos": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1.95,
-          "avg_spend_12m": 1.53,
+          "total_amt_12m": 1.78,
+          "avg_spend_12m": 1.46,
           "n_txn_6m": 0,
-          "total_amt_6m": 0.63,
-          "consec_months": 0,
+          "total_amt_6m": 0.79,
+          "consec_months": 0.2,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
-          "rel_consec": 0
+          "rel_consec": 0.01
         },
         "personal_care": {
           "n_txn_12m": 0,
-          "total_amt_12m": 4.24,
-          "avg_spend_12m": 3.67,
+          "total_amt_12m": 4.47,
+          "avg_spend_12m": 3.62,
           "n_txn_6m": 0,
-          "total_amt_6m": 2.93,
+          "total_amt_6m": 3.49,
           "consec_months": 0.2,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
@@ -1663,32 +345,32 @@
         },
         "shopping_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 3090.52,
-          "avg_spend_12m": 943.35,
+          "total_amt_12m": 2859.06,
+          "avg_spend_12m": 940.12,
           "n_txn_6m": 0,
-          "total_amt_6m": 1357.42,
+          "total_amt_6m": 1568.45,
           "consec_months": 0.9,
           "rel_n_txn": 0,
-          "rel_amt": 0.5,
+          "rel_amt": 0.46,
           "rel_consec": 0.07
         },
         "shopping_pos": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1082.11,
-          "avg_spend_12m": 680.16,
+          "total_amt_12m": 1166.94,
+          "avg_spend_12m": 708.36,
           "n_txn_6m": 0,
-          "total_amt_6m": 322.65,
+          "total_amt_6m": 601.39,
           "consec_months": 0.7,
           "rel_n_txn": 0,
-          "rel_amt": 0.16,
+          "rel_amt": 0.17,
           "rel_consec": 0.05
         },
         "travel": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1.4,
-          "avg_spend_12m": 1.4,
+          "total_amt_12m": 1.51,
+          "avg_spend_12m": 1.51,
           "n_txn_6m": 0,
-          "total_amt_6m": 1.09,
+          "total_amt_6m": 1.27,
           "consec_months": 0.1,
           "rel_n_txn": 0,
           "rel_amt": 0.0,
@@ -1701,1078 +383,203 @@
         "max_txn_amt": 0,
         "pct_high_value": 0,
         "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
+        "total_txn_count": 9.62,
+        "active_months": 1.02,
         "n_unique_categories": 0,
         "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
+        "avg_days_between_txn": 0.01
       }
     },
     "persona": {
-      "name": "The Moderate Niche Loyalist",
-      "tagline": "Not huge in numbers, but sticks to their habits",
-      "description": "Thirty-five customers (3.6%) share this profile. A cluster of this size in a 14-way split usually means a clear, repeatable pattern. The 'loyalist' framing comes from the expectation that loyalty months would be a key differentiator here, though we can't confirm without the data.",
+      "name": "The Slightly More Active Low-Value User",
+      "tagline": "A little more frequent, but still barely spending",
+      "description": "With 47 customers and around 9.6 transactions per year, this group is marginally more common than Cluster 1 but behaves almost identically in terms of spend. The transaction frequency is fractionally lower than Cluster 1, yet the pattern of near-zero spend is the same. This cluster may represent infrequent personal account users who rely on another primary account.",
       "dominant_categories": [
-        "brand-loyal purchases",
-        "recurring subscriptions",
-        "routine category spend"
+        "low-frequency spending",
+        "minimal engagement",
+        "secondary account users"
       ],
       "traits": [
-        "Small-to-mid group suggesting a well-defined habit",
-        "Possibly longer-than-average loyalty tenure",
-        "Likely spends in a narrow set of preferred categories",
-        "Behaviour is consistent enough to form its own cluster",
-        "Low confidence due to missing numeric data"
+        "Roughly 9\u201310 transactions per year \u2014 under one per month",
+        "Near-zero total and average spend recorded",
+        "Very similar to Cluster 1 but slightly larger group",
+        "No high-value transactions at all",
+        "Possibly uses this account as a backup or secondary card"
       ],
-      "confidence": 1
+      "confidence": 2
     }
   },
-  "8": {
+  "3": {
     "cluster_stats": {
-      "cluster_id": 8,
-      "n_customers": 5,
-      "pct_of_total": 0.005,
+      "cluster_id": 3,
+      "n_customers": 280,
+      "pct_of_total": 0.285,
       "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
+      "algorithm_detail": "K-Means  |  k=3  |  init=k-means++  |  n_init=15",
       "lineage": {
-        "depth": 0,
-        "parent": null,
+        "depth": 1,
+        "parent": 0,
         "siblings": [
-          0,
-          1,
-          2,
-          3,
           4,
-          5,
-          6,
-          7,
-          9,
-          10,
-          11,
-          12,
-          13
+          5
         ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
+        "pct_of_parent": 0.308,
+        "is_sub_cluster": true
       },
       "category_stats": {
         "entertainment": {
           "n_txn_12m": 0,
-          "total_amt_12m": 423.44,
-          "avg_spend_12m": 423.44,
+          "total_amt_12m": 3988.29,
+          "avg_spend_12m": 73.13,
           "n_txn_6m": 0,
-          "total_amt_6m": 423.44,
-          "consec_months": 1.0,
+          "total_amt_6m": 1833.59,
+          "consec_months": 14.3,
           "rel_n_txn": 0,
-          "rel_amt": 0.1,
-          "rel_consec": 0.07
+          "rel_amt": 0.91,
+          "rel_consec": 0.98
         },
         "food_dining": {
           "n_txn_12m": 0,
-          "total_amt_12m": 45.94,
-          "avg_spend_12m": 22.97,
+          "total_amt_12m": 2512.82,
+          "avg_spend_12m": 48.05,
           "n_txn_6m": 0,
-          "total_amt_6m": 45.94,
-          "consec_months": 0.2,
+          "total_amt_6m": 1129.97,
+          "consec_months": 14.6,
           "rel_n_txn": 0,
-          "rel_amt": 0.01,
-          "rel_consec": 0.01
+          "rel_amt": 0.74,
+          "rel_consec": 1.02
         },
         "gas_transport": {
           "n_txn_12m": 0,
-          "total_amt_12m": 3.89,
-          "avg_spend_12m": 3.89,
+          "total_amt_12m": 3653.58,
+          "avg_spend_12m": 66.37,
           "n_txn_6m": 0,
-          "total_amt_6m": 3.89,
-          "consec_months": 0.4,
+          "total_amt_6m": 1661.63,
+          "consec_months": 13.5,
           "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.03
+          "rel_amt": 0.6,
+          "rel_consec": 0.91
         },
         "grocery_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
+          "total_amt_12m": 1691.3,
+          "avg_spend_12m": 49.95,
           "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.0
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 602.98,
-          "avg_spend_12m": 303.55,
-          "n_txn_6m": 0,
-          "total_amt_6m": 602.98,
-          "consec_months": 1.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.06,
-          "rel_consec": 0.06
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.0
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 0.0,
-          "avg_spend_12m": 0.0,
-          "n_txn_6m": 0,
-          "total_amt_6m": 0.0,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 650.29,
-          "avg_spend_12m": 488.28,
-          "n_txn_6m": 0,
-          "total_amt_6m": 650.29,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.18,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3.06,
-          "avg_spend_12m": 3.06,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3.06,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 7.91,
-          "avg_spend_12m": 3.95,
-          "n_txn_6m": 0,
-          "total_amt_6m": 7.91,
-          "consec_months": 0.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.01
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2220.83,
-          "avg_spend_12m": 1009.52,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2220.83,
-          "consec_months": 1.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.36,
-          "rel_consec": 0.07
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1797.67,
-          "avg_spend_12m": 1007.29,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1797.67,
-          "consec_months": 1.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.26,
-          "rel_consec": 0.07
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2.13,
-          "avg_spend_12m": 2.13,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2.13,
-          "consec_months": 0.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.0,
-          "rel_consec": 0.02
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Extreme Outlier",
-      "tagline": "Five people who behave like no one else",
-      "description": "Only 5 customers \u2014 the smallest cluster of all at 0.5%. In a k=14 clustering, a group this tiny almost always signals unusual or extreme values on at least one dimension. These customers likely have very high or very low figures on spend, transaction count, or loyalty that no other cluster captures.",
-      "dominant_categories": [
-        "unknown extreme behaviour",
-        "possible very high spend",
-        "possible very low frequency"
-      ],
-      "traits": [
-        "Smallest cluster in the entire dataset",
-        "Almost certainly driven by one or two extreme data points",
-        "May represent outlier accounts worth individual review",
-        "No meaningful archetype can be assigned without actual data",
-        "Lowest possible confidence due to tiny size and missing data"
-      ],
-      "confidence": 1
-    }
-  },
-  "9": {
-    "cluster_stats": {
-      "cluster_id": 9,
-      "n_customers": 198,
-      "pct_of_total": 0.201,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          10,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5487.43,
-          "avg_spend_12m": 55.54,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2512.42,
-          "consec_months": 17.5,
-          "rel_n_txn": 0,
-          "rel_amt": 1.25,
-          "rel_consec": 1.2
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3571.63,
-          "avg_spend_12m": 35.17,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1600.74,
-          "consec_months": 17.4,
-          "rel_n_txn": 0,
-          "rel_amt": 1.06,
-          "rel_consec": 1.21
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 11453.28,
-          "avg_spend_12m": 64.01,
-          "n_txn_6m": 0,
-          "total_amt_6m": 5213.79,
-          "consec_months": 17.9,
-          "rel_n_txn": 0,
-          "rel_amt": 1.89,
-          "rel_consec": 1.21
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2887.14,
-          "avg_spend_12m": 48.61,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1314.5,
-          "consec_months": 15.7,
-          "rel_n_txn": 0,
-          "rel_amt": 1.63,
-          "rel_consec": 1.73
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 10777.94,
-          "avg_spend_12m": 81.92,
-          "n_txn_6m": 0,
-          "total_amt_6m": 4935.02,
-          "consec_months": 17.7,
-          "rel_n_txn": 0,
-          "rel_amt": 1.03,
-          "rel_consec": 1.14
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4979.51,
-          "avg_spend_12m": 54.35,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2265.17,
-          "consec_months": 17.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.48,
-          "rel_consec": 1.24
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 7245.36,
-          "avg_spend_12m": 54.35,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3348.93,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.39,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6362.55,
-          "avg_spend_12m": 54.25,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2906.6,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.35,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4552.32,
-          "avg_spend_12m": 61.75,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2057.32,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.23,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5803.78,
-          "avg_spend_12m": 61.99,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2536.07,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.57,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3887.55,
-          "avg_spend_12m": 39.08,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1759.99,
-          "consec_months": 17.1,
-          "rel_n_txn": 0,
-          "rel_amt": 1.23,
-          "rel_consec": 1.19
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6626.8,
-          "avg_spend_12m": 65.9,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2906.55,
-          "consec_months": 17.4,
-          "rel_n_txn": 0,
-          "rel_amt": 1.07,
-          "rel_consec": 1.21
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 8142.81,
-          "avg_spend_12m": 62.21,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3785.67,
-          "consec_months": 17.8,
-          "rel_n_txn": 0,
-          "rel_amt": 1.2,
-          "rel_consec": 1.17
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2059.58,
-          "avg_spend_12m": 49.08,
-          "n_txn_6m": 0,
-          "total_amt_6m": 884.93,
-          "consec_months": 13.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.64,
-          "rel_consec": 1.27
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The High-Volume Everyday Mainstream Customer",
-      "tagline": "The most common type of customer in this bank",
-      "description": "At 20.1% this is the single largest cluster \u2014 one in five customers. In a 14-cluster model this dominance suggests a very central, average-leaning profile. These are likely the archetypal bank customers: transacting regularly, spending across common categories, with nothing extreme pulling them into a niche group.",
-      "dominant_categories": [
-        "general retail",
-        "groceries",
-        "everyday services"
-      ],
-      "traits": [
-        "Largest cluster \u2014 the most 'typical' customer in the dataset",
-        "Likely spans a wide range of everyday spending categories",
-        "Probably shows moderate loyalty and moderate frequency",
-        "Close to the overall population average on most metrics",
-        "Low confidence due to missing numeric data despite large size"
-      ],
-      "confidence": 1
-    }
-  },
-  "10": {
-    "cluster_stats": {
-      "cluster_id": 10,
-      "n_customers": 111,
-      "pct_of_total": 0.113,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          11,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 8496.86,
-          "avg_spend_12m": 98.68,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3930.95,
-          "consec_months": 16.2,
-          "rel_n_txn": 0,
-          "rel_amt": 1.94,
-          "rel_consec": 1.12
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5599.88,
-          "avg_spend_12m": 60.35,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2473.22,
-          "consec_months": 16.1,
-          "rel_n_txn": 0,
-          "rel_amt": 1.66,
-          "rel_consec": 1.12
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2992.83,
-          "avg_spend_12m": 69.42,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1328.17,
-          "consec_months": 13.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.49,
-          "rel_consec": 0.9
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4883.15,
-          "avg_spend_12m": 60.47,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2150.42,
-          "consec_months": 15.8,
-          "rel_n_txn": 0,
-          "rel_amt": 2.76,
-          "rel_consec": 1.75
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 25147.95,
-          "avg_spend_12m": 196.76,
-          "n_txn_6m": 0,
-          "total_amt_6m": 11613.74,
-          "consec_months": 17.0,
-          "rel_n_txn": 0,
-          "rel_amt": 2.41,
-          "rel_consec": 1.1
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4992.71,
-          "avg_spend_12m": 59.47,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2325.37,
-          "consec_months": 16.0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.48,
-          "rel_consec": 1.14
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 7644.65,
-          "avg_spend_12m": 59.77,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3436.48,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.47,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6797.04,
-          "avg_spend_12m": 59.91,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3144.5,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.44,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6491.38,
-          "avg_spend_12m": 104.35,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2949.0,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.76,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6720.81,
-          "avg_spend_12m": 80.05,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3080.68,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.82,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5681.5,
-          "avg_spend_12m": 54.31,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2572.14,
-          "consec_months": 16.7,
-          "rel_n_txn": 0,
-          "rel_amt": 1.8,
-          "rel_consec": 1.17
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 13100.97,
-          "avg_spend_12m": 105.66,
-          "n_txn_6m": 0,
-          "total_amt_6m": 6122.84,
-          "consec_months": 17.1,
-          "rel_n_txn": 0,
-          "rel_amt": 2.11,
-          "rel_consec": 1.19
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 15738.75,
-          "avg_spend_12m": 107.07,
-          "n_txn_6m": 0,
-          "total_amt_6m": 7200.64,
-          "consec_months": 17.3,
-          "rel_n_txn": 0,
-          "rel_amt": 2.32,
-          "rel_consec": 1.14
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1605.59,
-          "avg_spend_12m": 51.4,
-          "n_txn_6m": 0,
-          "total_amt_6m": 814.49,
-          "consec_months": 11.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.5,
-          "rel_consec": 1.1
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Above-Average Frequency Spender",
-      "tagline": "Shops more often than most, keeps it normal",
-      "description": "At 11.3% this is the third-largest cluster. Its separation from Cluster 9 (the biggest mainstream group) suggests a measurable step up in at least one dimension \u2014 likely transaction frequency or total spend. These customers probably visit merchants more often than average without crossing into extreme territory.",
-      "dominant_categories": [
-        "frequent retail",
-        "dining out",
-        "regular services"
-      ],
-      "traits": [
-        "Third largest cluster, suggesting a broadly common profile",
-        "Likely higher transaction frequency than the overall average",
-        "Probably spread across multiple spending categories",
-        "Distinguished from Cluster 9 by one or two elevated metrics",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "11": {
-    "cluster_stats": {
-      "cluster_id": 11,
-      "n_customers": 23,
-      "pct_of_total": 0.023,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          12,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 11528.91,
-          "avg_spend_12m": 90.37,
-          "n_txn_6m": 0,
-          "total_amt_6m": 5519.65,
-          "consec_months": 16.8,
-          "rel_n_txn": 0,
-          "rel_amt": 2.63,
-          "rel_consec": 1.16
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3128.53,
-          "avg_spend_12m": 21.95,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1662.72,
-          "consec_months": 17.0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.93,
-          "rel_consec": 1.18
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 8900.72,
-          "avg_spend_12m": 59.84,
-          "n_txn_6m": 0,
-          "total_amt_6m": 4482.7,
-          "consec_months": 17.2,
-          "rel_n_txn": 0,
-          "rel_amt": 1.47,
-          "rel_consec": 1.16
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2411.76,
-          "avg_spend_12m": 29.88,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1199.6,
-          "consec_months": 16.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.36,
-          "rel_consec": 1.8
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3107.57,
-          "avg_spend_12m": 67.14,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1543.98,
-          "consec_months": 14.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.3,
-          "rel_consec": 0.92
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4536.43,
-          "avg_spend_12m": 41.99,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2465.16,
-          "consec_months": 16.5,
-          "rel_n_txn": 0,
-          "rel_amt": 1.35,
-          "rel_consec": 1.18
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1988.72,
-          "avg_spend_12m": 41.15,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1032.21,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.38,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3658.32,
-          "avg_spend_12m": 50.42,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1751.08,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.77,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 12117.21,
-          "avg_spend_12m": 128.28,
-          "n_txn_6m": 0,
-          "total_amt_6m": 5884.8,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 3.28,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 13385.38,
-          "avg_spend_12m": 137.84,
-          "n_txn_6m": 0,
-          "total_amt_6m": 6380.35,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 3.63,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3716.25,
-          "avg_spend_12m": 38.48,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1787.53,
-          "consec_months": 16.5,
-          "rel_n_txn": 0,
-          "rel_amt": 1.18,
-          "rel_consec": 1.15
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 9294.71,
-          "avg_spend_12m": 95.94,
-          "n_txn_6m": 0,
-          "total_amt_6m": 4510.67,
-          "consec_months": 16.3,
-          "rel_n_txn": 0,
-          "rel_amt": 1.5,
-          "rel_consec": 1.14
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 15100.45,
-          "avg_spend_12m": 152.44,
-          "n_txn_6m": 0,
-          "total_amt_6m": 7548.05,
-          "consec_months": 16.5,
-          "rel_n_txn": 0,
-          "rel_amt": 2.22,
-          "rel_consec": 1.09
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 498.55,
-          "avg_spend_12m": 12.44,
-          "n_txn_6m": 0,
-          "total_amt_6m": 332.47,
-          "consec_months": 12.2,
-          "rel_n_txn": 0,
-          "rel_amt": 0.15,
-          "rel_consec": 1.18
-        }
-      },
-      "overall": {
-        "avg_txn_amt": 0,
-        "std_txn_amt": 0,
-        "max_txn_amt": 0,
-        "pct_high_value": 0,
-        "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
-        "n_unique_categories": 0,
-        "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
-      }
-    },
-    "persona": {
-      "name": "The Infrequent High-Commitment Customer",
-      "tagline": "Doesn't transact much, but stays loyal",
-      "description": "Twenty-three customers (2.3%) make up this small cluster. The small size and distinct placement suggest a specific combination of behaviours \u2014 possibly low transaction counts paired with long loyalty tenure, meaning they stick around but don't buy often.",
-      "dominant_categories": [
-        "possible subscription services",
-        "low-frequency high-value purchases",
-        "loyal category repeat"
-      ],
-      "traits": [
-        "Small cluster pointing to a specific behavioural niche",
-        "Possibly long loyalty duration with low transaction volume",
-        "May transact less frequently but with higher per-transaction value",
-        "Likely retains account for reasons beyond frequent spending",
-        "Low confidence due to missing numeric data"
-      ],
-      "confidence": 1
-    }
-  },
-  "12": {
-    "cluster_stats": {
-      "cluster_id": 12,
-      "n_customers": 145,
-      "pct_of_total": 0.148,
-      "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
-      "lineage": {
-        "depth": 0,
-        "parent": null,
-        "siblings": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          13
-        ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
-      },
-      "category_stats": {
-        "entertainment": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2995.47,
-          "avg_spend_12m": 53.09,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1372.87,
-          "consec_months": 15.5,
-          "rel_n_txn": 0,
-          "rel_amt": 0.68,
-          "rel_consec": 1.07
-        },
-        "food_dining": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4546.13,
-          "avg_spend_12m": 77.18,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2084.64,
-          "consec_months": 15.4,
-          "rel_n_txn": 0,
-          "rel_amt": 1.34,
-          "rel_consec": 1.07
-        },
-        "gas_transport": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5092.82,
-          "avg_spend_12m": 68.87,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2275.42,
-          "consec_months": 16.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.84,
-          "rel_consec": 1.1
-        },
-        "grocery_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1097.38,
-          "avg_spend_12m": 85.97,
-          "n_txn_6m": 0,
-          "total_amt_6m": 512.73,
-          "consec_months": 5.3,
-          "rel_n_txn": 0,
-          "rel_amt": 0.62,
-          "rel_consec": 0.58
-        },
-        "grocery_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 6947.09,
-          "avg_spend_12m": 93.38,
-          "n_txn_6m": 0,
-          "total_amt_6m": 3144.12,
-          "consec_months": 16.5,
-          "rel_n_txn": 0,
-          "rel_amt": 0.67,
-          "rel_consec": 1.07
-        },
-        "health_fitness": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1569.12,
-          "avg_spend_12m": 39.57,
-          "n_txn_6m": 0,
-          "total_amt_6m": 738.55,
-          "consec_months": 13.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.47,
-          "rel_consec": 0.96
-        },
-        "home": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4464.48,
-          "avg_spend_12m": 59.53,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2035.13,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.86,
-          "rel_consec": 0
-        },
-        "kids_pets": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 5799.31,
-          "avg_spend_12m": 77.9,
-          "n_txn_6m": 0,
-          "total_amt_6m": 2604.95,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 1.23,
-          "rel_consec": 0
-        },
-        "misc_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1795.74,
-          "avg_spend_12m": 75.17,
-          "n_txn_6m": 0,
-          "total_amt_6m": 828.67,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.49,
-          "rel_consec": 0
-        },
-        "misc_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 3061.05,
-          "avg_spend_12m": 61.81,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1277.39,
-          "consec_months": 0,
-          "rel_n_txn": 0,
-          "rel_amt": 0.83,
-          "rel_consec": 0
-        },
-        "personal_care": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 2678.53,
-          "avg_spend_12m": 45.22,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1220.84,
-          "consec_months": 15.8,
-          "rel_n_txn": 0,
-          "rel_amt": 0.85,
-          "rel_consec": 1.1
-        },
-        "shopping_net": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4126.25,
-          "avg_spend_12m": 110.04,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1802.64,
-          "consec_months": 13.4,
-          "rel_n_txn": 0,
-          "rel_amt": 0.67,
-          "rel_consec": 0.93
-        },
-        "shopping_pos": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 4270.68,
-          "avg_spend_12m": 60.99,
-          "n_txn_6m": 0,
-          "total_amt_6m": 1998.85,
-          "consec_months": 16.1,
-          "rel_n_txn": 0,
-          "rel_amt": 0.63,
-          "rel_consec": 1.06
-        },
-        "travel": {
-          "n_txn_12m": 0,
-          "total_amt_12m": 1810.02,
-          "avg_spend_12m": 53.47,
-          "n_txn_6m": 0,
-          "total_amt_6m": 599.49,
+          "total_amt_6m": 776.12,
           "consec_months": 11.2,
           "rel_n_txn": 0,
-          "rel_amt": 0.56,
-          "rel_consec": 1.09
+          "rel_amt": 0.96,
+          "rel_consec": 1.23
+        },
+        "grocery_pos": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 7672.37,
+          "avg_spend_12m": 113.09,
+          "n_txn_6m": 0,
+          "total_amt_6m": 3536.62,
+          "consec_months": 15.5,
+          "rel_n_txn": 0,
+          "rel_amt": 0.74,
+          "rel_consec": 1.01
+        },
+        "health_fitness": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 2941.69,
+          "avg_spend_12m": 60.12,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1362.0,
+          "consec_months": 13.7,
+          "rel_n_txn": 0,
+          "rel_amt": 0.87,
+          "rel_consec": 0.98
+        },
+        "home": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 4397.65,
+          "avg_spend_12m": 62.02,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2045.58,
+          "consec_months": 15.8,
+          "rel_n_txn": 0,
+          "rel_amt": 0.84,
+          "rel_consec": 1.03
+        },
+        "kids_pets": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 3171.3,
+          "avg_spend_12m": 54.7,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1440.55,
+          "consec_months": 15.4,
+          "rel_n_txn": 0,
+          "rel_amt": 0.67,
+          "rel_consec": 1.01
+        },
+        "misc_net": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 3115.14,
+          "avg_spend_12m": 98.53,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1431.06,
+          "consec_months": 10.9,
+          "rel_n_txn": 0,
+          "rel_amt": 0.84,
+          "rel_consec": 0.9
+        },
+        "misc_pos": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 3211.97,
+          "avg_spend_12m": 66.14,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1500.08,
+          "consec_months": 13.9,
+          "rel_n_txn": 0,
+          "rel_amt": 0.87,
+          "rel_consec": 1.03
+        },
+        "personal_care": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 2152.25,
+          "avg_spend_12m": 50.48,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1002.81,
+          "consec_months": 13.3,
+          "rel_n_txn": 0,
+          "rel_amt": 0.68,
+          "rel_consec": 0.93
+        },
+        "shopping_net": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 5875.46,
+          "avg_spend_12m": 103.84,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2649.34,
+          "consec_months": 14.7,
+          "rel_n_txn": 0,
+          "rel_amt": 0.95,
+          "rel_consec": 1.02
+        },
+        "shopping_pos": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 6536.78,
+          "avg_spend_12m": 103.08,
+          "n_txn_6m": 0,
+          "total_amt_6m": 3039.53,
+          "consec_months": 15.6,
+          "rel_n_txn": 0,
+          "rel_amt": 0.96,
+          "rel_consec": 1.03
+        },
+        "travel": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 3920.24,
+          "avg_spend_12m": 162.03,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1740.68,
+          "consec_months": 8.1,
+          "rel_n_txn": 0,
+          "rel_amt": 1.21,
+          "rel_consec": 0.79
         }
       },
       "overall": {
@@ -2781,214 +588,203 @@
         "max_txn_amt": 0,
         "pct_high_value": 0,
         "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
+        "total_txn_count": 993.54,
+        "active_months": 18.0,
         "n_unique_categories": 0,
         "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
+        "avg_days_between_txn": 0.33
       }
     },
     "persona": {
-      "name": "The Second-Tier Mainstream Spender",
-      "tagline": "Very common, very ordinary, slightly different from the top group",
-      "description": "This is the second-largest cluster at 14.8%, just behind Cluster 9. The two likely share many traits but are split by one distinguishing dimension \u2014 perhaps loyalty length, average transaction size, or spending frequency. Together, Clusters 9 and 12 probably cover the broad middle of the customer base.",
+      "name": "The Moderate-Frequency Everyday Transactor",
+      "tagline": "Shops regularly but less intensely than siblings",
+      "description": "With about 994 transactions per year, these 280 customers transact roughly every 8\u20139 hours on average \u2014 busy, but noticeably less so than siblings in Clusters 4 and 5. Compared to Cluster 4's 1,136 and Cluster 5's 2,293 annual transactions, this group shows the lightest transaction cadence of the three sub-clusters. They likely cover daily essentials but skip the very high-frequency micro-purchases that define their siblings.",
       "dominant_categories": [
-        "general retail",
-        "household essentials",
-        "everyday services"
+        "daily essentials",
+        "moderate-frequency retail",
+        "routine purchases"
       ],
       "traits": [
-        "Second largest cluster, very close in size to the biggest group",
-        "Likely represents a mainstream spending profile with a subtle twist",
-        "Possibly slightly lower frequency or spend than Cluster 9",
-        "Broadly average on most behavioural metrics",
-        "Low confidence due to missing numeric data"
+        "~994 transactions per year \u2014 lowest of the three sub-clusters",
+        "Transacts roughly every 8 hours on average",
+        "28.5% of all customers \u2014 a substantial but not dominant share",
+        "No high-value purchases flagged",
+        "Regular but not obsessive spending rhythm compared to siblings"
       ],
-      "confidence": 1
+      "confidence": 3
     }
   },
-  "13": {
+  "4": {
     "cluster_stats": {
-      "cluster_id": 13,
-      "n_customers": 45,
-      "pct_of_total": 0.046,
+      "cluster_id": 4,
+      "n_customers": 365,
+      "pct_of_total": 0.371,
       "clustering_algorithm": "KMeans",
-      "algorithm_detail": "K-Means  |  k=14  |  init=k-means++  |  n_init=15",
+      "algorithm_detail": "K-Means  |  k=3  |  init=k-means++  |  n_init=15",
       "lineage": {
-        "depth": 0,
-        "parent": null,
+        "depth": 1,
+        "parent": 0,
         "siblings": [
-          0,
-          1,
-          2,
           3,
-          4,
-          5,
-          6,
-          7,
-          8,
-          9,
-          10,
-          11,
-          12
+          5
         ],
-        "pct_of_parent": 1.0,
-        "is_sub_cluster": false
+        "pct_of_parent": 0.402,
+        "is_sub_cluster": true
       },
       "category_stats": {
         "entertainment": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1814.35,
-          "avg_spend_12m": 63.62,
+          "total_amt_12m": 3110.7,
+          "avg_spend_12m": 51.45,
           "n_txn_6m": 0,
-          "total_amt_6m": 836.37,
-          "consec_months": 10.6,
+          "total_amt_6m": 1406.79,
+          "consec_months": 15.3,
           "rel_n_txn": 0,
-          "rel_amt": 0.41,
-          "rel_consec": 0.73
+          "rel_amt": 0.71,
+          "rel_consec": 1.06
         },
         "food_dining": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1579.14,
-          "avg_spend_12m": 52.68,
+          "total_amt_12m": 3498.8,
+          "avg_spend_12m": 64.35,
           "n_txn_6m": 0,
-          "total_amt_6m": 714.83,
-          "consec_months": 11.3,
+          "total_amt_6m": 1591.04,
+          "consec_months": 14.7,
           "rel_n_txn": 0,
-          "rel_amt": 0.47,
-          "rel_consec": 0.79
+          "rel_amt": 1.03,
+          "rel_consec": 1.02
         },
         "gas_transport": {
           "n_txn_12m": 0,
-          "total_amt_12m": 2801.07,
-          "avg_spend_12m": 65.49,
+          "total_amt_12m": 6283.51,
+          "avg_spend_12m": 64.58,
           "n_txn_6m": 0,
-          "total_amt_6m": 1219.26,
-          "consec_months": 13.1,
+          "total_amt_6m": 2817.8,
+          "consec_months": 16.9,
           "rel_n_txn": 0,
-          "rel_amt": 0.46,
-          "rel_consec": 0.88
+          "rel_amt": 1.04,
+          "rel_consec": 1.14
         },
         "grocery_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 826.59,
-          "avg_spend_12m": 59.31,
+          "total_amt_12m": 757.21,
+          "avg_spend_12m": 69.18,
           "n_txn_6m": 0,
-          "total_amt_6m": 377.79,
-          "consec_months": 6.0,
+          "total_amt_6m": 346.97,
+          "consec_months": 4.4,
           "rel_n_txn": 0,
-          "rel_amt": 0.47,
-          "rel_consec": 0.66
+          "rel_amt": 0.43,
+          "rel_consec": 0.49
         },
         "grocery_pos": {
           "n_txn_12m": 0,
-          "total_amt_12m": 4984.68,
-          "avg_spend_12m": 120.51,
+          "total_amt_12m": 9060.71,
+          "avg_spend_12m": 113.06,
           "n_txn_6m": 0,
-          "total_amt_6m": 2380.03,
-          "consec_months": 13.6,
+          "total_amt_6m": 4152.42,
+          "consec_months": 16.7,
           "rel_n_txn": 0,
-          "rel_amt": 0.48,
-          "rel_consec": 0.88
+          "rel_amt": 0.87,
+          "rel_consec": 1.08
         },
         "health_fitness": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1493.4,
-          "avg_spend_12m": 55.13,
+          "total_amt_12m": 2490.83,
+          "avg_spend_12m": 44.67,
           "n_txn_6m": 0,
-          "total_amt_6m": 683.77,
-          "consec_months": 9.8,
+          "total_amt_6m": 1154.29,
+          "consec_months": 14.4,
           "rel_n_txn": 0,
-          "rel_amt": 0.44,
-          "rel_consec": 0.7
+          "rel_amt": 0.74,
+          "rel_consec": 1.03
         },
         "home": {
           "n_txn_12m": 0,
-          "total_amt_12m": 2637.89,
-          "avg_spend_12m": 60.46,
+          "total_amt_12m": 4275.81,
+          "avg_spend_12m": 55.04,
           "n_txn_6m": 0,
-          "total_amt_6m": 1193.75,
-          "consec_months": 0,
+          "total_amt_6m": 1937.7,
+          "consec_months": 16.4,
           "rel_n_txn": 0,
-          "rel_amt": 0.51,
-          "rel_consec": 0
+          "rel_amt": 0.82,
+          "rel_consec": 1.07
         },
         "kids_pets": {
           "n_txn_12m": 0,
-          "total_amt_12m": 2301.86,
-          "avg_spend_12m": 59.57,
+          "total_amt_12m": 4915.39,
+          "avg_spend_12m": 64.67,
           "n_txn_6m": 0,
-          "total_amt_6m": 1011.47,
-          "consec_months": 0,
+          "total_amt_6m": 2206.27,
+          "consec_months": 16.4,
           "rel_n_txn": 0,
-          "rel_amt": 0.49,
-          "rel_consec": 0
+          "rel_amt": 1.04,
+          "rel_consec": 1.08
         },
         "misc_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1706.62,
-          "avg_spend_12m": 84.44,
+          "total_amt_12m": 2896.9,
+          "avg_spend_12m": 75.14,
           "n_txn_6m": 0,
-          "total_amt_6m": 969.3,
-          "consec_months": 0,
+          "total_amt_6m": 1347.39,
+          "consec_months": 12.0,
           "rel_n_txn": 0,
-          "rel_amt": 0.46,
-          "rel_consec": 0
+          "rel_amt": 0.79,
+          "rel_consec": 0.99
         },
         "misc_pos": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1749.79,
-          "avg_spend_12m": 64.89,
+          "total_amt_12m": 2486.48,
+          "avg_spend_12m": 57.07,
           "n_txn_6m": 0,
-          "total_amt_6m": 824.62,
-          "consec_months": 0,
+          "total_amt_6m": 1100.02,
+          "consec_months": 13.3,
           "rel_n_txn": 0,
-          "rel_amt": 0.47,
-          "rel_consec": 0
+          "rel_amt": 0.67,
+          "rel_consec": 0.98
         },
         "personal_care": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1425.12,
-          "avg_spend_12m": 46.96,
+          "total_amt_12m": 2989.73,
+          "avg_spend_12m": 47.98,
           "n_txn_6m": 0,
-          "total_amt_6m": 633.27,
-          "consec_months": 10.5,
+          "total_amt_6m": 1353.12,
+          "consec_months": 15.8,
           "rel_n_txn": 0,
-          "rel_amt": 0.45,
-          "rel_consec": 0.73
+          "rel_amt": 0.95,
+          "rel_consec": 1.1
         },
         "shopping_net": {
           "n_txn_12m": 0,
-          "total_amt_12m": 3460.91,
-          "avg_spend_12m": 101.92,
+          "total_amt_12m": 4494.85,
+          "avg_spend_12m": 92.67,
           "n_txn_6m": 0,
-          "total_amt_6m": 1550.56,
-          "consec_months": 12.5,
+          "total_amt_6m": 1997.74,
+          "consec_months": 14.4,
           "rel_n_txn": 0,
-          "rel_amt": 0.56,
-          "rel_consec": 0.87
+          "rel_amt": 0.72,
+          "rel_consec": 1.0
         },
         "shopping_pos": {
           "n_txn_12m": 0,
-          "total_amt_12m": 3174.2,
-          "avg_spend_12m": 78.42,
+          "total_amt_12m": 3948.97,
+          "avg_spend_12m": 60.51,
           "n_txn_6m": 0,
-          "total_amt_6m": 1407.64,
-          "consec_months": 13.8,
+          "total_amt_6m": 1809.05,
+          "consec_months": 15.9,
           "rel_n_txn": 0,
-          "rel_amt": 0.47,
-          "rel_consec": 0.92
+          "rel_amt": 0.58,
+          "rel_consec": 1.05
         },
         "travel": {
           "n_txn_12m": 0,
-          "total_amt_12m": 1052.29,
-          "avg_spend_12m": 91.48,
+          "total_amt_12m": 2169.68,
+          "avg_spend_12m": 67.85,
           "n_txn_6m": 0,
-          "total_amt_6m": 305.54,
-          "consec_months": 5.4,
+          "total_amt_6m": 804.05,
+          "consec_months": 11.1,
           "rel_n_txn": 0,
-          "rel_amt": 0.32,
-          "rel_consec": 0.52
+          "rel_amt": 0.67,
+          "rel_consec": 1.08
         }
       },
       "overall": {
@@ -2997,30 +793,235 @@
         "max_txn_amt": 0,
         "pct_high_value": 0,
         "total_spend": 0,
-        "total_txn_count": 0,
-        "active_months": 0,
+        "total_txn_count": 1136.29,
+        "active_months": 18.0,
         "n_unique_categories": 0,
         "n_unique_merchants": 0,
-        "avg_days_between_txn": 0
+        "avg_days_between_txn": 0.27
       }
     },
     "persona": {
-      "name": "The Moderate Niche Periodic Transactor",
-      "tagline": "Falls between the mainstream and the true niche groups",
-      "description": "At 4.6%, this cluster sits at the border between the large mainstream groups and the smaller specialist clusters. They likely have a recognisable pattern \u2014 possibly tied to periodic large purchases or a specific spending category \u2014 that keeps them out of the bigger mainstream buckets.",
+      "name": "The High-Cadence Daily Spender",
+      "tagline": "Shops more often than most, but not as relentlessly as the top tier",
+      "description": "These 365 customers \u2014 the largest single group \u2014 clock about 1,136 transactions per year, placing them clearly above Cluster 3 (994) but well below Cluster 5 (2,293). They transact roughly every 6\u20137 hours, suggesting consistent daily purchasing across routine categories. Think of them as the 'always-on' everyday shopper who is active but not in hyper-transaction mode.",
       "dominant_categories": [
-        "possible periodic retail",
-        "select category loyalty",
-        "moderate frequency"
+        "daily retail",
+        "frequent convenience spending",
+        "routine consumer goods"
       ],
       "traits": [
-        "Mid-small cluster suggesting a moderately specific behaviour",
-        "Likely distinguished by a particular spending rhythm or category focus",
-        "Not extreme enough to land in the tiny outlier clusters",
-        "Not generic enough to merge with the large mainstream groups",
-        "Low confidence due to missing numeric data"
+        "~1,136 transactions per year \u2014 middle of the three sub-clusters",
+        "Transacts roughly every 6\u20137 hours on average",
+        "Largest single cluster at 37.1% of all customers",
+        "More active than Cluster 3 but far below Cluster 5's pace",
+        "Consistent purchasing pattern with no high-value outliers"
       ],
-      "confidence": 1
+      "confidence": 3
+    }
+  },
+  "5": {
+    "cluster_stats": {
+      "cluster_id": 5,
+      "n_customers": 263,
+      "pct_of_total": 0.268,
+      "clustering_algorithm": "KMeans",
+      "algorithm_detail": "K-Means  |  k=3  |  init=k-means++  |  n_init=15",
+      "lineage": {
+        "depth": 1,
+        "parent": 0,
+        "siblings": [
+          3,
+          4
+        ],
+        "pct_of_parent": 0.29,
+        "is_sub_cluster": true
+      },
+      "category_stats": {
+        "entertainment": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 7822.16,
+          "avg_spend_12m": 67.49,
+          "n_txn_6m": 0,
+          "total_amt_6m": 3608.49,
+          "consec_months": 17.7,
+          "rel_n_txn": 0,
+          "rel_amt": 1.78,
+          "rel_consec": 1.22
+        },
+        "food_dining": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 5106.49,
+          "avg_spend_12m": 44.28,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2303.45,
+          "consec_months": 17.6,
+          "rel_n_txn": 0,
+          "rel_amt": 1.51,
+          "rel_consec": 1.23
+        },
+        "gas_transport": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 10005.05,
+          "avg_spend_12m": 64.85,
+          "n_txn_6m": 0,
+          "total_amt_6m": 4578.94,
+          "consec_months": 17.5,
+          "rel_n_txn": 0,
+          "rel_amt": 1.65,
+          "rel_consec": 1.18
+        },
+        "grocery_net": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 3760.97,
+          "avg_spend_12m": 51.35,
+          "n_txn_6m": 0,
+          "total_amt_6m": 1690.21,
+          "consec_months": 15.7,
+          "rel_n_txn": 0,
+          "rel_amt": 2.13,
+          "rel_consec": 1.74
+        },
+        "grocery_pos": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 18114.61,
+          "avg_spend_12m": 116.77,
+          "n_txn_6m": 0,
+          "total_amt_6m": 8349.87,
+          "consec_months": 17.8,
+          "rel_n_txn": 0,
+          "rel_amt": 1.74,
+          "rel_consec": 1.15
+        },
+        "health_fitness": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 6016.28,
+          "avg_spend_12m": 56.34,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2789.86,
+          "consec_months": 17.7,
+          "rel_n_txn": 0,
+          "rel_amt": 1.78,
+          "rel_consec": 1.27
+        },
+        "home": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 8867.54,
+          "avg_spend_12m": 56.63,
+          "n_txn_6m": 0,
+          "total_amt_6m": 4050.65,
+          "consec_months": 17.8,
+          "rel_n_txn": 0,
+          "rel_amt": 1.7,
+          "rel_consec": 1.16
+        },
+        "kids_pets": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 7477.37,
+          "avg_spend_12m": 54.24,
+          "n_txn_6m": 0,
+          "total_amt_6m": 3437.76,
+          "consec_months": 17.8,
+          "rel_n_txn": 0,
+          "rel_amt": 1.58,
+          "rel_consec": 1.17
+        },
+        "misc_net": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 6264.81,
+          "avg_spend_12m": 79.86,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2905.73,
+          "consec_months": 16.9,
+          "rel_n_txn": 0,
+          "rel_amt": 1.7,
+          "rel_consec": 1.39
+        },
+        "misc_pos": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 6911.8,
+          "avg_spend_12m": 64.43,
+          "n_txn_6m": 0,
+          "total_amt_6m": 3072.78,
+          "consec_months": 17.4,
+          "rel_n_txn": 0,
+          "rel_amt": 1.87,
+          "rel_consec": 1.28
+        },
+        "personal_care": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 5349.92,
+          "avg_spend_12m": 47.72,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2428.45,
+          "consec_months": 17.5,
+          "rel_n_txn": 0,
+          "rel_amt": 1.7,
+          "rel_consec": 1.22
+        },
+        "shopping_net": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 10182.27,
+          "avg_spend_12m": 76.7,
+          "n_txn_6m": 0,
+          "total_amt_6m": 4801.85,
+          "consec_months": 17.8,
+          "rel_n_txn": 0,
+          "rel_amt": 1.64,
+          "rel_consec": 1.24
+        },
+        "shopping_pos": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 12742.98,
+          "avg_spend_12m": 81.19,
+          "n_txn_6m": 0,
+          "total_amt_6m": 5862.35,
+          "consec_months": 17.7,
+          "rel_n_txn": 0,
+          "rel_amt": 1.88,
+          "rel_consec": 1.17
+        },
+        "travel": {
+          "n_txn_12m": 0,
+          "total_amt_12m": 4924.52,
+          "avg_spend_12m": 108.27,
+          "n_txn_6m": 0,
+          "total_amt_6m": 2379.3,
+          "consec_months": 14.4,
+          "rel_n_txn": 0,
+          "rel_amt": 1.52,
+          "rel_consec": 1.4
+        }
+      },
+      "overall": {
+        "avg_txn_amt": 0,
+        "std_txn_amt": 0,
+        "max_txn_amt": 0,
+        "pct_high_value": 0,
+        "total_spend": 0,
+        "total_txn_count": 2292.76,
+        "active_months": 18.0,
+        "n_unique_categories": 0,
+        "n_unique_merchants": 0,
+        "avg_days_between_txn": 0.04
+      }
+    },
+    "persona": {
+      "name": "The Ultra-High-Frequency Micro-Transactor",
+      "tagline": "Swipes constantly \u2014 nearly every hour of the day",
+      "description": "At 2,293 transactions per year, these 263 customers are in a league of their own compared to siblings Cluster 3 (994) and Cluster 4 (1,136) \u2014 they transact more than twice as often. With an average of just 0.04 days between purchases (roughly once every hour), this looks like either heavily automated payments, subscription micro-billing, or someone who genuinely taps their card for every tiny purchase throughout the day.",
+      "dominant_categories": [
+        "micro-transactions",
+        "automated or subscription billing",
+        "ultra-frequent retail"
+      ],
+      "traits": [
+        "~2,293 transactions per year \u2014 more than double Cluster 4's rate",
+        "Average of just over 1 hour between transactions",
+        "26.8% of all customers \u2014 a sizeable ultra-active minority",
+        "Likely driven by micro-payments, transit taps, or subscription auto-charges",
+        "Zero high-value transactions despite enormous volume"
+      ],
+      "confidence": 4
     }
   }
 }

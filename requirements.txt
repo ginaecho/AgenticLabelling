@@ -10,6 +10,8 @@ seaborn>=0.12
 plotly>=5.18
 umap-learn>=0.5
 scipy>=1.11
+pyarrow>=14.0
+pyyaml>=6.0
 kaggle>=1.6
 jupyter
 ipykernel

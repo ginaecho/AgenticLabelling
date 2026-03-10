@@ -4,41 +4,24 @@
     "depth": 0,
     "siblings": [
       1,
-      2,
+      2
+    ],
+    "pct_of_total": 0.924,
+    "pct_of_parent": 1.0,
+    "split_into": [
       3,
       4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
-    ],
-    "pct_of_total": 0.155,
-    "pct_of_parent": 1.0
+      5
+    ]
   },
   "1": {
     "parent": null,
     "depth": 0,
     "siblings": [
       0,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
+      2
     ],
-    "pct_of_total": 0.014,
+    "pct_of_total": 0.028,
     "pct_of_parent": 1.0
   },
   "2": {
@@ -46,251 +29,39 @@
     "depth": 0,
     "siblings": [
       0,
-      1,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
+      1
     ],
-    "pct_of_total": 0.042,
+    "pct_of_total": 0.048,
     "pct_of_parent": 1.0
   },
   "3": {
-    "parent": null,
-    "depth": 0,
+    "parent": 0,
+    "depth": 1,
     "siblings": [
-      0,
-      1,
-      2,
       4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
+      5
     ],
-    "pct_of_total": 0.007,
-    "pct_of_parent": 1.0
+    "pct_of_total": 0.285,
+    "pct_of_parent": 0.308
   },
   "4": {
-    "parent": null,
-    "depth": 0,
+    "parent": 0,
+    "depth": 1,
     "siblings": [
-      0,
-      1,
-      2,
       3,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
+      5
     ],
-    "pct_of_total": 0.098,
-    "pct_of_parent": 1.0
+    "pct_of_total": 0.371,
+    "pct_of_parent": 0.402
   },
   "5": {
-    "parent": null,
-    "depth": 0,
+    "parent": 0,
+    "depth": 1,
     "siblings": [
-      0,
-      1,
-      2,
       3,
-      4,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
+      4
     ],
-    "pct_of_total": 0.084,
-    "pct_of_parent": 1.0
-  },
-  "6": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
-    ],
-    "pct_of_total": 0.028,
-    "pct_of_parent": 1.0
-  },
-  "7": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13
-    ],
-    "pct_of_total": 0.036,
-    "pct_of_parent": 1.0
-  },
-  "8": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      9,
-      10,
-      11,
-      12,
-      13
-    ],
-    "pct_of_total": 0.005,
-    "pct_of_parent": 1.0
-  },
-  "9": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      10,
-      11,
-      12,
-      13
-    ],
-    "pct_of_total": 0.201,
-    "pct_of_parent": 1.0
-  },
-  "10": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      11,
-      12,
-      13
-    ],
-    "pct_of_total": 0.113,
-    "pct_of_parent": 1.0
-  },
-  "11": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      12,
-      13
-    ],
-    "pct_of_total": 0.023,
-    "pct_of_parent": 1.0
-  },
-  "12": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      13
-    ],
-    "pct_of_total": 0.148,
-    "pct_of_parent": 1.0
-  },
-  "13": {
-    "parent": null,
-    "depth": 0,
-    "siblings": [
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12
-    ],
-    "pct_of_total": 0.046,
-    "pct_of_parent": 1.0
+    "pct_of_total": 0.268,
+    "pct_of_parent": 0.29
   }
 }

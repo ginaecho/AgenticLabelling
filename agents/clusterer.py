@@ -372,7 +372,7 @@ class ClusteringAgent:
                     next_id += sub_k
 
                     _lmap = {i: _new_ids[i] for i in range(sub_k)}
-                    work_df.loc[_mask, 'cluster'] = [_lmap[l] for l in sub_labels_arr]
+                    work_df.loc[_mask, 'cluster'] = np.array([_lmap[l] for l in sub_labels_arr], dtype=work_df['cluster'].dtype)
 
                     cluster_lineage[_parent]['split_into'] = _new_ids
                     for _nid in _new_ids:
