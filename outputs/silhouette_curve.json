@@ -1,11 +1,12 @@
 {
   "algorithm": "KMeans",
-  "best_k": 3,
+  "best_k": 8,
   "scores": {
-    "3": 0.5614,
-    "4": 0.1269,
-    "5": 0.1187,
-    "6": 0.1218
+    "4": 0.1237,
+    "5": 0.135,
+    "6": 0.1265,
+    "7": 0.1418,
+    "8": 0.1536
   },
   "algo_reasoning": "Algorithm fixed by config: kmeans"
 }

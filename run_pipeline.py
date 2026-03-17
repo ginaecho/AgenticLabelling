@@ -106,17 +106,21 @@ def _auto_approve(personas, cr, clf, bus):
 _orch_mod.human_checkpoint = _auto_approve
 
 # ── Resolve default features path ─────────────────────────────────────────────
-# Prefer the pre-engineered parquet when it exists; otherwise point to the raw
-# CSV so UserInputAgent's default will trigger the full feature-engineering path.
-_parquet = pathlib.Path('data/processed/customer_features.parquet')
+# Always run feature engineering from the raw CSV so the pipeline produces a
+# fresh engineered_features.parquet every run.  This guarantees that cluster
+# profile metrics (n_txn, avg_txn_amt, total_spend, …) are populated from a
+# properly built feature matrix rather than a notebook-generated parquet whose
+# column names may differ from what the Clusterer's _extract_profiles expects.
 _raw_csv = pathlib.Path('data/raw/fraudTrain.csv')
-if _parquet.exists():
-    _default_features_path = str(_parquet)
-elif _raw_csv.exists():
+_parquet  = pathlib.Path('data/processed/customer_features.parquet')
+if _raw_csv.exists():
     _default_features_path = str(_raw_csv)
-    print(f'[run_pipeline] Pre-built parquet not found — will use raw CSV: {_raw_csv}')
+    print(f'[run_pipeline] Using raw CSV for fresh feature engineering: {_raw_csv}')
+elif _parquet.exists():
+    _default_features_path = str(_parquet)
+    print(f'[run_pipeline] Raw CSV not found — falling back to pre-built parquet: {_parquet}')
 else:
-    _default_features_path = str(_parquet)   # orchestrator will surface the error
+    _default_features_path = str(_raw_csv)   # orchestrator will surface the error
 
 # ── Run pipeline ──────────────────────────────────────────────────────────────
 orchestrator = Orchestrator(config)

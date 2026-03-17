@@ -126,11 +126,27 @@ def _extract_profiles(features_df: pd.DataFrame, cluster_labels: pd.Series,
         )
 
         overall = {}
+        # Primary column names are all-time (no suffix).  Fall back to the
+        # 12-month windowed version when the LLM feature-engineering plan did
+        # not include an "all" window, so overall stats are never stuck at 0.
+        _overall_fallbacks = {
+            'avg_txn_amt':          'avg_txn_amt_12m',
+            'std_txn_amt':          'std_txn_amt_12m',
+            'max_txn_amt':          'max_txn_amt_12m',
+            'pct_high_value':       'pct_high_value_12m',
+            'total_spend':          'total_spend_12m',
+            'total_txn_count':      'total_txn_count_12m',
+            'active_months':        'active_months_12m',
+            'n_unique_categories':  'n_unique_categories_12m',
+            'n_unique_merchants':   'n_unique_merchants_12m',
+            'avg_days_between_txn': 'avg_days_between_txn_12m',
+        }
         for col in ['avg_txn_amt', 'std_txn_amt', 'max_txn_amt', 'pct_high_value',
                     'total_spend', 'total_txn_count', 'active_months',
                     'n_unique_categories', 'n_unique_merchants', 'avg_days_between_txn']:
-            if col in grp.columns:
-                val = grp[col].mean()
+            actual_col = col if col in grp.columns else _overall_fallbacks.get(col, col)
+            if actual_col in grp.columns:
+                val = grp[actual_col].mean()
                 overall[col] = round(val * 100, 1) if col == 'pct_high_value' else round(val, 2)
             else:
                 overall[col] = 0

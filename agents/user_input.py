@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 
-DEFAULT_DATASET_PATH = "data/processed/customer_features.parquet"
+DEFAULT_DATASET_PATH = "data/raw/fraudTrain.csv"
 
 
 @dataclass
