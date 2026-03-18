@@ -18,11 +18,11 @@ The system described here automates the entire loop — feature engineering, sel
 
 ## The Agent Approach
 
-The pipeline is driven by **`run_pipeline.py`**. Seven specialised agents plus an Orchestrator form a feedback loop. Every quality gate can push the pipeline backward; it only moves forward when all gates pass (or the user approves):
+The pipeline is driven by **`run_pipeline.py`**. Seven specialised agents plus a Decision Maker form a feedback loop. Every quality gate can push the pipeline backward; it only moves forward when all gates pass (or the user approves):
 
 ```
   ┌───────────────────────────────────────────────────────────────────────┐
-  │                        ORCHESTRATOR                                   │
+  │                       DECISION MAKER                                  │
   │  (Python coordinator · LLM decision-maker · param tuner)              │
   │                                                                       │
   │  ⓪ UserInputAgent   — collects clustering intent (once)               │
@@ -30,13 +30,13 @@ The pipeline is driven by **`run_pipeline.py`**. Seven specialised agents plus a
   │  ② FeatureEngineer  — builds ~232 behavioral features from CSV        │
   │         │  (skipped if a pre-built parquet is supplied)               │
   │         ▼                                                             │
-  │  ③ FeatureSelector  — PCA + AE + VIF gate → orchestrator picks subset │
-  │         │  ◄── orchestrator tunes VIF threshold, feature focus hint   │
+  │  ③ FeatureSelector  — PCA + AE + VIF gate → Decision Maker picks subset │
+  │         │  ◄── Decision Maker tunes VIF threshold, feature focus hint  │
   │         ▼                                                             │
   │  ④ Clusterer        — auto k-selection + algorithm + deepening        │
-  │         │  ◄── orchestrator tunes k_range, algorithm, min_silhouette  │
+  │         │  ◄── Decision Maker tunes k_range, algorithm, min_silhouette│
   │         ▼                                                             │
-  │  ⑤ PersonaNamer     — orchestrator names clusters · Clarity Gate      │
+  │  ⑤ PersonaNamer     — Decision Maker names clusters · Clarity Gate    │
   │         ▼                                                             │
   │  ⑥ Classifier       — Random Forest CV · F1 ≥ 0.70 gate               │
   │         ▼                                                             │
@@ -51,7 +51,7 @@ The pipeline is driven by **`run_pipeline.py`**. Seven specialised agents plus a
 | ⓪ | **UserInputAgent** | Prompts for clustering intent (target entity, business purpose, dataset path). |
 | ① | **DatasetExaminerAgent** | Profiles the raw data — schema, missingness, cardinality — and emits a suggested feature-group list and algorithm hint. |
 | ② | **FeatureEngineerAgent** | Builds ~232 entity-level behavioral features from raw data rows: spend/frequency per category × time window, loyalty signals, recency, geographic mobility, temporal patterns. Saves to `data/processed/`. Skipped when a pre-built parquet is provided. |
-| ③ | **FeatureSelectionAgent** | Scores all features with PCA importance and autoencoder reconstruction error, runs a VIF collinearity gate, then asks the LLM to pick the best subset (typically 25–55 features). The VIF threshold and a feature-focus hint are set dynamically by the Orchestrator each iteration. |
+| ③ | **FeatureSelectionAgent** | Scores all features with PCA importance and autoencoder reconstruction error, runs a VIF collinearity gate, then asks the LLM to pick the best subset (typically 25–55 features). The VIF threshold and a feature-focus hint are set dynamically by the Decision Maker each iteration. |
 | ④ | **ClusteringAgent** | Auto-selects k via silhouette score optimisation and algorithm via `algo_recommender`. Runs a deepening loop to split any oversized cluster (>40%). The k range, algorithm, and minimum acceptable silhouette are tuned dynamically each iteration. |
 | ⑤ | **PersonaNamingAgent** | Sends cluster profiles to the LLM, which writes name, tagline, description, and five traits per cluster. A **Clarity Gate** (avg confidence ≥ 6.0, all names unique) must pass or the pipeline re-clusters. |
 | ⑥ | **ClassifierAgent** | Trains a Random Forest with stratified 5-fold CV. If macro-F1 < 0.70, the LLM diagnoses the root cause and routes back to ③ or ④. |
@@ -101,7 +101,7 @@ The cluster statistics are computed at runtime and injected into the prompt. The
 
 ## Dynamic Parameter Tuning
 
-After each failed iteration the Orchestrator calls the LLM with a compact history of what happened — silhouette scores, VIF removals, k-curve, feature counts — and asks it to suggest improved parameters for the next round:
+After each failed iteration the Decision Maker calls the LLM with a compact history of what happened — silhouette scores, VIF removals, k-curve, feature counts — and asks it to suggest improved parameters for the next round:
 
 | Parameter | Default | What the LLM can change |
 |-----------|---------|----------------------|
@@ -177,7 +177,7 @@ The script:
 
 - Loads `.env` and `config.yaml`
 - Auto-detects whether to run FeatureEngineerAgent (raw CSV) or skip it (parquet)
-- Runs the Orchestrator with `max_total_iterations=10`
+- Runs the Decision Maker with `max_total_iterations=10`
 - After each failure, the LLM proposes new VIF/k/algorithm/silhouette parameters
 - At max iterations, delivers a best-effort result if no iteration fully passed
 - Writes all outputs under `outputs/` and prints a full console report
@@ -249,7 +249,7 @@ After a successful (or best-effort) run:
 
 ## Skills
 
-The agents do not have hardcoded logic for every decision. They call shared **skills** — focused Python modules — for statistical tasks, and route LLM decisions through the Orchestrator bus:
+The agents do not have hardcoded logic for every decision. They call shared **skills** — focused Python modules — for statistical tasks, and route LLM decisions through the Decision Maker bus:
 
 | Skill | File | Used by |
 |-------|------|---------|
@@ -258,7 +258,7 @@ The agents do not have hardcoded logic for every decision. They call shared **sk
 | **Silhouette optimizer** | `skills/silhouette_optimizer.py` | Clusterer — auto k-selection |
 | **Algorithm recommender** | `skills/algo_recommender.py` | Clusterer — auto algorithm selection |
 
-The Orchestrator loads `skill.md` and `agent.md` at startup and injects the relevant sections as system context into every LLM call, so the model always knows what capabilities are available when making routing or planning decisions.
+The Decision Maker loads `skill.md` and `agent.md` at startup and injects the relevant sections as system context into every LLM call, so the model always knows what capabilities are available when making routing or planning decisions.
 
 ---
 
