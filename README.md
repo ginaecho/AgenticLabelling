@@ -12,7 +12,7 @@ The unsolved part is what comes after. What do those clusters *mean*? What shoul
 
 Without automation, this loop typically runs multiple times, each iteration requiring the labelling step to be redone in full. The result is a process that is slow (days per project), undocumented (diagnostic reasoning is rarely recorded), and non-reproducible (the same data produces different segments depending on who runs the analysis).
 
-The system described here automates the entire loop — feature engineering, selection, clustering, constraint checking, contrastive labelling, and iterative diagnosis — using a **multi-agent architecture** in which a Decision Maker LLM handles the steps that require judgment. The result: a complete, named, validated cluster solution in under one hour, at under one dollar of API cost, with a full reasoning trace for every decision.
+The system described here automates the entire loop — feature engineering, selection, clustering, constraint checking, contrastive labelling, and iterative diagnosis — using a **multi-agent architecture** in which a Decision Maker handles the steps that require judgment. The result: a complete, named, validated cluster solution in under one hour, at under one dollar of API cost, with a full reasoning trace for every decision.
 
 ---
 
@@ -30,21 +30,21 @@ The pipeline is driven by **`run_pipeline.py`**. Seven specialised agents plus a
 | ⓪ | **UserInputAgent** | Prompts for clustering intent (target entity, business purpose, dataset path). |
 | ① | **DatasetExaminerAgent** | Profiles the raw data — schema, missingness, cardinality — and emits a suggested feature-group list and algorithm hint. |
 | ② | **FeatureEngineerAgent** | Builds ~232 entity-level behavioral features from raw data rows: spend/frequency per category × time window, loyalty signals, recency, geographic mobility, temporal patterns. Saves to `data/processed/`. Skipped when a pre-built parquet is provided. |
-| ③ | **FeatureSelectionAgent** | Scores all features with PCA importance and autoencoder reconstruction error, runs a VIF collinearity gate, then asks the LLM to pick the best subset (typically 25–55 features). The VIF threshold and a feature-focus hint are set dynamically by the Decision Maker each iteration. |
+| ③ | **FeatureSelectionAgent** | Scores all features with PCA importance and autoencoder reconstruction error, runs a VIF collinearity gate, then asks the Decision Maker to pick the best subset (typically 25–55 features). The VIF threshold and a feature-focus hint are set dynamically by the Decision Maker each iteration. |
 | ④ | **ClusteringAgent** | Auto-selects k via silhouette score optimisation and algorithm via `algo_recommender`. Runs a deepening loop to split any oversized cluster (>40%). The k range, algorithm, and minimum acceptable silhouette are tuned dynamically each iteration. |
-| ⑤ | **PersonaNamingAgent** | Sends cluster profiles to the LLM, which writes name, tagline, description, and five traits per cluster. A **Clarity Gate** (avg confidence ≥ 6.0, all names unique) must pass or the pipeline re-clusters. |
-| ⑥ | **ClassifierAgent** | Trains a Random Forest with stratified 5-fold CV. If macro-F1 < 0.70, the LLM diagnoses the root cause and routes back to ③ or ④. |
+| ⑤ | **PersonaNamingAgent** | Sends cluster profiles to the Decision Maker, which writes name, tagline, description, and five traits per cluster. A **Clarity Gate** (avg confidence ≥ 6.0, all names unique) must pass or the pipeline re-clusters. |
+| ⑥ | **ClassifierAgent** | Trains a Random Forest with stratified 5-fold CV. If macro-F1 < 0.70, the Decision Maker diagnoses the root cause and routes back to ③ or ④. |
 
-### How each agent calls the LLM
+### How each agent calls the Decision Maker
 
 Every agent follows the same four-step pattern:
 
 1. **Compute** — run sklearn / numpy / pandas to produce statistics (PCA scores, cluster profiles, SHAP values, etc.).
 2. **Format** — assemble those statistics into a structured text prompt in Python.
 3. **Call** — send the prompt to the LLM API (any chat-completion endpoint — Claude, GPT, Gemini, etc.).
-4. **Parse** — read the LLM's JSON response and act on it.
+4. **Parse** — read the Decision Maker's JSON response and act on it.
 
-The agents are not autonomous "give an LLM a goal and let it figure things out" agents. They are Python scripts that construct precise, data-rich prompts and parse structured responses. The `.md` design-spec files describe intent but are not loaded at runtime.
+The agents are Python scripts that construct precise, data-rich prompts and parse structured responses. The `.md` design-spec files describe intent but are not loaded at runtime.
 
 **Concrete example — `PersonaNamingAgent`**
 
@@ -65,11 +65,11 @@ CRITICAL NAMING RULES — read carefully before writing any name:
 Return ONLY a valid JSON object …
 ```
 
-The cluster statistics are computed at runtime and injected into the prompt. The LLM reads those numbers and returns structured JSON with `name`, `tagline`, `description`, `traits`, `confidence`.
+The cluster statistics are computed at runtime and injected into the prompt. The Decision Maker reads those numbers and returns structured JSON with `name`, `tagline`, `description`, `traits`, `confidence`.
 
-**What each agent computes vs. what it asks the LLM:**
+**What each agent computes vs. what it asks the Decision Maker:**
 
-| Agent | What Python computes | What it asks the LLM |
+| Agent | What Python computes | What it asks the Decision Maker |
 |-------|---------------------|---------------------|
 | **FeatureSelectionAgent** | PCA + autoencoder importance scores, VIF table | "Which features best separate these personas?" |
 | **ClusteringAgent** | sklearn cluster sizes, silhouette scores | "This cluster is >40 % of entities — sub-cluster or reselect features?" |
@@ -80,17 +80,17 @@ The cluster statistics are computed at runtime and injected into the prompt. The
 
 ## Dynamic Parameter Tuning
 
-After each failed iteration the Decision Maker calls the LLM with a compact history of what happened — silhouette scores, VIF removals, k-curve, feature counts — and asks it to suggest improved parameters for the next round:
+After each failed iteration the Decision Maker knows a compact history of what happened — silhouette scores, VIF removals, k-curve, feature counts — and asks it to suggest improved parameters for the next round:
 
-| Parameter | Default | What the LLM can change |
+| Parameter | Default | What the Decision Maker can change |
 |-----------|---------|----------------------|
 | `vif_threshold` | 10.0 | Raise to keep correlated-but-informative features (range 5–25) |
 | `algorithm` | auto | Switch between `kmeans` / `hierarchical` based on observed silhouette |
 | `k_range` | `[3,4,5,6,7,8,10,12,15]` | Narrow or widen the search range |
-| `min_silhouette` | 0.05 | Hard-block threshold; the LLM may lower it for data that genuinely resists clustering (floor 0.02) |
+| `min_silhouette` | 0.05 | Hard-block threshold; the Decision Maker may lower it for data that genuinely resists clustering (floor 0.02) |
 | `feature_focus` | *(empty)* | A short hint injected into the FeatureSelector prompt (e.g. "prioritise absolute spend over ratios") |
 
-Parameters are clamped to safe ranges before use. Each iteration prints the tuning decision and the LLM's one-sentence reasoning.
+Parameters are clamped to safe ranges before use. Each iteration prints the tuning decision and the Decision Maker's one-sentence reasoning.
 
 ---
 
@@ -157,7 +157,7 @@ The script:
 - Loads `.env` and `config.yaml`
 - Auto-detects whether to run FeatureEngineerAgent (raw CSV) or skip it (parquet)
 - Runs the Decision Maker with `max_total_iterations=10`
-- After each failure, the LLM proposes new VIF/k/algorithm/silhouette parameters
+- After each failure, the Decision Maker proposes new VIF/k/algorithm/silhouette parameters
 - At max iterations, delivers a best-effort result if no iteration fully passed
 - Writes all outputs under `outputs/` and prints a full console report
 
@@ -184,11 +184,11 @@ persona_tone: easy          # easy | professional | data-driven | creative
 
 **`n_clusters: ~` (null) is the default and recommended setting.** It lets the silhouette optimizer scan `[3, 4, 5, 6, 7, 8, 10, 12, 15]` and pick the best k automatically. Set an integer only when you have a specific business requirement.
 
-**The dynamic tuner can change `clustering_algorithm` and the k search range per-iteration**, so even if you set `kmeans` here, the LLM may suggest switching to `hierarchical` after observing the data — and back again in the next round.
+**The dynamic tuner can change `clustering_algorithm` and the k search range per-iteration**, so even if you set `kmeans` here, the Decision Maker may suggest switching to `hierarchical` after observing the data — and back again in the next round.
 
 ### VIF threshold
 
-The VIF gate threshold is **not in `config.yaml`** — it is managed dynamically. It starts at `10.0` and the LLM adjusts it each iteration based on how many features were removed and whether silhouette improved. You do not need to tune it manually.
+The VIF gate threshold is **not in `config.yaml`** — it is managed dynamically. It starts at `10.0` and the Decision Maker adjusts it each iteration based on how many features were removed and whether silhouette improved. You do not need to tune it manually.
 
 ---
 
@@ -204,7 +204,7 @@ Real-world ratio and frequency features typically produce lower silhouette score
 | 0.25 – 0.50 | Reasonable | Proceeds cleanly |
 | ≥ 0.50 | Strong | Proceeds cleanly |
 
-The exact hard-block threshold (`min_silhouette`) is adjusted dynamically by the LLM between iterations.
+The exact hard-block threshold (`min_silhouette`) is adjusted dynamically by the Decision Maker between iterations.
 
 ---
 
@@ -228,16 +228,16 @@ After a successful (or best-effort) run:
 
 ## Skills
 
-The agents do not have hardcoded logic for every decision. They call shared **skills** — focused Python modules — for statistical tasks, and route LLM decisions through the Decision Maker bus:
+The agents do not have hardcoded logic for every decision. They call shared **skills** — focused Python modules — for statistical tasks, and route Decision Maker decisions through the Decision Maker bus:
 
 | Skill | File | Used by |
 |-------|------|---------|
-| **OrchestratorBus** | `skills/orchestrator_bus.py` | All agents — the sole LLM gateway |
+| **OrchestratorBus** | `skills/orchestrator_bus.py` | All agents — the sole Decision Maker gateway |
 | **VIF checker** | `skills/vif_checker.py` | FeatureSelector — multicollinearity gate |
 | **Silhouette optimizer** | `skills/silhouette_optimizer.py` | Clusterer — auto k-selection |
 | **Algorithm recommender** | `skills/algo_recommender.py` | Clusterer — auto algorithm selection |
 
-The Decision Maker loads `skill.md` and `agent.md` at startup and injects the relevant sections as system context into every LLM call, so the model always knows what capabilities are available when making routing or planning decisions.
+The Decision Maker loads `skill.md` and `agent.md` at startup and injects the relevant sections as system context into every Decision Maker call, so the model always knows what capabilities are available when making routing or planning decisions.
 
 ---
 
