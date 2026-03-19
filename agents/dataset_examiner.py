@@ -4,7 +4,7 @@ DatasetExaminerAgent — Dataset Profiling & Feature Opportunity Discovery
 Contract: docs/agents/dataset_examiner.md. Skills: docs/skills/orchestrator_bus.md.
 
 Profiles the raw dataset (schema, distributions, missing rates) and calls
-Claude with the schema + business purpose to get a list of suggested feature
+the LLM with the schema + business purpose to get a list of suggested feature
 groups to engineer.
 
 Reports findings to the orchestrator bus with:
@@ -45,10 +45,10 @@ class DatasetProfile:
     """Categorical columns with > 100 unique values."""
 
     suggested_feature_groups: list[str]
-    """Feature group names recommended by Claude, e.g. ['frequency', 'spend', 'recency']."""
+    """Feature group names recommended by the LLM, e.g. ['frequency', 'spend', 'recency']."""
 
     feature_group_reasoning: str
-    """Claude's explanation of why these groups were chosen."""
+    """The LLM's explanation of why these groups were chosen."""
 
     warnings: list[str] = field(default_factory=list)
     """Non-fatal issues (e.g. sparse columns)."""
@@ -59,12 +59,12 @@ class DatasetProfile:
 
 class DatasetExaminerAgent:
     """
-    Profiles the raw dataset and asks Claude to suggest feature engineering
+    Profiles the raw dataset and asks the LLM to suggest feature engineering
     groups aligned with the business purpose.
 
     Skills used:
       - orchestrator_bus (report to orchestrator)
-      - anthropic client (Claude API for feature group suggestions)
+      - LLM (via orchestrator bus) for feature group suggestions
     """
 
     def __init__(self, bus: OrchestratorBus):
@@ -187,7 +187,7 @@ class DatasetExaminerAgent:
             else ("kmeans" if mean_skew < 0.5 else "hierarchical")
         )
 
-        # ── Build schema summary for Claude ───────────────────────────────────
+        # ── Build schema summary for the LLM ──────────────────────────────────
         schema_lines = ["Column name | Type | Missing% | Skewness | Example values"]
         for col in df.columns[:60]:
             ctype = column_types.get(col, "?")
@@ -253,21 +253,21 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                     if p.startswith("{"):
                         raw = p
                         break
-            claude_result = json.loads(raw)
+            llm_result = json.loads(raw)
         except Exception as e:
             print(f"  [DatasetExaminer] Orchestrator LLM call failed: {e} — using fallback groups")
-            claude_result = {
-                "suggested_feature_groups": ["frequency", "spend", "recency"],
+            llm_result = {
+                "suggested_feature_groups": ["frequency", "value", "recency"],
                 "overall_reasoning": f"Fallback groups due to error: {e}",
                 "algo_preference": algo_hint,
                 "algo_rationale": "Based on mean feature skewness.",
             }
 
-        suggested_groups = claude_result.get("suggested_feature_groups", [])
-        reasoning = claude_result.get("overall_reasoning", "")
-        claude_algo = claude_result.get("algo_preference", algo_hint)
-        if claude_algo in ("hierarchical", "kmeans"):
-            algo_hint = claude_algo
+        suggested_groups = llm_result.get("suggested_feature_groups", [])
+        reasoning = llm_result.get("overall_reasoning", "")
+        llm_algo = llm_result.get("algo_preference", algo_hint)
+        if llm_algo in ("hierarchical", "kmeans"):
+            algo_hint = llm_algo
 
         print(f"  Suggested feature groups: {suggested_groups}")
 
@@ -317,7 +317,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             what_was_done=(
                 f"Profiled {n_rows:,}×{n_cols} dataset. "
                 f"Found {len(numeric_cols)} numeric cols. "
-                f"Claude suggested {len(suggested_groups)} feature groups."
+                f"LLM suggested {len(suggested_groups)} feature groups."
             ),
             what_was_not_done=(
                 "Did not sample sub-populations or run hypothesis tests "
@@ -339,7 +339,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             recommendation="proceed" if not warnings else "proceed",
             context={
                 "suggested_feature_groups": suggested_groups,
-                "group_details": claude_result.get("group_details", {}),
+                "group_details": llm_result.get("group_details", {}),
                 "algo_preference": algo_hint,
             },
         ))

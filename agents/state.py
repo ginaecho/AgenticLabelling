@@ -134,13 +134,13 @@ class PipelineState:
     best_silhouette_value: float = -1.0
     best_silhouette_features: list[str] = field(default_factory=list)
 
-    # Dynamic tuning parameters — Claude adjusts these after each failed iteration
+    # Dynamic tuning parameters — LLM adjusts these after each failed iteration
     # so agents are NOT locked into hardcoded thresholds.
     tuning_params: dict = field(default_factory=lambda: {
         'vif_threshold': 10.0,    # higher = keep more correlated features
         'k_range': None,          # None = use config default
         'algorithm': None,        # None = use config/auto-select
-        'min_silhouette': 0.05,   # hard-block below this; Claude may raise/lower
+        'min_silhouette': 0.05,   # hard-block below this; LLM may raise/lower
         'feature_focus': '',      # hint injected into FeatureSelector prompt
     })
 

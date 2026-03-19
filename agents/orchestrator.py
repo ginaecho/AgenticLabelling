@@ -101,7 +101,7 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
     # Pipeline log summary
     print()
     print('Pipeline Agent Log (recent):')
-    print(bus.summary_for_claude(last_n=10))
+    print(bus.summary_for_llm(last_n=10))
 
     print()
     print('Options:')

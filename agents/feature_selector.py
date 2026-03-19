@@ -5,8 +5,8 @@ Contract: docs/agents/feature_selector.md. Skills: docs/skills/orchestrator_bus.
 docs/skills/vif_checker.md.
 
 Scores all features with PCA importance + autoencoder reconstruction error,
-applies VIF and correlation gates (via skills.vif_checker), then asks Claude
-which subset to keep for discovering distinct spending personas.
+applies VIF and correlation gates (via skills.vif_checker), then asks the LLM
+which subset to keep for discovering distinct entity personas.
 
 Pipeline:
   1. Log-transform skewed columns
@@ -16,7 +16,7 @@ Pipeline:
   5. Combined score = 0.5 × PCA + 0.5 × AE
   6. VIF gate  — iteratively remove highest-VIF feature until all VIF < threshold
   7. Correlation gate — flag pairs with |r| > corr_threshold
-  8. Claude selects final subset from VIF-filtered ranked list
+  8. LLM selects final subset from VIF-filtered ranked list
 
 Skills used: skills.vif_checker, skills.orchestrator_bus
 """
@@ -66,7 +66,7 @@ def _normalise(arr: np.ndarray) -> np.ndarray:
 class FeatureSelectionAgent:
     """
     Scores features with PCA + AE, applies VIF and correlation gates,
-    then asks Claude to choose the best subset for persona discovery.
+    then asks the LLM to choose the best subset for persona discovery.
     """
 
     def __init__(
@@ -96,7 +96,7 @@ class FeatureSelectionAgent:
         features_df : pd.DataFrame
             The raw customer features table (no 'cluster' column).
         user_intent : UserIntent | None
-            Clustering intent for context-aware Claude prompting.
+            Clustering intent for context-aware LLM prompting.
         feedback : str
             Free-text feedback from the previous round (empty on first run).
         iteration : int
@@ -104,7 +104,7 @@ class FeatureSelectionAgent:
         vif_threshold : float | None
             Override the instance VIF threshold (set by orchestrator tuning).
         feature_focus : str
-            Orchestrator hint injected into the Claude prompt to guide selection.
+            Orchestrator hint injected into the LLM prompt to guide selection.
 
         Returns
         -------
@@ -250,7 +250,7 @@ class FeatureSelectionAgent:
             table_lines.append(f'  ... ({len(rows) - 40} more survived VIF gate)')
         table_str = '\n'.join(table_lines)
 
-        # ── Step 8: Ask Claude ─────────────────────────────────────────────────
+        # ── Step 8: Ask LLM ────────────────────────────────────────────────────
         feedback_section = (
             f'\nFeedback from previous round:\n{feedback}\n'
             if feedback else ''
@@ -333,15 +333,15 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                     agent="FeatureSelector",
                     iteration=iteration,
                     status="warning",
-                    what_was_done="Scored features, ran VIF gate; Claude response was not valid JSON.",
-                    what_was_not_done="Could not parse selected_features from Claude.",
+                    what_was_done="Scored features, ran VIF gate; LLM response was not valid JSON.",
+                    what_was_not_done="Could not parse selected_features from LLM.",
                     doubts=str(e),
-                    issues=["Claude returned invalid JSON — orchestrator should retry."],
+                    issues=["LLM returned invalid JSON — orchestrator should retry."],
                     metrics={"n_after_vif": n_after_vif},
                     recommendation="retry",
                 ))
             raise RuntimeError(
-                f"FeatureSelector: Claude returned invalid JSON ({e}). "
+                f"FeatureSelector: LLM returned invalid JSON ({e}). "
                 "See docs/agents/feature_selector.md."
             ) from e
         # Only keep features that survived the VIF gate
@@ -376,7 +376,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                 what_was_done=(
                     f"Scored {n_features} features (PCA+AE). "
                     f"Removed {len(removed_by_vif)} via VIF gate. "
-                    f"Claude selected {len(selected)} from {n_after_vif} survivors."
+                    f"LLM selected {len(selected)} from {n_after_vif} survivors."
                 ),
                 what_was_not_done=(
                     "Did not apply p-value gate "
@@ -386,7 +386,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                 ),
                 doubts=(
                     f"{len(high_corr_pairs)} high-correlation pairs still present "
-                    f"after VIF gate — Claude was asked to avoid both in each pair."
+                    f"after VIF gate — LLM was asked to avoid both in each pair."
                     if high_corr_pairs else ""
                 ),
                 issues=issues,

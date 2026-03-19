@@ -3,7 +3,7 @@ PersonaNamingAgent
 
 Contract: docs/agents/persona_namer.md. Skills: docs/skills/orchestrator_bus.md.
 
-Sends cluster profiles to Claude and applies the Clarity Gate.
+Sends cluster profiles to the LLM and applies the Clarity Gate.
 Reuses build_all_clusters_prompt() and _format_cluster_block() logic
 verbatim from notebook 04 cell 5eace074 and Clarity Gate from cell c2e5b2fc.
 
@@ -180,7 +180,7 @@ Return ONLY a valid JSON object (no markdown, no extra text) with this structure
 
 class PersonaNamingAgent:
     """
-    Calls Claude to name each cluster, then applies the Clarity Gate.
+    Calls the LLM to name each cluster, then applies the Clarity Gate.
     Reports structured status to OrchestratorBus.
     """
 
@@ -251,7 +251,7 @@ class PersonaNamingAgent:
                 passed=False,
                 issues=[f'JSON parse error: {e}'],
                 avg_confidence=0.0,
-                reasoning='Claude response could not be parsed as JSON.',
+                reasoning='LLM response could not be parsed as JSON.',
                 iteration=iteration,
             )
 
@@ -303,7 +303,7 @@ class PersonaNamingAgent:
                 iteration=iteration,
                 status="success" if passed else ("warning" if avg_conf >= 4.0 else "blocked"),
                 what_was_done=(
-                    f"Named {n_leaf} clusters using Claude (tone={tone!r}). "
+                    f"Named {n_leaf} clusters using LLM (tone={tone!r}). "
                     f"Clarity Gate {'PASSED' if passed else 'FAILED'}. "
                     f"Avg confidence={avg_conf:.1f}/10."
                 ),
