@@ -320,16 +320,6 @@ Detailed per-cluster metrics are in **`outputs/persona_metrics.csv`**.
 
 ---
 
-## Why This Matters
-
-The agent pipeline collapses the traditional loop: cluster → manually inspect statistics → write descriptions → iterate. The agents produce names, evidence, and reasoning in one automated run and save everything to version-controlled files. When someone asks "why is this entity in this cluster?", the answer is in `persona_summary.txt` and `persona_metrics.csv`.
-
-You do not need labelled training data or a domain expert to pre-define segments — the pipeline discovers structure from whatever data you provide, names it using feature deviations the Decision Maker can read directly, validates it with a downstream classifier, and self-corrects when results are poor. The same code runs on transaction logs, product catalogs, patient records, sensor streams, or any other tabular event data.
-
-The dynamic tuning means the pipeline adapts to your specific dataset rather than requiring manual threshold tuning across config files.
-
----
-
 ## Setup (Quick)
 
 ```bash
