@@ -9,13 +9,13 @@ Two communication directions:
    Every agent calls bus.report(OrchestratorMessage(...)) at the end of its run.
    The orchestrator logs all messages and uses them for routing decisions.
 
-2. AGENT → ORCHESTRATOR → CLAUDE → AGENT (LLM queries)
+2. AGENT → ORCHESTRATOR → LLM → AGENT (LLM queries)
    When an agent needs LLM reasoning, it calls bus.ask(agent, purpose, prompt).
-   The orchestrator intercepts the request, calls Claude, and returns the answer.
-   Agents never hold a Claude client — all LLM access is mediated by the Orchestrator.
+   The orchestrator intercepts the request, calls the LLM, and returns the answer.
+   Agents never hold an LLM client — all LLM access is mediated by the Orchestrator.
 
    This means:
-   - All Claude API calls are in one place (Orchestrator)
+   - All LLM API calls are in one place (Orchestrator)
    - Agents focus on their domain expertise (sklearn, pandas, stats)
    - The Orchestrator can log, rate-limit, and route every LLM request
    - Agents ask only when genuinely stuck — they think first with their own skills
@@ -76,7 +76,7 @@ class OrchestratorBus:
     """
     Shared message bus with two capabilities:
 
-    1. Status reporting (report / get_log / summary_for_claude)
+    1. Status reporting (report / get_log / summary_for_llm)
     2. LLM mediation  (set_llm_handler / ask)
 
     The Orchestrator:
@@ -125,13 +125,13 @@ class OrchestratorBus:
             Short description of what the LLM is being asked to do.
             Displayed in the terminal so the user can follow along.
         prompt : str
-            Full prompt to send to Claude.
+            Full prompt to send to the LLM.
         max_tokens : int
             Maximum tokens in the response.
 
         Returns
         -------
-        str — Claude's raw text response.
+        str — The LLM's raw text response.
 
         Raises
         ------
@@ -195,8 +195,8 @@ class OrchestratorBus:
         msgs = self.get_log_for_agent(agent) if agent else self._log
         return msgs[-1] if msgs else None
 
-    def summary_for_claude(self, last_n: int = 20) -> str:
-        """Format recent messages as a readable string for Claude prompts."""
+    def summary_for_llm(self, last_n: int = 20) -> str:
+        """Format recent messages as a readable string for LLM prompts."""
         msgs = self._log[-last_n:]
         lines = []
         for m in msgs:

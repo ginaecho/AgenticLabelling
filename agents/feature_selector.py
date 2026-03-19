@@ -34,25 +34,15 @@ from agents.user_input import UserIntent
 from skills.vif_checker import compute_vif, remove_high_vif, flag_high_correlation
 from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 
-# ── Constants (mirrored from notebook 03) ─────────────────────────────────────
-CATEGORIES = [
-    'entertainment', 'food_dining', 'gas_transport', 'grocery_net', 'grocery_pos',
-    'health_fitness', 'home', 'kids_pets', 'misc_net', 'misc_pos',
-    'personal_care', 'shopping_net', 'shopping_pos', 'travel',
-]
-WINDOWS = [6, 12]
-
-
-def _build_log_cols(columns) -> list[str]:
-    """Build LOG_COLS list, filtering to columns actually present in the DataFrame."""
-    candidates = (
-        [f'n_txn_{cat}_{w}m'     for cat in CATEGORIES for w in WINDOWS]
-        + [f'amt_{cat}_{w}m'     for cat in CATEGORIES for w in WINDOWS]
-        + [f'avg_spend_{cat}_{w}m' for cat in CATEGORIES for w in WINDOWS]
-        + ['total_txn_count', 'total_spend', 'avg_txn_amt', 'std_txn_amt',
-           'max_txn_amt', 'n_unique_merchants', 'avg_days_between_txn']
-    )
-    return [c for c in candidates if c in columns]
+def _detect_log_cols(df, skewness_threshold: float = 2.0) -> list[str]:
+    """Return non-negative numeric columns whose |skewness| exceeds the threshold."""
+    import pandas as pd
+    numeric = df.select_dtypes(include=[np.number])
+    non_neg = [col for col in numeric.columns if numeric[col].min() >= 0]
+    if not non_neg:
+        return []
+    skews = numeric[non_neg].skew().abs()
+    return list(skews[skews > skewness_threshold].index)
 
 
 def _normalise(arr: np.ndarray) -> np.ndarray:
@@ -118,8 +108,8 @@ class FeatureSelectionAgent:
             print(f'  Feedback from previous round: {feedback}')
 
         # ── Step 1: Preprocess ─────────────────────────────────────────────────
-        log_cols = _build_log_cols(features_df.columns)
         X = features_df.copy()
+        log_cols = _detect_log_cols(X)
         for col in log_cols:
             X[col] = np.log1p(X[col])
 
@@ -130,7 +120,7 @@ class FeatureSelectionAgent:
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
-        print(f'  Features: {n_features}  |  Customers: {X_scaled.shape[0]}')
+        print(f'  Features: {n_features}  |  Entities: {X_scaled.shape[0]}')
 
         # ── Step 2: PCA importance score ───────────────────────────────────────
         n_components = min(50, n_features)
@@ -277,7 +267,7 @@ class FeatureSelectionAgent:
             if feature_focus else ''
         )
 
-        prompt = f"""You are a data scientist selecting features for customer segmentation.
+        prompt = f"""You are a data scientist selecting features for entity segmentation.
 
 {intent_section}
 We started with {n_features} features. After VIF gate (threshold={effective_vif}):
@@ -289,15 +279,12 @@ Feature ranking (PCA importance × autoencoder uniqueness score) — VIF-filtere
 {high_corr_note}
 {feedback_section}
 {focus_section}
-Spending categories: {CATEGORIES}
-Feature naming: n_txn_{{cat}}_{{w}}m = transactions, amt_{{cat}}_{{w}}m = total spend,
-avg_spend_{{cat}}_{{w}}m = avg per transaction, w is months (6 or 12).
-
 Instructions:
 1. Choose a subset that produces the MOST DISTINCT, INTERPRETABLE clusters.
-2. Prefer features capturing DIFFERENT behavioral dimensions (frequency, spend,
-   category mix, transaction size, recency). Avoid redundant pairs flagged above.
-3. Represent all 14 spending categories but trim redundant windows.
+2. Prefer features capturing DIFFERENT behavioral dimensions (e.g. frequency,
+   magnitude, diversity, recency, trends). Avoid redundant pairs flagged above.
+3. Cover as many distinct behavioral dimensions as possible; trim redundant
+   time-window variants (e.g. if 6m and 12m versions are highly correlated, keep one).
 4. Typical good range: 25–55 features.
 
 Return ONLY a valid JSON object (no markdown, no extra text):
