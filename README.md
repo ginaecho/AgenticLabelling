@@ -334,7 +334,7 @@ The dynamic tuning means the pipeline adapts to your specific dataset rather tha
 
 ```bash
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY="sk-ant-..."   # or add to .env
+export LLM_API_KEY="..."   # or add to .env
 python run_pipeline.py
 ```
 
