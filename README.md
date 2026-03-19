@@ -77,18 +77,6 @@ Return ONLY a valid JSON object …
 ```
 
 The cluster statistics are computed at runtime from the actual feature matrix and injected into the prompt. The Decision Maker reads those numbers and returns structured JSON with `name`, `tagline`, `description`, `dominant_features`, `traits`, `confidence`.
-
-**What each agent computes vs. what it asks the Decision Maker:**
-
-| Agent | What Python computes | What it asks the Decision Maker |
-|-------|---------------------|---------------------|
-| **DatasetExaminerAgent** | Schema, missingness, skewness, cardinality | "Which feature groups should we engineer for this business purpose?" |
-| **FeatureEngineerAgent** | Actual column names, entity key, timestamp, value column | "Plan which statistical operations to apply to build a rich feature matrix." |
-| **FeatureSelectionAgent** | PCA + autoencoder importance scores, VIF table | "Which features best separate these personas?" |
-| **ClusteringAgent** | Silhouette scores per algorithm/k, IQR spread, skewness | "Which algorithm fits this data shape? This cluster is >40% — sub-cluster or reselect features?" |
-| **ClassifierAgent** | n_entities, n_features, n_classes, class balance | "Which classifier fits this data? F1 is 0.62 — diagnose root cause." |
-| **PersonaNamingAgent** | Per-cluster feature means and deviations from global mean | "Name each cluster with a specific, evidence-backed persona." |
-
 ---
 
 ## How Feature Engineering Works
