@@ -98,6 +98,37 @@ def remove_high_vif(
     work = df.select_dtypes(include=[np.number]).dropna(axis=1).copy()
     removed: list[str] = []
 
+    # ── Pre-pass: batch-drop linearly dependent columns via QR pivoting ────────
+    # Features that are exact linear combinations of others produce VIF=inf and
+    # make the iterative loop very slow (one full OLS pass per feature, per round).
+    # QR decomposition with column pivoting finds the maximal independent subset
+    # in a single O(n²·k) pass and drops all dependent columns at once.
+    if work.shape[1] >= 2:
+        from scipy.linalg import qr as _scipy_qr
+        X_arr = work.values.astype(float)
+        _, R, piv = _scipy_qr(X_arr, pivoting=True)
+        diag_abs = np.abs(np.diag(R))
+        tol = diag_abs[0] * 1e-8 if diag_abs[0] > 0 else 1e-10
+        rank = int(np.sum(diag_abs > tol))
+
+        if rank < work.shape[1]:
+            keep_set = set(piv[:rank].tolist())
+            cols = list(work.columns)
+            dep_cols = [cols[i] for i in range(len(cols)) if i not in keep_set]
+            remaining = work.shape[1] - len(dep_cols)
+            if dep_cols and remaining >= min_features:
+                if verbose:
+                    shown = dep_cols[:5]
+                    extra = f' (+{len(dep_cols) - 5} more)' if len(dep_cols) > 5 else ''
+                    print(f'  [VIF] Pre-pass: dropping {len(dep_cols)} linearly dependent features: {shown}{extra}')
+                removed.extend(dep_cols)
+                work = work.drop(columns=dep_cols)
+            elif dep_cols and verbose:
+                print(
+                    f'  [VIF] Pre-pass: {len(dep_cols)} linearly dependent features found '
+                    f'but skipped (would drop below min={min_features})'
+                )
+
     for _round in range(max_iterations):
         if work.shape[1] <= min_features:
             if verbose:

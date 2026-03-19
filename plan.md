@@ -32,11 +32,11 @@ Features fed into clustering must satisfy all three criteria:
 
 | Criterion | Threshold | Enforced by |
 |-----------|-----------|-------------|
-| Low multicollinearity | VIF < 5 for all retained features | `vif_checker` skill |
-| Low pairwise correlation | |r| < 0.85 between any two features | `vif_checker` skill |
-| Statistically non-trivial | p-value < 0.05 in univariate F-test | `vif_checker` skill |
+| Low multicollinearity | VIF < 10 for all retained features (dynamically tuned) | `vif_checker` skill |
+| Low pairwise correlation | \|r\| < 0.85 between any two features | `vif_checker` skill |
+| Minimum coverage | ≥ 10 features survive all gates | `vif_checker` skill |
 
-Agents can additionally use PCA importance and autoencoder reconstruction error
+Agents additionally use PCA importance and autoencoder reconstruction error
 to rank features before the VIF gate. The orchestrator routes back to feature
 engineering if fewer than 10 features survive all gates.
 
@@ -58,14 +58,16 @@ The chosen `k` and its silhouette score are reported to the orchestrator.
 
 ### P4 — Algorithm Selection Based on Data Shape
 
-The clustering algorithm is chosen by the AlgoRecommender skill based on:
+The clustering algorithm is chosen by the AlgoRecommender skill, which scores
+all 5 supported algorithms based on dataset characteristics and picks the best:
 
 | Condition | Preferred algorithm |
 |-----------|---------------------|
 | Dataset > 100 k rows | K-Means (speed) |
-| Key features are multi-modal | Hierarchical / Ward |
-| Strong hierarchical groupings suspected | Hierarchical / Ward |
-| Sparse, high-dimensional features | Hierarchical / Ward |
+| Key features are multi-modal or nested | Hierarchical / Ward |
+| Business purpose mentions overlapping groups | Fuzzy C-Means |
+| Business purpose mentions outlier/noise detection | DBSCAN |
+| Business purpose mentions soft/probabilistic assignments | GMM |
 | Default | Hierarchical / Ward |
 
 The DatasetExaminerAgent analyses feature distributions and reports its
@@ -85,8 +87,8 @@ to persona labelling:
 | **Distinguishability Gate** | Avg LLM confidence ≥ 6/10 AND no duplicate names | Re-cluster |
 
 If any gate fails, the agent sends a structured failure report to the
-orchestrator. The orchestrator analyses the report with Claude and routes
-the pipeline back to the appropriate step.
+orchestrator. The orchestrator analyses the report with LLM reasoning and
+routes the pipeline back to the appropriate step.
 
 ---
 
@@ -110,7 +112,7 @@ The message contains:
 }
 ```
 
-The orchestrator logs all messages, passes the log to Claude when making
+The orchestrator logs all messages, passes the log to LLM when making
 routing decisions, and prints a human-readable summary at each human
 checkpoint.
 
@@ -142,6 +144,21 @@ modifying any agent class.
 
 ---
 
+### P9 — Domain-Agnostic Feature Engineering
+
+The FeatureEngineerAgent applies 8 generic statistical builders to whatever
+columns exist in the dataset. The LLM reads the actual column names and schema,
+then decides which builders to apply to which columns. No domain vocabulary
+(banking, healthcare, retail, etc.) is hard-coded. The same agent handles
+transaction logs, patient visits, sensor readings, product catalogs, or any
+other tabular event data.
+
+When the agent cannot automatically detect structural columns (entity ID,
+timestamp, value, category), it asks the user interactively rather than
+failing silently.
+
+---
+
 ## Pipeline Steps
 
 ```
@@ -155,7 +172,7 @@ UserInput → DataExaminer → FeatureEngineer → FeatureSelector → Clusterer
 Clusterer → PersonaNamer → Classifier → Human
     ↑              |              |
     ← Gate fail ←──┘              |
-                   Clarity     F1 too low → Claude routes:
+                   Clarity     F1 too low → LLM routes:
                    Gate fail      ↓              ↓
                              Recluster    Reselect or Recluster
 ```
@@ -175,7 +192,7 @@ Questions asked:
 1. "What entity are you clustering?" (customers / products / employees / other)
 2. "What is the business purpose of this clustering?"
 3. "Where is your dataset?" (file path or uses default)
-4. "Any constraints?" (e.g. "ignore fraud transactions", "only last 12 months")
+4. "Any constraints?" (e.g. "ignore outlier events", "only last 12 months")
 
 The agent validates that the answers are specific enough. If the business purpose
 is vague, it asks a follow-up clarifying question before proceeding.
@@ -194,7 +211,7 @@ is vague, it asks a follow-up clarifying question before proceeding.
 The agent:
 1. Loads the dataset and profiles column types, missing rates, cardinality
 2. Analyses distribution shape (skewed, multi-modal, sparse)
-3. Calls Claude with the schema + business purpose → Claude suggests which
+3. Calls LLM with the schema + business purpose → LLM suggests which
    column groups to use for feature engineering
 4. Reports findings to orchestrator
 
@@ -210,17 +227,20 @@ Failure modes:
 |---|---|
 | **Inputs** | `DatasetProfile`, `UserIntent`, raw dataset |
 | **Outputs** | Engineered feature `DataFrame` saved to `data/processed/` |
-| **Skills** | `build_frequency_features`, `build_spend_features`, `build_recency_features`, `build_interaction_features`, `validate_feature_coverage` |
+| **Skills** | 8 generic builders: `group_aggregate`, `group_trend`, `group_streak`, `overall_aggregate`, `frequency_recency`, `entity_diversity`, `temporal_patterns`, `static_attributes` |
 | **Orchestrator status** | SUCCESS / WARNING / BLOCKED |
 
 The agent:
-1. Receives feature group suggestions from DatasetExaminer
-2. Builds behavioral features aligned with business purpose
-3. Validates coverage: every suggested feature group must have ≥ 1 feature built
-4. Reports feature count, group coverage, and any sparse groups
+1. Auto-detects structural columns (entity ID, timestamp, value, category);
+   asks user interactively if any cannot be determined from the schema
+2. Receives feature group suggestions from DatasetExaminer
+3. Asks LLM which generic builders to apply to which columns
+4. Builds behavioral features aligned with business purpose
+5. Validates coverage: every suggested feature group must have ≥ 1 feature built
+6. Reports entity count, feature count, group coverage, and any sparse groups
 
 Feedback loop: orchestrator can request additional feature groups based on
-business purpose (e.g. "also build recency features if not already included").
+business purpose.
 
 ---
 
@@ -230,19 +250,19 @@ business purpose (e.g. "also build recency features if not already included").
 |---|---|
 | **Inputs** | Engineered feature DataFrame, `UserIntent`, orchestrator feedback |
 | **Outputs** | Selected feature list, VIF table, PCA/AE scores |
-| **Skills** | `score_pca`, `score_autoencoder`, `check_vif`, `check_pvalue`, `select_with_llm` |
-| **Quality gates** | VIF < 5 all features; \|r\| < 0.85; ≥ 10 features retained |
+| **Skills** | `score_pca`, `score_autoencoder`, `vif_checker`, `orchestrator_bus.ask()` |
+| **Quality gates** | VIF < 10 all features (tunable); \|r\| < 0.85; ≥ 10 features retained |
 | **Orchestrator status** | SUCCESS / WARNING / BLOCKED |
 
 Process:
 1. Score all features via PCA importance + AE reconstruction error
-2. Run VIF analysis; iteratively remove highest-VIF feature until all VIF < 5
-3. Run pairwise correlation check; flag or remove features with \|r\| > 0.85
-4. Pass ranked + filtered list to Claude; Claude selects final subset
+2. Run VIF analysis; iteratively remove highest-VIF feature until all VIF < threshold
+3. Run pairwise correlation check; flag features with \|r\| > 0.85
+4. Pass ranked + filtered list to LLM; LLM selects final subset
 5. Report selected features, VIF table, and reasoning
 
 Feedback loop: orchestrator provides text guidance that is appended to the
-Claude prompt in the next iteration.
+LLM prompt in the next iteration.
 
 ---
 
@@ -257,7 +277,8 @@ Claude prompt in the next iteration.
 | **Orchestrator status** | SUCCESS / WARNING / BLOCKED |
 
 Algorithm selection (`recommend_algorithm` skill):
-- Uses DatasetProfile + feature stats to choose K-Means or Hierarchical
+- Scores all 5 algorithms using DatasetProfile + feature stats
+- Supported: `kmeans`, `hierarchical`, `dbscan`, `gmm`, `fuzzy_cmeans`
 - Reasoning is included in the orchestrator report
 
 K selection (`optimize_k_silhouette` skill):
@@ -265,9 +286,9 @@ K selection (`optimize_k_silhouette` skill):
 - Computes silhouette for each; picks the maximum
 - Reports the full silhouette curve to orchestrator
 
-Deepening loop (same as existing notebook 03 logic):
+Deepening loop:
 - Any cluster > 40 % is sub-clustered in-place
-- Claude decides whether to sub-cluster or request new features
+- LLM decides whether to sub-cluster or request new features
 
 ---
 
@@ -293,11 +314,11 @@ to clustering with targeted feedback.
 |---|---|
 | **Inputs** | Feature DataFrame, cluster labels, personas |
 | **Outputs** | CV F1 scores, feature importances, routing decision |
-| **Skills** | `train_classifier`, `evaluate_cv`, `route_failure` |
+| **Skills** | `train_classifier` (LLM-selected model), `evaluate_cv`, `route_failure` |
 | **Quality gates** | CV macro-F1 ≥ 0.70 |
 | **Orchestrator status** | SUCCESS / WARNING / BLOCKED |
 
-If F1 < 0.70: Claude diagnoses root cause and recommends reselect_features
+If F1 < 0.70: LLM diagnoses root cause and recommends reselect_features
 or recluster. Report includes worst-performing personas and top predictive
 features as evidence.
 
@@ -341,7 +362,6 @@ User choices:
 | `outputs/personas.json` | Cluster → Persona mapping |
 | `outputs/classifier_metrics.json` | CV scores, feature importances |
 | `outputs/pipeline_log.json` | Full orchestrator message log |
-| `outputs/feature_selection_report.json` | VIF table, PCA/AE scores |
 
 ---
 
@@ -349,19 +369,19 @@ User choices:
 
 ```
 agents/
-  user_input.py             ← NEW  UserInputAgent
-  dataset_examiner.py       ← NEW  DatasetExaminerAgent
-  feature_engineer.py       ← NEW  FeatureEngineerAgent (stub + LLM-guided)
-  feature_selector.py       ← ENHANCED: VIF + p-value gates
-  clusterer.py              ← ENHANCED: silhouette k-opt, auto algo selection
-  persona_namer.py          ← existing (minor bus integration)
-  classifier.py             ← existing (minor bus integration)
-  orchestrator.py           ← ENHANCED: route new agents, orchestrator bus
-  state.py                  ← ENHANCED: UserIntent, DatasetProfile, new fields
+  user_input.py             ← UserInputAgent
+  dataset_examiner.py       ← DatasetExaminerAgent
+  feature_engineer.py       ← FeatureEngineerAgent (LLM-guided, 8 generic builders)
+  feature_selector.py       ← FeatureSelectionAgent (VIF + PCA + AE gates)
+  clusterer.py              ← ClusteringAgent (5 algorithms, silhouette k-opt)
+  persona_namer.py          ← PersonaNamingAgent (LLM naming + Clarity Gate)
+  classifier.py             ← ClassifierAgent (LLM-selected model)
+  orchestrator.py           ← Orchestrator (route, tune, LLM diagnose)
+  state.py                  ← All result dataclasses
 
 skills/
   __init__.py
-  vif_checker.py            ← VIF, correlation, p-value analysis
+  vif_checker.py            ← VIF and correlation analysis
   silhouette_optimizer.py   ← Auto k selection via silhouette
   algo_recommender.py       ← Algorithm recommendation from data shape
   orchestrator_bus.py       ← Agent → orchestrator message protocol
@@ -369,5 +389,5 @@ skills/
 plan.md                     ← THIS FILE (pipeline design & principles)
 agent.md                    ← Agent registry: roles, interfaces, protocols
 skill.md                    ← Skill registry: descriptions, owners, APIs
-config.yaml                 ← Pipeline configuration (extended)
+config.yaml                 ← Pipeline configuration
 ```

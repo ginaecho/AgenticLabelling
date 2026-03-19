@@ -182,15 +182,15 @@ class FeatureEngineerAgent:
             raw_df["_ts"] = pd.Timestamp("2020-01-01")
 
         max_date = raw_df["_ts"].max()
-        customer_col = self._detect_customer_col(raw_df)
+        customer_col = self._detect_entity_col(raw_df)
         amount_col   = self._detect_amount_col(raw_df)
         category_col = self._detect_category_col(raw_df)
 
-        print(f"  Detected  : customer='{customer_col}'  amount='{amount_col}'  "
+        print(f"  Detected  : entity='{customer_col}'  value='{amount_col}'  "
               f"category='{category_col}'  timestamp='{ts_col}'")
         print(f"  Date range: {raw_df['_ts'].min().date()} → {max_date.date()}")
-        print(f"  Customers : {raw_df[customer_col].nunique():,}  |  "
-              f"Transactions: {len(raw_df):,}")
+        print(f"  Entities  : {raw_df[customer_col].nunique():,}  |  "
+              f"Records: {len(raw_df):,}")
 
         # Detect categories
         cats = (
@@ -929,32 +929,99 @@ Return ONLY a valid JSON object (no markdown, no extra text):
     # ── Schema detection helpers ───────────────────────────────────────────────
 
     def _detect_col(self, df: pd.DataFrame, candidates: list[str]) -> str | None:
+        """
+        Find the first column matching any candidate.
+        Strategy 1 — exact match (case-sensitive).
+        Strategy 2 — substring match (case-insensitive): catches e.g. 'event_kind',
+                     'product_category', 'item_type' when candidate is 'kind',
+                     'category', or 'type'.
+        """
+        # Exact match first
         for c in candidates:
             if c in df.columns:
                 return c
+        # Substring match fallback
+        lower_map = {col.lower(): col for col in df.columns}
+        for kw in candidates:
+            kw_l = kw.lower()
+            for lc, orig in lower_map.items():
+                if kw_l in lc:
+                    return orig
         return None
 
-    def _detect_timestamp_col(self, df: pd.DataFrame) -> str | None:
-        return self._detect_col(df, [
-            "trans_date_trans_time", "timestamp", "date", "transaction_date",
-            "trans_date", "datetime", "created_at", "order_date",
-        ])
+    def _resolve_col(
+        self,
+        df: pd.DataFrame,
+        role: str,
+        candidates: list[str],
+        required: bool = True,
+    ) -> str | None:
+        """
+        Auto-detect a column for a given role; ask the user if detection fails.
 
-    def _detect_customer_col(self, df: pd.DataFrame) -> str:
-        return self._detect_col(df, [
-            "cc_num", "customer_id", "user_id", "client_id", "account_id",
-            "card_number", "id",
-        ]) or df.columns[0]
+        Parameters
+        ----------
+        role       : human-readable label, e.g. "entity/ID", "timestamp"
+        candidates : ordered list of keywords to try (exact then substring)
+        required   : if True, keeps prompting until a valid column is given;
+                     if False, allows the user to press Enter to skip
+        """
+        guess = self._detect_col(df, candidates)
+        if guess is not None:
+            return guess
+
+        # Auto-detection failed — ask the user
+        cols = list(df.columns)
+        col_preview = ", ".join(cols[:20])
+        if len(cols) > 20:
+            col_preview += f" … ({len(cols)} total)"
+
+        print(f"\n  [FeatureEngineer] Could not auto-detect the {role} column.")
+        print(f"  Available columns: {col_preview}")
+        if not required:
+            print(f"  Press Enter to skip {role} (optional).")
+
+        while True:
+            val = input(f"  → Enter column name for {role}: ").strip()
+            if val == "" and not required:
+                print(f"  Skipping {role}.")
+                return None
+            if val in df.columns:
+                return val
+            print(f"  Column '{val}' not found. Please choose from the list above.")
+
+    def _detect_timestamp_col(self, df: pd.DataFrame) -> str | None:
+        return self._resolve_col(df, "timestamp / date", [
+            "timestamp", "datetime", "date", "time", "ts",
+            "created_at", "occurred_at", "recorded_at", "updated_at",
+            "event_time", "event_date", "visit_date", "purchase_date",
+            "order_date", "trans_date", "trans_date_trans_time",
+        ], required=False)
+
+    def _detect_entity_col(self, df: pd.DataFrame) -> str:
+        return self._resolve_col(df, "entity / ID (the column that identifies each entity being clustered)", [
+            "id", "entity_id", "user_id", "customer_id", "client_id",
+            "account_id", "subject_id", "patient_id", "device_id",
+            "sensor_id", "item_id", "product_id", "order_id",
+            "session_id", "record_id", "uuid", "uid", "pid",
+            "card_number", "cc_num",
+        ], required=True) or df.columns[0]
 
     def _detect_amount_col(self, df: pd.DataFrame) -> str | None:
-        return self._detect_col(df, [
+        return self._resolve_col(df, "value / amount (the primary numeric measure per event)", [
             "amount", "value", "price", "total", "amt",
-        ])
+            "cost", "revenue", "qty", "quantity", "score",
+            "duration", "size", "weight", "measurement", "reading", "level",
+        ], required=False)
 
     def _detect_category_col(self, df: pd.DataFrame) -> str | None:
-        return self._detect_col(df, [
-            "category", "cat", "type", "transaction_type",
-        ])
+        return self._resolve_col(df, "category / kind (the column that groups events into types)", [
+            "category", "cat", "type", "kind", "label",
+            "class", "group", "segment", "tag", "genre",
+            "department", "sector", "channel", "mode",
+            "event_type", "item_type", "product_type", "product_category",
+            "item_category", "subcategory", "transaction_type",
+        ], required=False)
 
     # ── Default plan fallback (if LLM fails) ──────────────────────────────────
 

@@ -67,12 +67,16 @@ class FeatureSelectionAgent:
         bus: OrchestratorBus,
         vif_threshold: float = 10.0,
         corr_threshold: float = 0.85,
+        ae_bottleneck_cap: int = 32,
+        ae_max_iter: int = 200,
     ):
         # FeatureSelectionAgent owns its ML skills (PCA, AE, VIF).
         # LLM reasoning is requested through the bus → Orchestrator.
         self.bus = bus
         self.vif_threshold = vif_threshold
         self.corr_threshold = corr_threshold
+        self.ae_bottleneck_cap = ae_bottleneck_cap
+        self.ae_max_iter = ae_max_iter
 
     def run(
         self,
@@ -136,11 +140,17 @@ class FeatureSelectionAgent:
         )
 
         # ── Step 3: Autoencoder reconstruction score ───────────────────────────
-        bottleneck = max(8, n_features // 5)
+        # Bottleneck = min(n_features // 5, ae_bottleneck_cap).
+        # The cap prevents the bottleneck from exceeding the hidden-layer width (64),
+        # which would make the network expand rather than compress and stall convergence
+        # (e.g. 379 // 5 = 75 > 64 without the cap).
+        # Both values come from config.yaml (ae_bottleneck_cap, ae_max_iter).
+        bottleneck = min(max(8, n_features // 5), self.ae_bottleneck_cap)
+        print(f'  AE bottleneck={bottleneck}  (cap={self.ae_bottleneck_cap}, max_iter={self.ae_max_iter})')
         ae = MLPRegressor(
             hidden_layer_sizes=(64, bottleneck, 64),
             activation='relu',
-            max_iter=300,
+            max_iter=self.ae_max_iter,
             early_stopping=True,
             random_state=42,
             verbose=False,

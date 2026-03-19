@@ -56,6 +56,21 @@ max_depth: 2                 # max rounds of splitting (0 = disabled, 1 = one ro
 #   creative      — Vivid metaphors, storytelling, imaginative analogies.
 persona_tone: easy
 
+# ── Feature Selection ─────────────────────────────────────────────────────────
+
+# Maximum bottleneck size for the autoencoder used to score feature uniqueness.
+# The bottleneck is computed as min(n_features // 5, ae_bottleneck_cap).
+# With 379 features: min(75, 32) = 32 → architecture 379→64→32→64→379 (compressing).
+# Raise this if you suspect the AE is under-fitting (i.e. reconstruction error
+# is uniformly high across all features and scores look meaningless).
+ae_bottleneck_cap: 32
+
+# Maximum training iterations for the autoencoder.
+# early_stopping=True will exit sooner when validation loss plateaus, so this
+# is just an upper bound. Lower values make feature selection faster;
+# raise it if the AE convergence warning appears and you want more accuracy.
+ae_max_iter: 200
+
 # ── Classifier ────────────────────────────────────────────────────────────────
 
 # Classifier model for validation.

@@ -247,6 +247,7 @@ class ClusteringAgent:
             sel = list(features_df.select_dtypes(include=[np.number]).columns)
 
         X = features_df[sel].copy()
+        X = X.loc[:, ~X.columns.duplicated()]  # guard against duplicate column names
         log_cols = _detect_log_cols(X)
         for col in log_cols:
             X[col] = np.log1p(X[col])

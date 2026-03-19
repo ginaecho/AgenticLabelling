@@ -44,6 +44,19 @@ Builds an entity-level feature matrix from raw event-level data. The LLM (via Or
 
 The LLM is shown the actual column names from the dataset schema and chooses which builders to apply to which columns. Feature column names embed the actual data column names, not domain abbreviations.
 
+## Column auto-detection
+
+Before building features, the agent auto-detects four structural columns from the schema using exact match first, then case-insensitive substring match:
+
+| Role | What it identifies | Example column names detected |
+|------|-------------------|-------------------------------|
+| **entity / ID** | The column that identifies each entity being clustered (required) | `id`, `user_id`, `customer_id`, `patient_id`, `device_id`, `sensor_id`, `uuid`, … |
+| **timestamp / date** | When each event occurred (optional) | `timestamp`, `date`, `time`, `ts`, `created_at`, `event_time`, `visit_date`, … |
+| **value / amount** | The primary numeric measure per event (optional) | `amount`, `value`, `price`, `cost`, `qty`, `score`, `duration`, `reading`, … |
+| **category / kind** | The column that groups events into types (optional) | `category`, `type`, `kind`, `label`, `class`, `group`, `tag`, `genre`, `department`, `sector`, `channel`, … |
+
+**If auto-detection fails for any column, the agent asks the user interactively** — it prints all available column names and waits for input. Required columns (entity/ID) must be provided; optional columns can be skipped by pressing Enter.
+
 ## Communication protocol
 
 Reports via [orchestrator_bus](../skills/orchestrator_bus.md):
@@ -65,6 +78,7 @@ Reports via [orchestrator_bus](../skills/orchestrator_bus.md):
 
 | Issue | Status | Recommendation |
 |-------|--------|----------------|
-| Required columns missing (entity key, timestamp) | `warning` | `proceed` with fewer groups |
+| Entity/ID column not auto-detected | — | Agent asks user interactively (required) |
+| Timestamp/value/category column not auto-detected | — | Agent asks user; pressing Enter skips that role |
 | Fewer than 20 features built | `blocked` | `escalate` |
 | All features are binary/constant | `blocked` | `escalate` |

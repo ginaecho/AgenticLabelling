@@ -14,9 +14,9 @@ skills from `skills/`.
 
 ### Role
 Central coordinator. Owns the pipeline state, routes feedback between agents,
-maintains the orchestrator message log, and calls Claude to diagnose complex
-failures. Presents a human checkpoint when the pipeline converges or exhausts
-its retry budget.
+maintains the orchestrator message log, and uses LLM reasoning to diagnose
+complex failures. Presents a human checkpoint when the pipeline converges or
+exhausts its retry budget.
 
 ### Inputs
 - `config: dict` (from `config.yaml`)
@@ -24,13 +24,13 @@ its retry budget.
 - `features_path: str`
 
 ### Outputs
-- `dict` with keys `status`, `personas`, `run_history`, `timing`, `claude_usage`
+- `dict` with keys `status`, `personas`, `run_history`, `timing`, `llm_usage`
 
 ### Responsibilities
 1. Receive `OrchestratorMessage` from every agent via `orchestrator_bus`
 2. Log all messages to `pipeline_log` (saved to `outputs/pipeline_log.json`)
-3. Use Claude to analyse failure reports and decide routing
-4. After each failed iteration, call `_ask_parameter_tuning()` to let Claude propose
+3. Use LLM to analyse failure reports and decide routing
+4. After each failed iteration, call `_ask_parameter_tuning()` to let LLM propose
    new values for `vif_threshold`, `k_range`, `algorithm`, `min_silhouette`, and
    `feature_focus` — these are passed directly to FeatureSelector and Clusterer
 5. Enforce per-loop retry budgets (default `max_total_iterations=10`)
@@ -40,15 +40,15 @@ its retry budget.
 7. Present human checkpoint with full pipeline log summary
 
 ### Dynamic tuning parameters (managed by Orchestrator, not config.yaml)
-| Parameter | Default | Claude's tuning range |
-|-----------|---------|----------------------|
+| Parameter | Default | LLM tuning range |
+|-----------|---------|-----------------|
 | `vif_threshold` | 10.0 | 5 – 25 |
 | `k_range` | `[3,4,5,6,7,8,10,12,15]` | any subset of k ∈ [2,20] |
-| `algorithm` | null (auto) | `"kmeans"`, `"hierarchical"`, `null` |
+| `algorithm` | null (auto) | `"kmeans"`, `"hierarchical"`, `"dbscan"`, `"gmm"`, `"fuzzy_cmeans"`, `null` |
 | `min_silhouette` | 0.05 | 0.02 – 0.12 |
 | `feature_focus` | `""` | free-text hint injected into FeatureSelector prompt |
 
-### Routing decisions (Claude-assisted)
+### Routing decisions (LLM-assisted)
 | Agent reports | Orchestrator action |
 |---------------|---------------------|
 | `FeatureSelector BLOCKED` | → route to FeatureEngineer (more features needed) |
@@ -112,7 +112,7 @@ This is the entry point of the pipeline.
 
 ### Role
 Profiles the raw dataset and identifies feature engineering opportunities
-aligned with the stated business purpose. Calls Claude with the schema +
+aligned with the stated business purpose. Uses LLM with the schema and
 business purpose to get suggested feature groups.
 
 ### Skills used
@@ -128,7 +128,7 @@ business purpose to get suggested feature groups.
   - `column_types: dict[str, str]`
   - `missing_rates: dict[str, float]`
   - `distribution_summary: dict[str, dict]` (skewness, kurtosis, min/max/mean)
-  - `suggested_feature_groups: list[str]` (from Claude)
+  - `suggested_feature_groups: list[str]` (from LLM)
   - `warnings: list[str]`
 
 ### Communication protocol
@@ -136,9 +136,9 @@ business purpose to get suggested feature groups.
 {
   "agent": "DatasetExaminer",
   "status": "success | warning | blocked",
-  "what_was_done": "Profiled schema, analysed distributions, called Claude for feature group suggestions",
+  "what_was_done": "Profiled schema, analysed distributions, called LLM for feature group suggestions",
   "what_was_not_done": "Did not load data subsets for validation",
-  "doubts": "Column 'merchant_category' has 300+ unique values — may need grouping",
+  "doubts": "A high-cardinality column may need grouping before feature engineering",
   "issues": ["Column 'age' missing in 15% of rows"],
   "metrics": { "n_rows": 10000, "n_cols": 25, "n_suggested_groups": 5 },
   "recommendation": "proceed"
@@ -161,32 +161,74 @@ business purpose to get suggested feature groups.
 **Class**: `FeatureEngineerAgent`
 
 ### Role
-Builds a rich feature matrix from raw data, guided by the `DatasetProfile`
-and business purpose. Uses Claude to decide which transformations to apply.
+Builds an entity-level feature matrix from raw event-level data. The LLM
+(via OrchestratorBus) reads the actual dataset schema and business purpose,
+then plans which of 8 generic statistical operations to apply to which columns.
+No domain vocabulary is hard-coded — the same agent handles transaction logs,
+product catalogs, patient visits, sensor readings, or any other tabular event data.
 
 ### Skills used
-- `orchestrator_bus.report()`
+- `orchestrator_bus.ask()`, `orchestrator_bus.report()`
 
 ### Inputs
-- Raw DataFrame
-- `DatasetProfile`
-- `UserIntent`
-- Orchestrator feedback (free-text, from previous iteration if any)
+- Raw DataFrame (event-level)
+- `DatasetProfile` — schema, suggested feature groups, algo hint
+- `UserIntent` — target entity, business purpose
+- Orchestrator feedback (free-text, injected into LLM prompt on retry)
 
 ### Outputs
-- Engineered feature `DataFrame` (persisted to `data/processed/`)
-- `FeatureEngineeringResult` dataclass with feature count and group coverage
+- Engineered feature DataFrame (entity-level, persisted to `data/processed/`)
+- `FeatureEngineeringResult`:
+  - `n_entities: int`
+  - `n_features: int`
+  - `feature_names: list[str]`
+  - `groups_built: list[str]`
+  - `output_path: str`
+  - `reasoning: str`
+
+### Column auto-detection
+
+Before building features, the agent auto-detects four structural columns from
+the schema using exact match first, then case-insensitive substring match:
+
+| Role | What it identifies | Example column names detected |
+|------|-------------------|-------------------------------|
+| **entity / ID** | The column that identifies each entity being clustered (required) | `id`, `user_id`, `customer_id`, `patient_id`, `device_id`, `sensor_id`, `uuid`, … |
+| **timestamp / date** | When each event occurred (optional) | `timestamp`, `date`, `time`, `ts`, `created_at`, `event_time`, `visit_date`, … |
+| **value / amount** | The primary numeric measure per event (optional) | `amount`, `value`, `price`, `cost`, `qty`, `score`, `duration`, `reading`, … |
+| **category / kind** | The column that groups events into types (optional) | `category`, `type`, `kind`, `label`, `class`, `group`, `tag`, `genre`, `department`, `sector`, `channel`, … |
+
+**If auto-detection fails for any column, the agent asks the user interactively** —
+it prints all available column names and waits for input. Required columns
+(entity/ID) must be provided; optional columns can be skipped by pressing Enter.
+
+### The 8 generic builders
+
+| Builder | What it computes | Example column names |
+|---------|-----------------|---------------------|
+| `group_aggregate` | count/sum/mean/std/max/freq/pct_count/pct_sum per group value × window | `count_{col}_{val}_{w}` |
+| `group_trend` | change in count or sum between two windows | `trend_count_{col}_{val}` |
+| `group_streak` | consecutive active periods per group value | `streak_{col}_{val}` |
+| `overall_aggregate` | aggregate over all events (no grouping) | `sum_{val_col}_{w}` |
+| `frequency_recency` | event frequency, active periods, recency, gap | `event_count_{w}`, `days_since_last` |
+| `entity_diversity` | number of unique values per column × window | `n_unique_{col}_{w}` |
+| `temporal_patterns` | morning/evening/weekend ratios, peak hour | `pct_morning_{w}`, `pct_weekend_{w}` |
+| `static_attributes` | copy entity-level static columns as-is | original column name |
+
+The LLM is shown the actual column names from the dataset schema and chooses
+which builders to apply to which columns. Feature column names embed the actual
+data column names, not domain abbreviations.
 
 ### Communication protocol
 ```json
 {
   "agent": "FeatureEngineer",
   "status": "success | warning | blocked",
-  "what_was_done": "Built 108 features across 6 behavioral groups",
-  "what_was_not_done": "Could not build loyalty/tenure features (no signup date column)",
-  "doubts": "Recency features may overlap heavily with frequency features",
+  "what_was_done": "Built 108 features across 6 behavioral groups from LLM plan",
+  "what_was_not_done": "Could not build temporal features (no timestamp column found)",
+  "doubts": "Frequency features may overlap with diversity features",
   "issues": [],
-  "metrics": { "n_features": 108, "n_groups": 6, "missing_groups": ["loyalty"] },
+  "metrics": { "n_features": 108, "n_entities": 983, "n_groups": 6 },
   "recommendation": "proceed"
 }
 ```
@@ -194,7 +236,8 @@ and business purpose. Uses Claude to decide which transformations to apply.
 ### Failure modes
 | Issue | Status | Recommendation |
 |-------|--------|----------------|
-| Required columns missing | `warning` | `proceed` (fewer feature groups) |
+| Entity/ID column not auto-detected | — | Agent asks user interactively (required) |
+| Timestamp/value/category column not auto-detected | — | Agent asks user; pressing Enter skips that role |
 | Fewer than 20 features built | `blocked` | `escalate` |
 | All features are binary/constant | `blocked` | `escalate` |
 
@@ -208,7 +251,7 @@ and business purpose. Uses Claude to decide which transformations to apply.
 ### Role
 Scores all engineered features using PCA importance and autoencoder
 reconstruction error, then applies VIF and correlation gates, and finally
-asks Claude to select the optimal subset for clustering.
+asks LLM to select the optimal subset for clustering.
 
 ### Skills used
 - `skills.vif_checker.compute_vif()`
@@ -228,10 +271,11 @@ asks Claude to select the optimal subset for clustering.
   - `pca_scores: dict[str, float]`
   - `ae_scores: dict[str, float]`
   - `vif_table: dict[str, float]`
+  - `removed_by_vif: list[str]`
   - `reasoning: str`
 
 ### Quality gates (in order)
-1. VIF < 5 for all features (iterative removal)
+1. VIF < 10 for all features (iterative removal; threshold tuned dynamically by Orchestrator)
 2. |r| < 0.85 between any two features
 3. ≥ 10 features survive; ≤ 80 features retained
 
@@ -240,11 +284,11 @@ asks Claude to select the optimal subset for clustering.
 {
   "agent": "FeatureSelector",
   "status": "success | warning | blocked",
-  "what_was_done": "Scored 108 features, removed 22 via VIF gate, Claude selected 45",
+  "what_was_done": "Scored 108 features, removed 22 via VIF gate, LLM selected 45",
   "what_was_not_done": "Did not apply p-value gate (sufficient features after VIF)",
-  "doubts": "Several travel features have borderline VIF (~4.8)",
+  "doubts": "Several features have borderline VIF (~9.5)",
   "issues": [],
-  "metrics": { "n_input": 108, "n_after_vif": 86, "n_selected": 45, "max_vif": 4.2 },
+  "metrics": { "n_input": 108, "n_after_vif": 86, "n_selected": 45, "max_vif": 8.2 },
   "recommendation": "proceed"
 }
 ```
@@ -252,8 +296,8 @@ asks Claude to select the optimal subset for clustering.
 ### Failure modes
 | Issue | Status | Recommendation |
 |-------|--------|----------------|
-| < 10 features survive VIF gate | `blocked` | `retry` (relax to VIF < 8) or `escalate` |
-| Claude returns invalid JSON | `warning` | `retry` |
+| < 10 features survive VIF gate | `blocked` | `retry` (relax to VIF < 15) or `escalate` |
+| LLM returns invalid JSON | `warning` | `retry` |
 
 ---
 
@@ -290,11 +334,30 @@ for oversized clusters, and builds cluster profiles.
   - `k_scores: dict[int, float]` (silhouette for each k tried)
   - `algo_used: str`
 
+### Cluster profile structure
+Each cluster entry in `profiles` contains:
+```json
+{
+  "n_entities": 142,
+  "pct_total": 0.144,
+  "top_above_average": [["feature_name", 3.2], ...],
+  "top_below_average": [["feature_name", 0.4], ...],
+  "feature_means": {"feature_name": 0.72, ...},
+  "feature_relative": {"feature_name": 1.6, ...}
+}
+```
+
 ### Algorithm selection logic
-Delegated to `skills.algo_recommender`. Factors considered:
-- `n_rows` (> 100k → prefer K-Means)
-- Mean skewness of selected features
-- Multi-modality detected by DatasetExaminer
+Delegated to `skills.algo_recommender`. Scores all 5 supported algorithms
+based on dataset characteristics; picks the highest-scoring one:
+
+| Algorithm | Best for |
+|-----------|----------|
+| `kmeans` | Large datasets (> 100k rows), fast, convex clusters |
+| `hierarchical` | Nested sub-groups, non-convex shapes, dendrogram insight |
+| `dbscan` | Arbitrary shapes, noise/outlier detection |
+| `gmm` | Soft, probabilistic cluster memberships |
+| `fuzzy_cmeans` | Overlapping clusters where entities belong to multiple groups |
 
 ### K selection logic
 Delegated to `skills.silhouette_optimizer`. Steps:
@@ -308,7 +371,7 @@ Delegated to `skills.silhouette_optimizer`. Steps:
   "agent": "Clusterer",
   "status": "success | warning | blocked",
   "what_was_done": "Tried k=3..15 via silhouette; selected k=7 (sil=0.38); ran deepening loop",
-  "what_was_not_done": "Did not try DBSCAN (not in skill repertoire)",
+  "what_was_not_done": "Deepening loop skipped (no oversized clusters)",
   "doubts": "Silhouette improvement from k=6 to k=7 is marginal (0.01 diff)",
   "issues": [],
   "metrics": { "best_k": 7, "silhouette": 0.38, "n_leaf": 9, "algo": "hierarchical" },
@@ -320,7 +383,7 @@ Delegated to `skills.silhouette_optimizer`. Steps:
 | Issue | Status | Recommendation |
 |-------|--------|----------------|
 | Silhouette < 0.20 for all k | `warning` | `retry` with different algo |
-| Silhouette < 0.15 after both algos | `blocked` | `reselect_features` |
+| Silhouette < 0.15 after all algorithms tried | `blocked` | `reselect_features` |
 | Deepening loop can't resolve oversized cluster | `warning` | `reselect_features` |
 
 ---
@@ -331,15 +394,16 @@ Delegated to `skills.silhouette_optimizer`. Steps:
 **Class**: `PersonaNamingAgent`
 
 ### Role
-Sends cluster profiles to Claude to generate human-readable persona names,
-taglines, descriptions, and traits. Applies the Clarity Gate to validate
+Uses LLM to generate human-readable persona names, taglines, descriptions,
+and traits from cluster profiles. Applies the Clarity Gate to validate
 output quality before proceeding.
 
 ### Skills used
 - `orchestrator_bus.report()`
 
 ### Inputs
-- `profiles: dict` (from ClusteringAgent)
+- `profiles: dict` (from ClusteringAgent — uses `n_entities`, `pct_total`,
+  `top_above_average`, `top_below_average`, `feature_means`)
 - `lineage: dict`
 - `tone: str`
 - `UserIntent`
@@ -379,7 +443,7 @@ output quality before proceeding.
 **Class**: `ClassifierAgent`
 
 ### Role
-Treats persona labels as pseudo ground truth, trains a Random Forest
+Treats persona labels as pseudo ground truth, trains an LLM-selected
 classifier, evaluates cluster separability via stratified CV, and routes
 the pipeline back to feature selection or clustering if performance is poor.
 
@@ -401,16 +465,27 @@ the pipeline back to feature selection or clustering if performance is poor.
   - `feature_importances: dict[str, float]`
   - `reasoning: str`
 
+### LLM-selected classifier models
+The LLM chooses the best model type based on dataset size, class balance,
+and interpretability requirements:
+
+| Model | When preferred |
+|-------|---------------|
+| `random_forest` | Medium datasets, need feature importances |
+| `xgboost` | Large datasets, best accuracy |
+| `gradient_boosting` | Balanced datasets, robust to outliers |
+| `logistic_regression` | Small datasets, high interpretability |
+
 ### Quality gate
 - CV macro-F1 ≥ 0.70 → proceed
-- Below threshold → Claude diagnoses and routes
+- Below threshold → LLM diagnoses and routes
 
 ### Communication protocol
 ```json
 {
   "agent": "Classifier",
   "status": "success | warning | blocked",
-  "what_was_done": "Trained RF, 5-fold CV, computed feature importances",
+  "what_was_done": "LLM selected random_forest; trained with 5-fold CV; computed feature importances",
   "what_was_not_done": "Did not compute SHAP values (not in current skill set)",
   "doubts": "Persona 'Moderate All-Rounder' is borderline (F1=0.65)",
   "issues": [],

@@ -16,7 +16,8 @@ then register it here.
 
 ### Purpose
 Provides a shared message bus so every agent can report structured status
-messages to the orchestrator without tight coupling.
+messages to the orchestrator without tight coupling. Also exposes `ask()` for
+agents that need LLM reasoning via the orchestrator.
 
 ### API
 
@@ -40,6 +41,14 @@ bus = OrchestratorBus()
 bus.report(msg)
 log = bus.get_log()             # list[OrchestratorMessage]
 bus.save_log("outputs/pipeline_log.json")
+
+# LLM call (routed through orchestrator)
+raw_response = bus.ask(
+    agent="FeatureSelector",
+    purpose="select best feature subset",
+    prompt="...",
+    max_tokens=2048,
+)
 ```
 
 ### Status meanings
@@ -68,16 +77,13 @@ bus.save_log("outputs/pipeline_log.json")
 
 ### Purpose
 Computes Variance Inflation Factor (VIF) for each feature to detect
-multicollinearity. Also flags high pairwise correlations and low-variance
-features. Provides iterative removal to bring all VIFs below a threshold.
+multicollinearity. Also flags high pairwise correlations. Provides iterative
+removal to bring all VIFs below a threshold.
 
 ### Reference
 - VIF interpretation: VIF = 1 (no correlation); VIF 1–5 (moderate, acceptable);
   VIF 5–10 (high, consider removing); VIF > 10 (severe collinearity)
 - Default threshold is **10.0** — tuned dynamically by the Orchestrator each iteration.
-  The Orchestrator may raise it (e.g. to 15–18) when transaction ratio/spend features
-  are legitimately correlated but still carry distinct behavioural signal.
-- See: https://medium.com/@rasdhar.panchal/feature-selection-using-p-values-and-vif-in-linear-regression-6bf25b652d99
 
 ### API
 
@@ -89,7 +95,7 @@ vif_df = compute_vif(df)
 # Returns pd.DataFrame with columns: feature, vif
 
 # Iteratively remove features with VIF above threshold until all pass
-clean_df, removed = remove_high_vif(df, threshold=5.0, max_iterations=50)
+clean_df, removed = remove_high_vif(df, threshold=10.0, min_features=10, verbose=True)
 # Returns: (cleaned DataFrame, list of removed feature names)
 
 # Flag feature pairs with |correlation| > threshold
@@ -101,7 +107,7 @@ pairs = flag_high_correlation(df, threshold=0.85)
 
 | Gate | Default threshold | Configurable |
 |------|------------------|--------------|
-| VIF | < 5.0 | Yes (`config.yaml`: `vif_threshold`) |
+| VIF | < 10.0 | Yes (Orchestrator tunes dynamically) |
 | Pairwise correlation | \|r\| < 0.85 | Yes (`config.yaml`: `corr_threshold`) |
 | Minimum features after filtering | ≥ 10 | Yes |
 
@@ -115,8 +121,7 @@ pairs = flag_high_correlation(df, threshold=0.85)
 ### Purpose
 Tries a range of k values, fits the chosen clustering algorithm for each,
 computes the silhouette score, and returns the k that maximises it.
-Also computes the elbow-method inertia curve for K-Means as a secondary
-signal.
+Also computes the elbow-method inertia curve for K-Means as a secondary signal.
 
 ### API
 
@@ -125,7 +130,7 @@ from skills.silhouette_optimizer import optimize_k, SilhouetteResult
 
 result = optimize_k(
     X_scaled,                        # np.ndarray, preprocessed features
-    algorithm="hierarchical",        # "hierarchical" | "kmeans"
+    algorithm="hierarchical",        # "hierarchical" | "kmeans" | "dbscan" | "gmm" | "fuzzy_cmeans"
     k_range=[3, 4, 5, 6, 7, 8, 10, 12, 15],
     random_state=42,
 )
@@ -155,7 +160,8 @@ result.reasoning       # str — human-readable summary
 
 ### Purpose
 Analyses dataset size, feature distribution shape, and business purpose
-to recommend the most appropriate clustering algorithm.
+to score and recommend the most appropriate clustering algorithm from the
+5 supported options.
 
 ### API
 
@@ -165,36 +171,38 @@ from skills.algo_recommender import recommend_algorithm, AlgoRecommendation
 rec = recommend_algorithm(
     n_rows=10000,
     n_features=45,
-    feature_skewness={"travel_spend": 3.2, "grocery_spend": 1.1, ...},
+    feature_skewness={"feat_a": 3.2, "feat_b": 1.1, ...},
     dataset_profile=profile,   # DatasetProfile from DatasetExaminerAgent
     user_intent=intent,        # UserIntent
 )
 
-rec.algorithm    # "hierarchical" | "kmeans"
+rec.algorithm    # "hierarchical" | "kmeans" | "dbscan" | "gmm" | "fuzzy_cmeans"
 rec.reasoning    # str — explanation of the choice
 rec.confidence   # float 0–1 — how confident the recommendation is
 ```
 
-### Decision rules
+### Scoring rules (all 5 algorithms scored; highest wins)
 
-| Condition | Recommendation |
-|-----------|----------------|
-| `n_rows > 100_000` | K-Means (speed) |
-| Mean feature skewness > 2.0 | Hierarchical (robust to skew after log-transform) |
-| Business purpose mentions "segments within segments" | Hierarchical |
-| Fewer than 5 candidate k values have silhouette > 0.25 | K-Means (try different shape) |
-| Default | Hierarchical / Ward |
+| Condition | Effect |
+|-----------|--------|
+| `n_rows > 100_000` | +2 K-Means (speed) |
+| Mean feature skewness > 2.0 | +1 Hierarchical (robust to skew after log-transform) |
+| Business purpose mentions "nested" or "sub-group" | +2 Hierarchical |
+| Business purpose mentions "overlap" or "fuzzy" | +2 Fuzzy C-Means |
+| Business purpose mentions "outlier" or "noise" | +2 DBSCAN |
+| Business purpose mentions "soft" or "probabilistic" | +2 GMM |
+| Default (no strong signal) | Hierarchical / Ward |
 
 ---
 
 ## `score_pca` — PCA Importance Scoring
 
-**File**: Implemented inline in `agents/feature_selector.py` (can be extracted)
+**File**: Implemented inline in `agents/feature_selector.py`
 **Used by**: `FeatureSelectionAgent`
 
 ### Purpose
 Scores each feature by its weighted contribution to the top PCA components.
-Higher score = feature explains more variance across customers.
+Higher score = feature explains more variance across entities.
 
 ### Formula
 ```
@@ -222,52 +230,30 @@ reconstruction error. High error = feature is unique and hard to compress
 
 ---
 
-## `build_frequency_features` — Transaction Frequency Features
+## `feature_engineer_builders` — 8 Generic Feature Builders
 
-**File**: `skills/feature_engineer_skills.py` (or inline in `agents/feature_engineer.py`)
+**File**: Implemented inline in `agents/feature_engineer.py`
 **Used by**: `FeatureEngineerAgent`
 
 ### Purpose
-Builds per-customer, per-category transaction count features over rolling
-time windows (6-month, 12-month).
+Builds entity-level features from raw event-level data using 8 generic
+statistical operations. The LLM chooses which builders to apply to which
+columns — no domain vocabulary is hard-coded.
 
-### Output columns
-- `n_txn_{category}_{w}m` — count of transactions in window
-- `consec_months_{category}` — consecutive active months
+### Builders
 
----
+| Builder | What it computes | Example output column names |
+|---------|-----------------|------------------------------|
+| `group_aggregate` | count/sum/mean/std/max per group value × window | `count_{col}_{val}_{w}` |
+| `group_trend` | change in count or sum between two windows | `trend_count_{col}_{val}` |
+| `group_streak` | consecutive active periods per group value | `streak_{col}_{val}` |
+| `overall_aggregate` | aggregate over all events (no grouping) | `sum_{val_col}_{w}` |
+| `frequency_recency` | event frequency, active periods, recency, gap | `event_count_{w}`, `days_since_last` |
+| `entity_diversity` | number of unique values per column × window | `n_unique_{col}_{w}` |
+| `temporal_patterns` | morning/evening/weekend ratios, peak hour | `pct_morning_{w}`, `pct_weekend_{w}` |
+| `static_attributes` | copy entity-level static columns as-is | original column name |
 
-## `build_spend_features` — Transaction Spend Features
-
-**File**: `skills/feature_engineer_skills.py`
-**Used by**: `FeatureEngineerAgent`
-
-### Output columns
-- `amt_{category}_{w}m` — total spend in window
-- `avg_spend_{category}_{w}m` — mean spend per transaction
-
----
-
-## `build_recency_features` — Recency & Engagement Features
-
-**File**: `skills/feature_engineer_skills.py`
-**Used by**: `FeatureEngineerAgent`
-
-### Output columns
-- `avg_days_between_txn` — average days between any two transactions
-- `active_months` — number of months with ≥ 1 transaction
-- `days_since_last_txn` — recency signal
-
----
-
-## `build_interaction_features` — Cross-Category Interaction Features
-
-**File**: `skills/feature_engineer_skills.py`
-**Used by**: `FeatureEngineerAgent`
-
-### Purpose
-Builds ratio and interaction features that capture how a customer allocates
-spending across categories (e.g. travel_share, grocery_vs_dining_ratio).
+Feature column names embed the actual data column names, not domain abbreviations.
 
 ---
 
@@ -277,19 +263,28 @@ spending across categories (e.g. travel_share, grocery_vs_dining_ratio).
 **Used by**: `PersonaNamingAgent`
 
 ### Checks
-1. `avg_confidence ≥ 6.0` — Claude's self-assessed naming confidence
+1. `avg_confidence ≥ 6.0` — LLM's self-assessed naming confidence
 2. `all names unique` — no duplicate persona names across clusters
 3. `description references numbers` — at least 2 quantitative values per description
 
 ---
 
-## `train_classifier` — Random Forest Classifier
+## `train_classifier` — LLM-Selected Classifier
 
 **File**: Implemented inline in `agents/classifier.py`
 **Used by**: `ClassifierAgent`
 
-### Model
-- `RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=42)`
+### Model selection
+LLM chooses from 4 supported models based on dataset size, class balance,
+and interpretability requirements:
+
+| Model | Sklearn class |
+|-------|--------------|
+| `random_forest` | `RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=42)` |
+| `xgboost` | `XGBClassifier(n_estimators=200, random_state=42)` |
+| `gradient_boosting` | `GradientBoostingClassifier(n_estimators=200, random_state=42)` |
+| `logistic_regression` | `LogisticRegression(max_iter=1000, random_state=42)` |
+
 - Stratified k-fold CV (k = min(5, min_class_size))
 - Reports: accuracy, macro-F1, weighted-F1, per-class F1
 

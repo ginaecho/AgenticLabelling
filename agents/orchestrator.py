@@ -328,7 +328,11 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         self.input_agent            = UserInputAgent(self.bus)
         self.examiner_agent         = DatasetExaminerAgent(self.bus)
         self.feature_engineer_agent = FeatureEngineerAgent(self.bus)
-        self.feature_agent          = FeatureSelectionAgent(self.bus)
+        self.feature_agent          = FeatureSelectionAgent(
+            self.bus,
+            ae_bottleneck_cap=config.get('ae_bottleneck_cap', 32),
+            ae_max_iter=config.get('ae_max_iter', 200),
+        )
         self.cluster_agent          = ClusteringAgent(config, self.bus)
         self.naming_agent           = PersonaNamingAgent(self.bus)
         self.classifier_agent       = ClassifierAgent(self.bus)
