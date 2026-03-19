@@ -14,7 +14,7 @@ Console report sections:
   PERSONA SUMMARY              — notebook-04 format: name / tagline /
                                   dominant / traits + KEY METRICS block
   KEY FEATURES                 — top-15 RF importance + CV scores
-  CLAUDE AGENT USAGE           — tokens (in/out) + time per agent per call
+  LLM AGENT USAGE              — tokens (in/out) + time per agent per call
   AGENTS & TIME                — wall-clock timing per agent
   TOTAL TIME                   — pipeline total
 """
@@ -156,7 +156,7 @@ clf_metrics        = json.loads(pathlib.Path('outputs/classifier_metrics.json').
 
 result_clf         = result.get('classifier') or {}
 timing             = result.get('timing') or {}
-claude_usage       = result.get('claude_usage') or {}
+llm_usage          = result.get('llm_usage') or {}
 top_feats          = clf_metrics.get('top20_features', {})
 
 MAX_PCT  = config.get('max_cluster_size_pct', 0.40)
@@ -168,24 +168,24 @@ W        = 72
 def cluster_card(cid: str, data: dict, clf_per_class: dict,
                  all_avg: dict, n_clusters: int) -> str:
     """Return the full text block for one cluster."""
-    stats  = data['cluster_stats']
-    p      = data['persona']
-    cat_s  = stats['category_stats']
-    ov     = stats['overall']
-    lin    = stats['lineage']
+    stats = data['cluster_stats']
+    p     = data['persona']
+    lin   = stats.get('lineage', {})
 
-    n_cust  = stats['n_customers']
-    pct     = stats['pct_of_total']
+    # Support both new profile keys (n_entities, pct_total) and old (n_customers, pct_of_total)
+    n_cust = stats.get('n_entities', stats.get('n_customers', 0))
+    pct    = stats.get('pct_total', stats.get('pct_of_total', 0) * 100) / 100  # normalise to 0-1
+
     cv_f1   = clf_per_class.get(p.get('name', ''), None)
     cv_str  = f'  CV-F1={cv_f1:.3f}' if cv_f1 is not None else ''
-    sub_str = f'  (sub-cluster of C{lin["parent"]})' if lin.get('parent') else ''
+    sub_str = f'  (sub-cluster of C{lin.get("parent")})' if lin.get('parent') else ''
 
     lines = []
     lines.append('')
-    lines.append(f'Cluster {cid}{sub_str}  ({n_cust} customers, {pct:.1%} of total){cv_str}')
+    lines.append(f'Cluster {cid}{sub_str}  ({n_cust} entities, {pct:.1%} of total){cv_str}')
     lines.append(f'  Persona  : {p.get("name", "?")}')
     lines.append(f'  Tagline  : {p.get("tagline", "?")}')
-    lines.append(f'  Dominant : {p.get("dominant_categories", [])}')
+    lines.append(f'  Dominant : {p.get("dominant_categories", p.get("top_features", []))}')
     lines.append('  Traits:')
     for t in p.get('traits', []):
         for i, wrapped in enumerate(textwrap.wrap(t, width=W - 6)):
@@ -197,68 +197,58 @@ def cluster_card(cid: str, data: dict, clf_per_class: dict,
     for wrapped in textwrap.wrap(p.get('description', ''), width=W - 4):
         lines.append('    ' + wrapped)
 
-    # ── Key metrics block ─────────────────────────────────────────────────
+    # ── Key metrics block (generic — works for any feature matrix) ────────────
     lines.append('')
-    lines.append('  Key metrics driving this persona:')
+    lines.append('  Key features driving this persona:')
 
-    strong = [(cat, s) for cat, s in cat_s.items() if s['rel_n_txn'] >= 1.4]
-    moderate = [(cat, s) for cat, s in cat_s.items() if 1.0 <= s['rel_n_txn'] < 1.4 and s['n_txn_12m'] > 0]
-    below  = [(cat, s) for cat, s in cat_s.items() if s['rel_n_txn'] <= 0.6 and s['n_txn_12m'] > 0]
+    top_above = stats.get('top_above_average', {})
+    top_below = stats.get('top_below_average', {})
+    feat_means = stats.get('feature_means', {})
 
-    if strong:
-        lines.append('  ▲ Strongly above-average:')
-        lines.append(f'    {"Category":<22} {"vs avg":>7}  {"txns/yr":>8}  {"spend/yr":>11}  {"avg/txn":>8}  {"loyalty":>8}')
-        lines.append('    ' + '─' * 66)
-        for cat, s in sorted(strong, key=lambda x: -x[1]['rel_n_txn']):
-            flag = '◀◀' if s['rel_n_txn'] >= 2.0 else '◀ '
+    if top_above:
+        lines.append('  ▲ Strongly above-average features:')
+        lines.append(f'    {"Feature":<40} {"vs avg":>7}  {"mean value":>12}')
+        lines.append('    ' + '─' * 62)
+        for feat, ratio in sorted(top_above.items(), key=lambda x: -x[1])[:8]:
+            flag = '◀◀' if ratio >= 2.0 else '◀ '
+            mean_val = feat_means.get(feat, 0)
             lines.append(
-                f'  {flag} {cat:<22} {s["rel_n_txn"]:>6.2f}x  '
-                f'{s["n_txn_12m"]:>8.1f}  '
-                f'${s["total_amt_12m"]:>10,.0f}  '
-                f'${s["avg_spend_12m"]:>7,.0f}  '
-                f'{s["consec_months"]:>6.1f}mo'
+                f'  {flag} {feat:<40} {ratio:>6.2f}x  {mean_val:>12.4g}'
             )
 
-    if below:
-        lines.append('  ▼ Notably below-average:')
-        lines.append(f'    {"Category":<22} {"vs avg":>7}  {"txns/yr":>8}  {"spend/yr":>11}')
-        lines.append('    ' + '─' * 52)
-        for cat, s in sorted(below, key=lambda x: x[1]['rel_n_txn']):
+    if top_below:
+        lines.append('  ▼ Notably below-average features:')
+        lines.append(f'    {"Feature":<40} {"vs avg":>7}  {"mean value":>12}')
+        lines.append('    ' + '─' * 62)
+        for feat, ratio in sorted(top_below.items(), key=lambda x: x[1])[:5]:
+            mean_val = feat_means.get(feat, 0)
             lines.append(
-                f'    ▼ {cat:<22} {s["rel_n_txn"]:>6.2f}x  '
-                f'{s["n_txn_12m"]:>8.1f}  '
-                f'${s["total_amt_12m"]:>10,.0f}'
+                f'    ▼ {feat:<40} {ratio:>6.2f}x  {mean_val:>12.4g}'
             )
-
-    # Overall vs all-cluster average
-    lines.append('  ● Overall vs dataset average:')
-    def cmp(val, ref, fmt=',.2f'):
-        ratio = val / ref if ref else 0
-        arrow = '▲' if ratio > 1.1 else ('▼' if ratio < 0.9 else '≈')
-        return f'{arrow} {ratio:.2f}x'
-    lines.append(f'    Avg txn size  : ${ov["avg_txn_amt"]:>9,.2f}   {cmp(ov["avg_txn_amt"], all_avg["avg_txn_amt"])}')
-    lines.append(f'    Total spend/yr: ${ov["total_spend"]:>9,.2f}   {cmp(ov["total_spend"], all_avg["total_spend"])}')
-    lines.append(f'    Txns/yr       :  {ov["total_txn_count"]:>9,.1f}   {cmp(ov["total_txn_count"], all_avg["total_txn_count"])}')
-    lines.append(f'    High-value %  :  {ov["pct_high_value"]:>9.1f}%')
-    lines.append(f'    Active months :  {ov["active_months"]:>9.1f}')
 
     return '\n'.join(lines)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Compute weighted all-cluster averages for comparison
 # ══════════════════════════════════════════════════════════════════════════════
-total_customers = sum(d['cluster_stats']['n_customers'] for d in personas_data.values())
+def _n_entities(d):
+    s = d['cluster_stats']
+    return s.get('n_entities', s.get('n_customers', 0))
 
+total_customers = sum(_n_entities(d) for d in personas_data.values())
+
+# Weighted average of any feature across all clusters (uses generic feature_means)
 def _wavg(field):
-    return sum(personas_data[c]['cluster_stats']['overall'][field]
-               * personas_data[c]['cluster_stats']['n_customers']
-               for c in personas_data) / total_customers if total_customers else 0
+    total = 0.0
+    for d in personas_data.values():
+        s   = d['cluster_stats']
+        n   = _n_entities(d)
+        val = s.get('feature_means', {}).get(field,
+              s.get('overall', {}).get(field, 0))
+        total += val * n
+    return total / total_customers if total_customers else 0
 
-all_avg = {
-    'avg_txn_amt':    _wavg('avg_txn_amt'),
-    'total_spend':    _wavg('total_spend'),
-    'total_txn_count': _wavg('total_txn_count'),
-}
+all_avg = {}  # populated on demand via _wavg; no fixed field names needed
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Build the full persona-summary text (notebook-04 format)
@@ -295,49 +285,39 @@ txt_path.write_text(full_txt, encoding='utf-8')
 # Build and save persona_metrics.csv
 # ══════════════════════════════════════════════════════════════════════════════
 csv_path = pathlib.Path('outputs/persona_metrics.csv')
+# Generic CSV: one row per cluster × feature (top distinguishing features only)
 FIELDNAMES = [
-    'cluster_id', 'persona_name', 'n_customers', 'pct_of_total',
-    'category',
-    'n_txn_12m', 'total_amt_12m', 'avg_spend_12m',
-    'n_txn_6m',  'total_amt_6m',
-    'consec_months',
-    'rel_n_txn', 'rel_amt', 'rel_consec',
-    'signal',          # STRONG_ABOVE / MODERATE_ABOVE / NEUTRAL / BELOW
+    'cluster_id', 'persona_name', 'n_entities', 'pct_of_total',
+    'feature', 'mean_value', 'relative_to_avg', 'signal',
 ]
 csv_rows = []
-CATEGORIES = [
-    'entertainment','food_dining','gas_transport','grocery_net','grocery_pos',
-    'health_fitness','home','kids_pets','misc_net','misc_pos',
-    'personal_care','shopping_net','shopping_pos','travel',
-]
 for cid in sorted(personas_data.keys(), key=lambda x: int(x)):
-    stats = personas_data[cid]['cluster_stats']
-    pname = personas_data[cid]['persona'].get('name', f'Cluster {cid}')
-    cat_s = stats['category_stats']
-    for cat in CATEGORIES:
-        s = cat_s.get(cat, {})
-        rel = s.get('rel_n_txn', 0)
+    stats  = personas_data[cid]['cluster_stats']
+    pname  = personas_data[cid]['persona'].get('name', f'Cluster {cid}')
+    n_ent  = _n_entities(personas_data[cid])
+    s_data = stats.get('cluster_stats', stats)  # handle either nesting style
+    pct    = s_data.get('pct_total', s_data.get('pct_of_total', 0) * 100) / 100
+    feat_means   = stats.get('feature_means', {})
+    feat_relative = stats.get('feature_relative', {})
+    # Combine above + below average features
+    top_above = stats.get('top_above_average', {})
+    top_below = stats.get('top_below_average', {})
+    all_feat = {**top_above, **top_below}
+    for feat, rel in all_feat.items():
         if rel >= 2.0:       sig = 'STRONG_ABOVE_2x'
         elif rel >= 1.4:     sig = 'ABOVE_1.4x'
         elif rel >= 1.0:     sig = 'MODERATE_ABOVE'
         elif rel >= 0.6:     sig = 'NEUTRAL'
         else:                sig = 'BELOW'
         csv_rows.append({
-            'cluster_id':    cid,
-            'persona_name':  pname,
-            'n_customers':   stats['n_customers'],
-            'pct_of_total':  round(stats['pct_of_total'], 4),
-            'category':      cat,
-            'n_txn_12m':     s.get('n_txn_12m', 0),
-            'total_amt_12m': s.get('total_amt_12m', 0),
-            'avg_spend_12m': s.get('avg_spend_12m', 0),
-            'n_txn_6m':      s.get('n_txn_6m', 0),
-            'total_amt_6m':  s.get('total_amt_6m', 0),
-            'consec_months': s.get('consec_months', 0),
-            'rel_n_txn':     s.get('rel_n_txn', 0),
-            'rel_amt':       s.get('rel_amt', 0),
-            'rel_consec':    s.get('rel_consec', 0),
-            'signal':        sig,
+            'cluster_id':      cid,
+            'persona_name':    pname,
+            'n_entities':      n_ent,
+            'pct_of_total':    round(pct, 4),
+            'feature':         feat,
+            'mean_value':      round(feat_means.get(feat, 0), 6),
+            'relative_to_avg': round(rel, 4),
+            'signal':          sig,
         })
 
 with open(csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -369,31 +349,31 @@ print(f"""
 
   ┌─────────────────────────────────────────────────────────────────┐
   │                        ORCHESTRATOR                             │
-  │  (Python coordinator + Claude decision-maker)                   │
+  │  (Python coordinator + LLM decision-maker)                      │
   │                                                                 │
   │  ① FeatureSelector ──────────────────────────────────────────► │
-  │    Role: Claude reads PCA + AE importance scores and            │
+  │    Role: LLM reads PCA + AE importance scores and               │
   │    decides which features maximise persona separability.        │
-  │    Output: selected_features list (~30–60 of 108)              │
+  │    Output: selected_features list (~30–60 features)             │
   │         │                                                       │
   │         ▼   ◄── loops here if ② or ④ request reselection      │
   │  ② Clusterer ────────────────────────────────────────────────► │
   │    Role: sklearn fits clusters; if a cluster > {_max_pct_str}   │
-  │    Claude decides: sub-cluster in-place OR reselect features.  │
+  │    LLM decides: sub-cluster in-place OR reselect features.     │
   │    Output: leaf cluster labels + profiles + lineage tree        │
   │         │                                                       │
   │         ▼   ◄── loops here if ③ Clarity Gate fails or ④ says  │
   │  ③ PersonaNamer ─────────────────────────────────────────────► │
-  │    Role: Claude writes name/tagline/description/traits for      │
+  │    Role: LLM writes name/tagline/description/traits for         │
   │    every cluster in one structured prompt (siblings grouped     │
   │    together so names must contrast).                            │
   │    Clarity Gate: sil ≥ 0.15 · avg_conf ≥ 6.0 · unique names   │
   │    Output: personas dict                                        │
   │         │                                                       │
-  │         ▼   ◄── loops here if Claude diagnoses poor clusters   │
+  │         ▼   ◄── loops here if LLM diagnoses poor clusters      │
   │  ④ Classifier ───────────────────────────────────────────────► │
-  │    Role: Random Forest CV validates crispsness; if macro-F1    │
-  │    < 0.70 Claude diagnoses root cause → route to ① or ②.      │
+  │    Role: classifier CV validates crispness; if macro-F1         │
+  │    < 0.70 LLM diagnoses root cause → route to ① or ②.         │
   │    Output: CV metrics + per-class F1 + feature importances      │
   │         │                                                       │
   │         ▼                                                       │
@@ -406,23 +386,23 @@ print(f"""
   ② Clusterer groups the {total_customers} customers into k leaf segments by
     behavioural distance in feature space.
 
-  ③ PersonaNamer builds a structured data table (transactions/yr,
-    spend/yr, avg/txn, loyalty months, vs-dataset-average ratios)
-    for every cluster and sends it to Claude.  Claude reads the
-    numbers and writes a name, tagline, description, and 5 traits
+  ③ PersonaNamer builds a structured feature summary (top above-average
+    and below-average features, relative ratios vs dataset average)
+    for every cluster and sends it to the LLM.  The LLM reads the
+    numbers and writes a name, tagline, description, and traits
     that are GROUNDED IN THOSE SPECIFIC METRICS — not invented.
     Sub-clusters are shown alongside their siblings so each name
     must explain HOW this group differs from its neighbours.
 
   ④ Classifier proves the labelling is correct: it trains a
-    Random Forest to predict cluster membership from the same
-    features.  Near-perfect CV-F1 means the clusters are genuinely
-    crisp in feature space — the personas are real segments.
+    classifier to predict cluster membership from the same features.
+    Near-perfect CV-F1 means the clusters are genuinely crisp in
+    feature space — the personas are real segments.
 
   40% GUARD  (config: max_cluster_size_pct={_max_pct_str}, sub_n_clusters={_sub_k_str}, max_depth={_max_depth_str})
   ─────────────────────────────────────────────────────────────────
-  After initial clustering, any cluster holding > {_max_pct_str} of customers
-  is automatically split into {_sub_k_str} sub-clusters.  Claude is consulted
+  After initial clustering, any cluster holding > {_max_pct_str} of entities
+  is automatically split into {_sub_k_str} sub-clusters.  The LLM is consulted
   if the split decision is ambiguous.  The Cluster Size table below
   proves all final clusters respect the limit.
 """)
@@ -436,8 +416,9 @@ print('  ' + '─' * 80)
 any_violation = False
 for cid in sorted(personas_data.keys(), key=lambda x: int(x)):
     d   = personas_data[cid]
-    n   = d['cluster_stats']['n_customers']
-    pct = d['cluster_stats']['pct_of_total']
+    n   = _n_entities(d)
+    s   = d['cluster_stats']
+    pct = s.get('pct_total', s.get('pct_of_total', 0) * 100) / 100
     nm  = d['persona'].get('name', '')[:45]
     ok  = pct <= MAX_PCT
     if not ok:
@@ -477,15 +458,15 @@ if result_clf:
         bar = '█' * int(score * 22)
         print(f'  {name:<50}  {score:>5.3f}   {bar}')
 
-# ── CLAUDE AGENT USAGE ────────────────────────────────────────────────────────
-header('CLAUDE AGENT USAGE  (role: orchestrator + python-script agent)')
+# ── LLM AGENT USAGE ───────────────────────────────────────────────────────────
+header('LLM AGENT USAGE  (role: orchestrator + python-script agent)')
 print("""
-  Every Claude call serves as an autonomous decision-maker embedded
+  Every LLM call serves as an autonomous decision-maker embedded
   inside a Python agent.  The Orchestrator coordinates these calls;
   each call is one "reasoning task" within the pipeline.
 """)
 
-by_agent = claude_usage.get('by_agent', {})
+by_agent = llm_usage.get('by_agent', {})
 ORDER    = ['Orchestrator', 'FeatureSelector', 'Clusterer', 'PersonaNamer', 'Classifier']
 ROLES    = {
     'Orchestrator':    'Parameter tuning between iterations',
@@ -521,11 +502,11 @@ for name in ORDER:
         print(f'  {"":22}  {"":30}  call {i}: in={d["input_tokens"]:,} out={d["output_tokens"]:,} time={d["time_s"]}s')
 
 print('  ' + '─' * 88)
-print(f'  {"TOTAL":<22}  {"":30}  {claude_usage.get("total_calls",0):>5}  '
+print(f'  {"TOTAL":<22}  {"":30}  {llm_usage.get("total_calls",0):>5}  '
       f'{total_in:>8,}  {total_out:>8,}  {total_api_t:>8.1f}s')
 print()
-print(f'  Input tokens  → prompt context sent to Claude')
-print(f'  Output tokens → Claude\'s generated responses')
+print(f'  Input tokens  → prompt context sent to the LLM')
+print(f'  Output tokens → LLM generated responses')
 # Rough cost estimate (claude-sonnet-4-6: $3/M in, $15/M out as approx)
 cost_est = (total_in / 1_000_000) * 3.0 + (total_out / 1_000_000) * 15.0
 print(f'  Approx cost   : ~${cost_est:.4f}  '
@@ -564,7 +545,7 @@ if timing:
     other  = max(0, total_s - llm_t - clus_t - clf_t)
     print()
     for label, val in [
-        ('Claude API calls  (①+③)',  llm_t),
+        ('LLM API calls  (①+③)',  llm_t),
         ('sklearn clustering  (②)',   clus_t),
         ('Random Forest CV    (④)',   clf_t),
         ('Orchestration / I/O',        other),

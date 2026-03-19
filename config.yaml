@@ -13,12 +13,15 @@ n_clusters: ~   # null → auto-select k via silhouette optimizer (recommended)
 
 # Clustering algorithm to use.
 # Options:
-#   hierarchical  — Agglomerative (Ward linkage). Default. Builds a dendrogram;
-#                   good for finding nested/sub-group structure (e.g. "travellers"
-#                   that branch into "regional" vs "cross-continent" travellers).
+#   auto          — LLM selects based on data shape (recommended)
+#   hierarchical  — Agglomerative (Ward linkage). Builds a dendrogram;
+#                   good for finding nested/sub-group structure.
 #   kmeans        — K-Means. Assigns customers to the nearest centroid.
 #                   Fast and interpretable, well-suited for large datasets.
-clustering_algorithm: kmeans
+#   dbscan        — Density-based (no k required; auto-detects outliers)
+#   gmm           — Gaussian Mixture Model (soft/probabilistic assignments)
+#   fuzzy_cmeans  — Fuzzy C-Means (partial memberships)
+clustering_algorithm: auto
 
 # ── Hierarchical Deepening Loop ───────────────────────────────────────────────
 #
@@ -52,3 +55,10 @@ max_depth: 2                 # max rounds of splitting (0 = disabled, 1 = one ro
 #   data-driven   — Statistical language; emphasises numbers and ratios throughout.
 #   creative      — Vivid metaphors, storytelling, imaginative analogies.
 persona_tone: easy
+
+# ── Classifier ────────────────────────────────────────────────────────────────
+
+# Classifier model for validation.
+# Options: auto, random_forest, xgboost, gradient_boosting, logistic_regression
+# auto — LLM selects based on dataset characteristics (recommended)
+classifier_model: auto

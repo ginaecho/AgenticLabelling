@@ -9,16 +9,16 @@ Coordinates the full multi-agent pipeline in a feedback loop:
   (1) DatasetExaminerAgent   — profile dataset, suggest feature groups
   (2) FeatureEngineerAgent   — engineer customer features from raw CSV
                                (skipped if a pre-engineered parquet is given)
-  (3) FeatureSelectionAgent  — PCA + AE + VIF → Claude picks feature subset
+  (3) FeatureSelectionAgent  — PCA + AE + VIF → LLM picks feature subset
   (4) ClusteringAgent        — silhouette k-opt + auto algo + deepening loop
-  (5) PersonaNamingAgent     — Claude names clusters; Clarity Gate validates
-  (6) ClassifierAgent        — Random Forest CV validates cluster separability;
-                               Claude routes back to (3) or (4) if F1 is low
+  (5) PersonaNamingAgent     — LLM names clusters; Clarity Gate validates
+  (6) ClassifierAgent        — classifier CV validates cluster separability;
+                               LLM routes back to (3) or (4) if F1 is low
   ↓
   Human Checkpoint           — user approves, requests re-run, or quits
 
 All agents report to a shared OrchestratorBus. The orchestrator uses the
-bus log when calling Claude for routing decisions.
+bus log when calling the LLM for routing decisions.
 """
 from __future__ import annotations
 
@@ -206,11 +206,11 @@ class Orchestrator:
       1. Dataset examination (first run only, or if orchestrator requests re-exam)
       2. Feature selection (first run, or when flagged for re-selection)
       3. Clustering
-         → if oversized cluster + Claude says reselect: loop to 2
+         → if oversized cluster + LLM says reselect: loop to 2
       4. Persona naming (Clarity Gate)
          → if gate fails: loop to 3
       5. Classifier validation (CV F1 gate)
-         → if poor: Claude routes to 2 or 3
+         → if poor: LLM routes to 2 or 3
       6. Human checkpoint
          → approve  : save + exit
          → recluster: loop to 3
@@ -238,25 +238,41 @@ class Orchestrator:
 
         # Skills injected into system context by calling-agent type:
         # Routing agents (Clusterer, Classifier) get a brief pipeline skills summary
-        # so Claude understands what options are available when it makes routing decisions.
+        # so the LLM understands what options are available when it makes routing decisions.
         # Planning agents (FeatureEngineer, FeatureSelector, PersonaNamer) get their
-        # agent-specific role description so Claude adopts the right persona.
+        # agent-specific role description so the LLM adopts the right persona.
         _ROUTING_PURPOSES = frozenset(['route', 'diagnose', 'routing'])
         _skill_summary = self._skill_catalog[:3000] if self._skill_catalog else ''
         _agent_summary = self._agent_catalog[:2000] if self._agent_catalog else ''
 
-        # ── Claude usage log ───────────────────────────────────────────────────
-        self._claude_calls: list[dict] = []
+        # ── LLM usage log ──────────────────────────────────────────────────────
+        self._llm_calls: list[dict] = []
 
         # ── Register LLM handler on the bus ───────────────────────────────────
         # Agents call bus.ask(agent, purpose, prompt) when they need LLM help.
-        # The Orchestrator intercepts, calls Claude, logs usage, returns the answer.
+        # The Orchestrator intercepts, calls the LLM, logs usage, returns the answer.
         # The system parameter carries the skill/agent context so every call
         # is aware of the pipeline's capability catalog (P8 — Modular Skills).
+
+        _CLUSTERING_ALGO_KNOWLEDGE = """
+CLUSTERING ALGORITHMS KNOWLEDGE:
+- KMeans: Best for large datasets (>100k), spherical clusters, fast. Sensitive to outliers.
+- Hierarchical (Ward): Best for nested/hierarchical structure, medium datasets, high-skewness data. Deterministic.
+- DBSCAN: Best when clusters have irregular shapes, data has noise/outliers, density-based. Does not require k. Returns noise label -1.
+- GMM (Gaussian Mixture): Best for overlapping clusters, soft/probabilistic assignments, elliptical clusters. Requires k.
+- Fuzzy C-Means: Similar to GMM, partial memberships. Best when boundaries are gradual.
+
+CLASSIFIER ALGORITHMS KNOWLEDGE:
+- Random Forest: Robust baseline, handles high-dim, little tuning needed.
+- XGBoost: Best for tabular data, handles class imbalance, slightly slower to train.
+- Gradient Boosting: Good for mid-size data, slower than RF but often more accurate.
+- Logistic Regression: Fast, interpretable, best for linearly separable personas.
+"""
+
         def _llm_handler(agent: str, purpose: str, prompt: str, max_tokens: int) -> str:
             print(f"\n  [Orchestrator] ← {agent} requests LLM help: {purpose}")
 
-            # Build system context: routing decisions get the full skill catalog;
+            # Build system context: routing decisions get the full skill catalog + ML knowledge;
             # all other calls get a brief agent-role description.
             purpose_lower = purpose.lower()
             is_routing = any(kw in purpose_lower for kw in _ROUTING_PURPOSES)
@@ -265,7 +281,13 @@ class Orchestrator:
                     "You are an AI orchestrator for a multi-agent customer segmentation pipeline.\n"
                     "The following skills and agents are available to you when making decisions.\n\n"
                     f"{_skill_summary}\n\n"
-                    "Use your knowledge of these skills when deciding how to route the pipeline."
+                    f"{_CLUSTERING_ALGO_KNOWLEDGE}\n"
+                    "Use your knowledge of these skills and algorithms when deciding how to route the pipeline."
+                )
+            elif is_routing:
+                system_ctx = (
+                    "You are an AI orchestrator for a multi-agent customer segmentation pipeline.\n"
+                    f"{_CLUSTERING_ALGO_KNOWLEDGE}"
                 )
             elif _agent_summary:
                 system_ctx = (
@@ -285,7 +307,7 @@ class Orchestrator:
                 messages=[{'role': 'user', 'content': prompt}],
             )
             elapsed = round(time.perf_counter() - t0, 2)
-            self._claude_calls.append({
+            self._llm_calls.append({
                 'agent':         agent,
                 'purpose':       purpose,
                 'input_tokens':  resp.usage.input_tokens,
@@ -563,7 +585,7 @@ class Orchestrator:
 
             if cr.action == 'reselect_features':
                 print(f'\n[Orchestrator] Clustering → reselect features: {cr.reasoning}')
-                # Ask Claude to tune parameters before the next iteration
+                # Ask the LLM to tune parameters before the next iteration
                 new_params = self._ask_parameter_tuning(iteration, run_history, state)
                 state.tuning_params.update(new_params)
 
@@ -608,7 +630,7 @@ class Orchestrator:
                 state.naming_feedback = ''
                 print(f'\n[Orchestrator] Clarity Gate failed → re-clustering.')
                 # Tune params — clarity failures usually mean clusters are too similar;
-                # Claude may suggest reducing k, switching algorithm, or refocusing features.
+                # The LLM may suggest reducing k, switching algorithm, or refocusing features.
                 new_params = self._ask_parameter_tuning(iteration, run_history, state)
                 state.tuning_params.update(new_params)
                 continue
@@ -623,6 +645,7 @@ class Orchestrator:
                 history=state.classifier_history,
                 feedback=state.classifier_feedback,
                 iteration=iteration,
+                config=self.config,
             )
             self._timings['Classifier'].append(time.perf_counter() - _t0)
             state.classifier_history.append(clf)
@@ -683,7 +706,7 @@ class Orchestrator:
                     },
                     'run_history': run_history,
                     'timing': self._timing_dict(),
-                    'claude_usage': self._claude_usage_dict(),
+                    'llm_usage': self._llm_usage_dict(),
                 }
 
             elif decision.action == 'quit':
@@ -729,7 +752,7 @@ class Orchestrator:
                 'personas': best_personas,
                 'run_history': run_history,
                 'timing': self._timing_dict(),
-                'claude_usage': self._claude_usage_dict(),
+                'llm_usage': self._llm_usage_dict(),
             }
 
         # ── Path B: no naming result ever passed — use the best-silhouette cluster ─
@@ -760,6 +783,7 @@ class Orchestrator:
                 history=state.classifier_history,
                 feedback='Best-effort fallback run.',
                 iteration=state.total_iterations + 1,
+                config=self.config,
             )
 
             print('  Saving best-effort result...')
@@ -777,7 +801,7 @@ class Orchestrator:
                 'silhouette': state.best_silhouette_value,
                 'run_history': run_history,
                 'timing': self._timing_dict(),
-                'claude_usage': self._claude_usage_dict(),
+                'llm_usage': self._llm_usage_dict(),
             }
 
         # ── Path C: no usable result at all ────────────────────────────────────
@@ -787,7 +811,7 @@ class Orchestrator:
             'personas': None,
             'run_history': run_history,
             'timing': self._timing_dict(),
-            'claude_usage': self._claude_usage_dict(),
+            'llm_usage': self._llm_usage_dict(),
         }
 
     # ── Dynamic parameter tuning ───────────────────────────────────────────────
@@ -799,9 +823,9 @@ class Orchestrator:
         state,
     ) -> dict:
         """
-        After a failed iteration, ask Claude to suggest improved pipeline parameters.
+        After a failed iteration, ask the LLM to suggest improved pipeline parameters.
 
-        Claude sees the history of what happened (silhouette scores, VIF removals,
+        The LLM sees the history of what happened (silhouette scores, VIF removals,
         feature counts) and proposes new values for vif_threshold, k_range,
         algorithm, min_silhouette, and feature_focus.
 
@@ -861,25 +885,29 @@ Pipeline history (recent):
 Dataset: ~983 bank customers, ~232 transaction-ratio/spend/frequency features.
 Banking features typically yield silhouette 0.08–0.20 even in good segmentations.
 
+Available clustering algorithms:
+  kmeans, hierarchical, dbscan, gmm, fuzzy_cmeans, or null (auto-select)
+
 Tuning guidelines:
 - If VIF gate removes >60 features or hits max_iterations: raise vif_threshold (try 12–18)
-- If silhouette consistently <0.10 with hierarchical: switch to kmeans
+- If silhouette consistently <0.10 with hierarchical: switch to kmeans or gmm
 - If silhouette is low across all k values: narrow k_range to [3,4,5,6] or [4,5,6,7]
 - If many features selected but silhouette stays low: add feature_focus to guide selector
 - Lower min_silhouette only if data genuinely resists clustering (e.g. keep at 0.03)
 - Do NOT lower min_silhouette below 0.02
+- dbscan is good when you suspect outlier-heavy data or irregular cluster shapes
 
 Return ONLY a valid JSON object — no markdown fences, no extra text:
 {{
   "vif_threshold": <float 5–25>,
   "k_range": [<int>, ...],
-  "algorithm": "kmeans" | "hierarchical" | null,
+  "algorithm": "kmeans" | "hierarchical" | "dbscan" | "gmm" | "fuzzy_cmeans" | null,
   "min_silhouette": <float 0.02–0.12>,
   "feature_focus": "<short hint for FeatureSelector, or empty string>",
   "reasoning": "<1-2 sentences explaining the change>"
 }}"""
 
-        print(f'\n  [Orchestrator] Asking Claude to tune parameters for iteration {iteration + 1}...')
+        print(f'\n  [Orchestrator] Asking LLM to tune parameters for iteration {iteration + 1}...')
         raw = self.bus.ask(
             agent="Orchestrator",
             purpose="tune pipeline parameters based on iteration failures",
@@ -909,7 +937,7 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
             result['vif_threshold'] = float(max(5.0, min(25.0, params['vif_threshold'])))
         if 'k_range' in params and isinstance(params['k_range'], list) and len(params['k_range']) >= 2:
             result['k_range'] = [int(k) for k in params['k_range'] if isinstance(k, (int, float))]
-        if params.get('algorithm') in ('kmeans', 'hierarchical', None):
+        if params.get('algorithm') in ('kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans', None):
             result['algorithm'] = params['algorithm']
         if 'min_silhouette' in params:
             result['min_silhouette'] = float(max(0.02, min(0.12, params['min_silhouette'])))
@@ -953,9 +981,9 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
             'agents':  agents,
         }
 
-    def _claude_usage_dict(self) -> dict:
+    def _llm_usage_dict(self) -> dict:
         by_agent: dict = defaultdict(lambda: {'calls': 0, 'input_tokens': 0, 'output_tokens': 0, 'time_s': 0.0, 'detail': []})
-        for c in self._claude_calls:
+        for c in self._llm_calls:
             a = c['agent']
             by_agent[a]['calls']         += 1
             by_agent[a]['input_tokens']  += c['input_tokens']
@@ -966,16 +994,16 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
                 'output_tokens': c['output_tokens'],
                 'time_s':        c['time_s'],
             })
-        total_in  = sum(c['input_tokens']  for c in self._claude_calls)
-        total_out = sum(c['output_tokens'] for c in self._claude_calls)
-        total_t   = sum(c['time_s']        for c in self._claude_calls)
+        total_in  = sum(c['input_tokens']  for c in self._llm_calls)
+        total_out = sum(c['output_tokens'] for c in self._llm_calls)
+        total_t   = sum(c['time_s']        for c in self._llm_calls)
         return {
-            'by_agent':            dict(by_agent),
-            'total_calls':         len(self._claude_calls),
-            'total_input_tokens':  total_in,
+            'by_agent':           dict(by_agent),
+            'total_calls':        len(self._llm_calls),
+            'total_input_tokens': total_in,
             'total_output_tokens': total_out,
-            'total_claude_time_s': round(total_t, 1),
-            'raw_calls':           list(self._claude_calls),
+            'total_llm_time_s':   round(total_t, 1),
+            'raw_calls':          list(self._llm_calls),
         }
 
     def _print_timing_summary(self) -> None:

@@ -3,36 +3,37 @@ FeatureEngineerAgent
 
 Contract: docs/agents/feature_engineer.md. Skills: docs/skills/orchestrator_bus.md.
 
-Turns raw transaction-level data into a customer-level feature matrix.
+Turns any tabular entity-level or event-level data into an entity-level feature matrix.
 
 Architecture:
-  - The agent owns a library of feature BUILDERS (pure pandas functions).
+  - The agent owns a library of feature BUILDERS (generic statistical functions).
   - It asks the Orchestrator (via bus.ask) to act as a data scientist:
-    given the schema + business purpose + the idea framework below, propose
-    which builders to run and with what topics/windows.
+    given the schema + business purpose + the idea framework, propose
+    which builders to run and with what columns/windows.
   - The agent then executes the plan and prints every step.
 
 The Idea Framework
 ──────────────────
-Features capture BEHAVIOR on a TOPIC over a TIME WINDOW:
+Features capture a STATISTICAL SUMMARY of an ATTRIBUTE over a TIME WINDOW.
 
-  behavior  : count, total, avg, median, std, max, frequency, recency,
-               consecutive_months
-  topic     : spending category, merchant, geography (state/city), time-of-day
-  window    : 3m, 6m, 12m, all_time
+  summary   : count, sum, mean, median, std, max, frequency, recency,
+               consecutive_periods
+  attribute : any column in the raw data (a category, a label, a signal, etc.)
+  window    : recent period (e.g. last 3 / 6 / 12 periods) or all-time
 
-Additionally, TREND features show change between windows:
-  trend     : metric_6m / metric_12m  →  is the customer accelerating or
-               slowing down in this behaviour?
+Additionally, TREND features compare two windows:
+  trend     : summary_short_window / summary_long_window
+              → is the entity's behaviour accelerating or decelerating?
 
 The LLM is shown:
   1. The raw schema and data statistics
   2. The business purpose
   3. The full library of available builders
   4. The idea framework
-  ...and asked to produce a structured feature plan.
+  ...and asked to produce a structured feature plan using the actual column names
+  found in the data.
 
-The agent executes the plan and reports every feature group to the terminal.
+The agent executes the plan and reports every step to the terminal.
 """
 from __future__ import annotations
 
@@ -52,56 +53,50 @@ from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 # ── Available builder catalogue (shown to LLM) ────────────────────────────────
 BUILDER_CATALOGUE = """
 AVAILABLE FEATURE BUILDERS
-Each builder is a function the agent can call. The LLM selects which to use.
+Each builder is a pure statistical function. The LLM selects which to use and
+specifies ACTUAL column names from the dataset schema.
 
-[1] category_behavior(categories, windows, metrics)
-    For each category × window × metric:
-    - count      → n_event_{cat}_{w}m     : number of event
-    - total      → amt_{cat}_{w}m       : total event value
-    - avg        → avg_spend_{cat}_{w}m : mean event value
-    - median     → median_spend_{cat}_{w}m : median event value
-    - std        → std_spend_{cat}_{w}m : variability of event value
-    - frequency  → freq_{cat}_{w}m     : events per active day
-    - pct_event  → pct_event_{cat}_{w}m  : share of all events
-    - pct_spend  → pct_spend_{cat}_{w}m: share of total event value
+[1] group_aggregate(group_col, value_col, windows, metrics)
+    For each unique value in group_col × window × metric, one column per combination.
+    Column name: {metric}_{group_col}_{group_val}_{window}
+    metrics: count, sum, mean, median, std, max, freq (events per active period),
+             pct_count (share of all events), pct_sum (share of total value)
 
-[2] category_trend(categories, base_window, compare_window)
-    For each category: ratio of metric in short window vs longer window.
-    Captures ACCELERATION or DECELERATION of event value.
-    - trend_event_{cat}   : n_event_{cat}_{base}m / (n_event_{cat}_{cmp}m + 1)
-    - trend_amt_{cat}   : amt_{cat}_{base}m   / (amt_{cat}_{cmp}m   + 1)
+[2] group_trend(group_col, value_col, base_window, compare_window)
+    Trend = metric in base_window / metric in compare_window.
+    Captures whether an entity's behaviour on this group is growing or shrinking.
+    Column names: trend_count_{group_col}_{val}, trend_sum_{group_col}_{val}
 
-[3] category_loyalty(categories)
-    For each category: consecutive active months with at least one event (loyalty signal).
-    - consec_months_{cat}
+[3] group_streak(group_col)
+    Consecutive periods (months) with at least one record per group value.
+    Useful as a loyalty / engagement signal.
+    Column names: streak_{group_col}_{val}
 
-[4] overall_spend(windows)
-    Aggregate spend behavior across all categories per window:
-    - total_event_value_{w}m, avg_event_value_{w}m, std_event_value_{w}m, max_event_value_{w}m,
-      median_event_value_{w}m, pct_high_value_{w}m (% events above 75th percentile)
+[4] overall_aggregate(value_col, windows, metrics)
+    Aggregate statistics across ALL records (no grouping).
+    Column names: {metric}_{value_col}_{window}
+    metrics: count, sum, mean, median, std, max, pct_high (% above 75th pctile)
 
-[5] overall_frequency(windows)
-    Event frequency and recency:
-    - total_event_count_{w}m, active_months_{w}m, avg_days_between_event_{w}m,
-      days_since_last_event (all_time only)
+[5] frequency_recency(windows)
+    Event counts, active periods, recency, and inter-event gap per entity.
+    Column names: event_count_{window}, active_periods_{window},
+                  days_since_last (all-time only), avg_gap_days_{window}
 
-[6] merchant_diversity(windows)
-    Breadth of merchant and category usage:
-    - n_unique_merchants_{w}m, n_unique_categories_{w}m
+[6] entity_diversity(cols_to_count, windows)
+    Number of unique values per specified column per window.
+    Captures breadth / variety of behaviour.
+    Column names: n_unique_{col_name}_{window}
+    cols_to_count: list of column names whose cardinality to measure
 
-[7] geographic_mobility(windows)
-    Geographic spread of spending:
-    - n_unique_states_{w}m, n_unique_cities_{w}m
+[7] temporal_patterns(windows)
+    Time-of-day and day-of-week distributions (only if a timestamp exists).
+    Column names: pct_morning_{window}, pct_midday_{window}, pct_evening_{window},
+                  pct_night_{window}, pct_weekend_{window}, peak_hour_{window}
 
-[8] temporal_patterns(windows)
-    Time-of-day and day-of-week patterns:
-    - pct_weekend_{w}m, pct_evening_{w}m (18-23h), pct_morning_{w}m (6-12h),
-      pct_night_{w}m (0-6h), pct_midday_{w}m (12-18h)
-    - peak_hour_{w}m (most common event hour)
-
-[9] demographic()
-    Static customer attributes (computed once, not windowed):
-    - age, gender_female (1=F, 0=M)
+[8] static_attributes(cols)
+    Copy static (non-windowed) attribute columns directly as entity-level features.
+    Handles numeric columns (mean-per-entity) and binary categoricals (first value).
+    Column names: same as source column names.
 """
 
 WINDOWS_AVAILABLE = [3, 6, 12]   # months
@@ -340,54 +335,61 @@ class FeatureEngineerAgent:
 
         feedback_section = f"\nFeedback from previous round:\n{feedback}\n" if feedback else ""
 
+        cats_str = cats if cats else "(no category column detected)"
         prompt = f"""You are a data scientist designing a feature engineering plan for a clustering project.
 
 BUSINESS PURPOSE: {user_intent.business_purpose}
 ENTITY TO CLUSTER: {user_intent.target_entity}
 {f"CONSTRAINTS: {user_intent.constraints}" if user_intent.constraints else ""}
 
-RAW DATA SCHEMA ({len(raw_df.columns)} columns, detected keys below):
-  customer_id column : {customer_col}
-  amount column      : {amount_col}
-  category column    : {category_col}
-  timestamp column   : {ts_col}
-  date range         : {raw_df['_ts'].min().date()} → {max_date.date()}
-  n_transactions     : {len(raw_df):,}
-  n_customers        : {raw_df[customer_col].nunique():,}
-  categories present : {cats}
+RAW DATA SCHEMA ({len(raw_df.columns)} columns):
+  entity (grouping) column : {customer_col}
+  numeric value column     : {amount_col if amount_col else "(none detected)"}
+  grouping/category column : {category_col if category_col else "(none detected)"}
+  timestamp column         : {ts_col if ts_col else "(none detected)"}
+  date range               : {raw_df['_ts'].min().date()} → {max_date.date()}
+  n_records                : {len(raw_df):,}
+  n_entities               : {raw_df[customer_col].nunique():,}
+  category values found    : {cats_str}
 
-Full schema:
+Full column schema:
 {schema_str}
 
 THE IDEA FRAMEWORK FOR FEATURE ENGINEERING
 ───────────────────────────────────────────
-Features should capture BEHAVIOR on a TOPIC over a TIME WINDOW:
+A good feature matrix captures HOW entities differ from each other along statistical
+dimensions. For each entity (row in the output), compute:
 
-  behavior  = what the customer does
-              (count, total, avg, median, std, frequency, recency, consecutive months)
-  topic     = what they do it on
-              (spending category, merchant, geography, time-of-day)
-  window    = how recently
-              (3m = last 3 months, 6m = last 6 months, 12m = last 12 months, all = all time)
+  SUMMARY STATISTICS: count, sum, mean, median, std, max of any numeric column
+  GROUPED SUMMARIES:  same statistics broken down by a categorical grouping column
+  TIME WINDOWS:       compute the above for recent periods (e.g. last 3/6/12 months)
+                      and all-time. Use whatever time periods make sense for this data.
+  TRENDS:             ratio of a short-window metric to a long-window metric
+                      (growing vs. shrinking behaviour)
+  DIVERSITY:          how many unique values appear for a given column (breadth)
+  RECENCY/FREQUENCY:  when did the entity last appear? how often? how regular?
+  TEMPORAL RHYTHMS:   if time is available, what time-of-day / day-of-week patterns exist?
+  STATIC ATTRIBUTES:  any fixed properties of the entity (demographics, type, etc.)
 
-Additionally, TREND features capture CHANGE between windows:
-  trend     = behavior_6m / behavior_12m
-              → is the customer accelerating or decelerating in this behavior?
-              → very powerful for clustering customers by lifecycle stage
-
-The goal: create features that make customers with DIFFERENT SHOPPING BEHAVIORS
-look numerically different from each other, so clustering can find distinct personas.
+The goal: make entities with DIFFERENT BEHAVIOURS look numerically different from
+each other, so that clustering can discover distinct groups.
 
 {BUILDER_CATALOGUE}
 {feedback_section}
 INSTRUCTIONS:
-1. Select the builders that will best capture the behavioral dimensions relevant to
-   the business purpose.
-2. For each selected builder, specify which topics (categories/windows) to use.
-3. Include TREND features — they reveal whether behavior is growing or shrinking.
-4. If the schema has extra columns (geography, demographics, time), use them.
-5. Aim for 80–150 features total. More features = more behavioral nuance, but keep
-   each one meaningful (no redundant duplicates).
+1. Inspect the schema above. Identify:
+   - Which column is the entity ID (rows will be grouped by this)
+   - Which column(s) are numeric values to summarise
+   - Which column(s) are categorical groupings to break behaviour down by
+   - Whether a timestamp enables windowed features
+2. Select builders that best capture the behavioural dimensions relevant to the
+   business purpose. Use the ACTUAL column names from the schema above.
+3. For group_col and value_col parameters, use the real column names from the schema.
+4. For group_values ("categories"), use only the actual values listed in
+   "category values found" above, or "all" to include all of them.
+5. Aim for 60–150 features. Prefer meaningful dimensions over redundant ones.
+6. If no timestamp exists, skip windowed builders and use static/overall builders.
+7. If no categorical column exists, skip group_aggregate / group_trend / group_streak.
 
 Return ONLY a valid JSON object (no markdown, no extra text):
 {{
@@ -397,13 +399,17 @@ Return ONLY a valid JSON object (no markdown, no extra text):
     {{
       "builder": "<builder_name from catalogue>",
       "params": {{
-        "categories": ["cat1", "cat2", ...] or "all",
+        "group_col": "<actual column name from schema>",
+        "value_col": "<actual column name from schema>",
+        "cols_to_count": ["<col1>", "<col2>"],
+        "cols": ["<col1>"],
+        "categories": ["val1", "val2"] or "all",
         "windows": [6, 12] or [3, 6, 12] or ["all"],
-        "metrics": ["count", "total", "avg", "median", "std", "frequency", "pct_event", "pct_spend"],
+        "metrics": ["count", "sum", "mean", "median", "std", "max", "freq", "pct_count", "pct_sum"],
         "base_window": 6,
         "compare_window": 12
       }},
-      "rationale": "why this builder is valuable for the business purpose"
+      "rationale": "why this builder adds value for this specific dataset"
     }},
     ...
   ]
@@ -521,69 +527,111 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         cats: list[str],
         max_date: pd.Timestamp,
     ) -> pd.DataFrame | None:
-        """Dispatch to the correct builder function."""
+        """Dispatch to the correct builder function. Accepts both new and legacy names."""
 
-        if name == "category_behavior":
+        # Resolve group_col / value_col from params (new API) or fall back to detected cols
+        group_col  = params.get("group_col",  category_col)
+        value_col  = params.get("value_col",  amount_col)
+        categories = params.get("categories", "all")
+        # Resolve category values
+        avail_cats = (
+            sorted(raw_df[group_col].dropna().unique().tolist())
+            if group_col and group_col in raw_df.columns
+            else cats
+        )
+        resolved_cats = self._resolve_cats(categories, avail_cats)
+
+        if name in ("group_aggregate", "category_behavior"):
+            if not group_col or not value_col:
+                return None
             return self._build_category_behavior(
-                raw_df, customer_col, amount_col, category_col,
-                categories=self._resolve_cats(params.get("categories", "all"), cats),
+                raw_df, customer_col, value_col, group_col,
+                categories=resolved_cats,
                 windows=params.get("windows", [6, 12]),
-                metrics=params.get("metrics", ["count", "total", "avg"]),
+                metrics=params.get("metrics", ["count", "sum", "mean"]),
                 max_date=max_date,
             )
 
-        elif name == "category_trend":
+        elif name in ("group_trend", "category_trend"):
+            if not group_col or not value_col:
+                return None
             return self._build_category_trend(
-                raw_df, customer_col, amount_col, category_col,
-                categories=self._resolve_cats(params.get("categories", "all"), cats),
+                raw_df, customer_col, value_col, group_col,
+                categories=resolved_cats,
                 base_window=params.get("base_window", 6),
                 compare_window=params.get("compare_window", 12),
                 max_date=max_date,
             )
 
-        elif name == "category_loyalty":
+        elif name in ("group_streak", "category_loyalty"):
+            if not group_col:
+                return None
             return self._build_category_loyalty(
-                raw_df, customer_col, category_col,
-                categories=self._resolve_cats(params.get("categories", "all"), cats),
+                raw_df, customer_col, group_col,
+                categories=resolved_cats,
             )
 
-        elif name == "overall_spend":
-            return self._build_overall_spend(
-                raw_df, customer_col, amount_col,
+        elif name in ("overall_aggregate", "overall_value", "overall_spend"):
+            if not value_col:
+                return None
+            return self._build_overall_aggregate(
+                raw_df, customer_col, value_col,
                 windows=params.get("windows", [6, 12, "all"]),
                 max_date=max_date,
             )
 
-        elif name == "overall_frequency":
+        elif name in ("frequency_recency", "overall_frequency"):
             return self._build_overall_frequency(
                 raw_df, customer_col,
                 windows=params.get("windows", [6, 12, "all"]),
                 max_date=max_date,
             )
 
-        elif name == "merchant_diversity":
-            return self._build_merchant_diversity(
-                raw_df, customer_col, category_col,
-                windows=params.get("windows", [6, 12, "all"]),
-                max_date=max_date,
-            )
-
-        elif name == "geographic_mobility":
-            return self._build_geographic_mobility(
+        elif name in ("entity_diversity", "merchant_diversity"):
+            # cols_to_count from params; fall back to all low-cardinality string cols
+            cols_to_count = params.get("cols_to_count", [])
+            if not cols_to_count and group_col:
+                cols_to_count = [group_col]
+            return self._build_entity_diversity(
                 raw_df, customer_col,
+                cols_to_count=cols_to_count,
                 windows=params.get("windows", [6, 12, "all"]),
                 max_date=max_date,
             )
 
-        elif name == "temporal_patterns":
+        elif name in ("geographic_mobility",):
+            # Map to entity_diversity using any geo-like columns
+            geo_cols = [c for c in raw_df.columns
+                        if any(kw in c.lower() for kw in ["state", "city", "region", "province", "location", "country", "zip"])]
+            return self._build_entity_diversity(
+                raw_df, customer_col,
+                cols_to_count=geo_cols,
+                windows=params.get("windows", [6, 12, "all"]),
+                max_date=max_date,
+            )
+
+        elif name in ("temporal_patterns",):
             return self._build_temporal_patterns(
                 raw_df, customer_col,
-                windows=params.get("windows", [6, 12, "all"]),
+                windows=params.get("windows", ["all"]),
                 max_date=max_date,
             )
 
-        elif name == "demographic":
-            return self._build_demographic(raw_df, customer_col)
+        elif name in ("static_attributes", "demographic"):
+            cols = params.get("cols", [])
+            if not cols:
+                # Auto-detect: static columns (dob, gender, age, etc.)
+                for c in raw_df.columns:
+                    if c.startswith("_") or c == customer_col:
+                        continue
+                    if raw_df[c].dtype == object and raw_df[c].nunique() <= 20:
+                        cols.append(c)
+                    elif pd.api.types.is_numeric_dtype(raw_df[c]) and c not in (amount_col or ""):
+                        # Only add if it looks static (low nunique per customer)
+                        avg_unique = raw_df.groupby(customer_col)[c].nunique().mean()
+                        if avg_unique < 2:
+                            cols.append(c)
+            return self._build_static_attributes(raw_df, customer_col, cols=cols)
 
         else:
             print(f"    Unknown builder '{name}' — skipping.")
@@ -614,17 +662,17 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                 cat_sub = sub[sub[category_col] == cat].groupby(customer_col)[amount_col]
                 for metric in metrics:
                     col_name = self._build_col_name(metric, cat, label)
-                    if metric in ("count", "n_event"):
+                    if metric in ("count", "n_event", "n_txn"):
                         s = cat_sub.count().rename(col_name)
-                    elif metric in ("total", "amt"):
+                    elif metric in ("total", "amt", "sum"):
                         s = cat_sub.sum().rename(col_name)
-                    elif metric in ("avg", "average", "avg_spend"):
+                    elif metric in ("avg", "average", "avg_spend", "mean"):
                         s = cat_sub.mean().rename(col_name)
-                    elif metric in ("median", "median_spend"):
+                    elif metric in ("median", "median_spend", "median_value"):
                         s = cat_sub.median().rename(col_name)
-                    elif metric in ("std", "std_spend"):
+                    elif metric in ("std", "std_spend", "std_value"):
                         s = cat_sub.std().fillna(0).rename(col_name)
-                    elif metric in ("max",):
+                    elif metric in ("max", "max_spend", "max_value"):
                         s = cat_sub.max().rename(col_name)
                     elif metric in ("frequency", "freq"):
                         # events per active day
@@ -633,11 +681,11 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                             lambda x: max((x.max() - x.min()).days, 1)
                         )
                         s = (n / days_active).rename(col_name)
-                    elif metric in ("pct_event",):
+                    elif metric in ("pct_event", "pct_count"):
                         total_n = sub.groupby(customer_col)[amount_col].count()
                         cat_n = cat_sub.count()
                         s = (cat_n / total_n.replace(0, np.nan)).fillna(0).rename(col_name)
-                    elif metric in ("pct_spend",):
+                    elif metric in ("pct_spend", "pct_sum", "pct_value"):
                         total_s = sub.groupby(customer_col)[amount_col].sum()
                         cat_s = cat_sub.sum()
                         s = (cat_s / total_s.replace(0, np.nan)).fillna(0).rename(col_name)
@@ -650,18 +698,30 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         return pd.concat(frames, axis=1).fillna(0)
 
     def _build_col_name(self, metric: str, cat: str, label: str) -> str:
-        # Use n_txn (not n_event) so FeatureSelector / Clusterer / Classifier
-        # log-transforms and profile lookups work without modification.
+        """
+        Build a generic column name from metric, group value, and window label.
+        Uses plain statistical terms — no domain-specific prefixes.
+        """
         metric_map = {
-            "count": "n_txn", "n_event": "n_txn", "n_txn": "n_txn",
-            "total": "amt", "amt": "amt",
-            "avg": "avg_spend", "average": "avg_spend", "avg_spend": "avg_spend",
-            "median": "median_spend", "median_spend": "median_spend",
-            "std": "std_spend", "std_spend": "std_spend",
-            "max": "max_spend", "max_spend": "max_spend",
+            # Count variants
+            "count": "count", "n_event": "count", "n_txn": "count",
+            # Sum variants
+            "total": "sum", "amt": "sum", "sum": "sum",
+            # Mean variants
+            "avg": "mean", "average": "mean", "avg_spend": "mean",
+            "avg_value": "mean", "mean": "mean",
+            # Median
+            "median": "median", "median_spend": "median", "median_value": "median",
+            # Std
+            "std": "std", "std_spend": "std", "std_value": "std",
+            # Max
+            "max": "max", "max_spend": "max", "max_value": "max",
+            # Frequency
             "frequency": "freq", "freq": "freq",
-            "pct_event": "pct_event",
-            "pct_spend": "pct_spend",
+            # Percent count
+            "pct_event": "pct_count", "pct_count": "pct_count",
+            # Percent sum
+            "pct_spend": "pct_sum", "pct_value": "pct_sum", "pct_sum": "pct_sum",
         }
         m = metric_map.get(metric, metric)
         return f"{m}_{cat}_{label}"
@@ -683,8 +743,8 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             a_base = cb.sum()
             a_cmp  = cc.sum()
 
-            trend_n = (n_base / (n_cmp + 1)).rename(f"trend_event_{cat}")
-            trend_a = (a_base / (a_cmp + 1)).rename(f"trend_amt_{cat}")
+            trend_n = (n_base / (n_cmp + 1)).rename(f"trend_count_{cat}")
+            trend_a = (a_base / (a_cmp + 1)).rename(f"trend_sum_{cat}")
             frames += [trend_n, trend_a]
 
         if not frames:
@@ -713,7 +773,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                 return max_run
 
             s = cat_df.groupby(customer_col)["_ym"].apply(consec).rename(
-                f"consec_months_{cat}"
+                f"streak_{cat}"
             )
             frames.append(s)
 
@@ -721,39 +781,27 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             return pd.DataFrame()
         return pd.concat(frames, axis=1).fillna(0)
 
-    def _build_overall_spend(
+    def _build_overall_aggregate(
         self, df, customer_col, amount_col, windows, max_date,
     ) -> pd.DataFrame:
         frames = []
         p75_global = df[amount_col].quantile(0.75)
+        val = amount_col  # use actual column name in output column names
 
         for w in windows:
             sub = df[self._window_mask(df, max_date, w)] if w != "all" else df
             grp = sub.groupby(customer_col)[amount_col]
+            label = "all" if w == "all" else f"{w}m"
 
-            if w == "all":
-                # Use canonical names (no suffix) so clusterer _extract_profiles
-                # and run_pipeline.py reporting can find these exact columns.
-                frames += [
-                    grp.sum().rename("total_spend"),
-                    grp.mean().rename("avg_txn_amt"),
-                    grp.std().fillna(0).rename("std_txn_amt"),
-                    grp.max().rename("max_txn_amt"),
-                    grp.median().rename("median_txn_amt"),
-                    (sub[sub[amount_col] > p75_global].groupby(customer_col)[amount_col].count()
-                     / grp.count().replace(0, np.nan)).fillna(0).rename("pct_high_value"),
-                ]
-            else:
-                label = f"{w}m"
-                frames += [
-                    grp.sum().rename(f"total_spend_{label}"),
-                    grp.mean().rename(f"avg_txn_amt_{label}"),
-                    grp.std().fillna(0).rename(f"std_txn_amt_{label}"),
-                    grp.max().rename(f"max_txn_amt_{label}"),
-                    grp.median().rename(f"median_txn_amt_{label}"),
-                    (sub[sub[amount_col] > p75_global].groupby(customer_col)[amount_col].count()
-                     / grp.count().replace(0, np.nan)).fillna(0).rename(f"pct_high_value_{label}"),
-                ]
+            frames += [
+                grp.sum().rename(f"sum_{val}_{label}"),
+                grp.mean().rename(f"mean_{val}_{label}"),
+                grp.std().fillna(0).rename(f"std_{val}_{label}"),
+                grp.max().rename(f"max_{val}_{label}"),
+                grp.median().rename(f"median_{val}_{label}"),
+                (sub[sub[amount_col] > p75_global].groupby(customer_col)[amount_col].count()
+                 / grp.count().replace(0, np.nan)).fillna(0).rename(f"pct_high_{val}_{label}"),
+            ]
 
         if not frames:
             return pd.DataFrame()
@@ -765,11 +813,11 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         frames = []
         days_since = (
             (max_date - df.groupby(customer_col)["_ts"].max())
-            .dt.days.rename("days_since_last_event")
+            .dt.days.rename("days_since_last")
         )
         frames.append(days_since)
 
-        # avg days between consecutive transactions (helper)
+        # avg days between consecutive records (helper)
         def avg_gap(x):
             s = x.sort_values()
             if len(s) < 2:
@@ -779,82 +827,46 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         for w in windows:
             sub = df[self._window_mask(df, max_date, w)] if w != "all" else df
             grp = sub.groupby(customer_col)
+            label = "all" if w == "all" else f"{w}m"
 
-            if w == "all":
-                # Canonical names — no suffix — so clusterer _extract_profiles
-                # and classifier log-transform lists find these columns.
-                frames += [
-                    grp["_ts"].count().rename("total_txn_count"),
-                    grp["_ts"].apply(lambda x: x.dt.to_period("M").nunique()).rename(
-                        "active_months"
-                    ),
-                    grp["_ts"].apply(avg_gap).rename("avg_days_between_txn"),
-                ]
-            else:
-                label = f"{w}m"
-                frames += [
-                    grp["_ts"].count().rename(f"total_txn_count_{label}"),
-                    grp["_ts"].apply(lambda x: x.dt.to_period("M").nunique()).rename(
-                        f"active_months_{label}"
-                    ),
-                    grp["_ts"].apply(avg_gap).rename(f"avg_days_between_txn_{label}"),
-                ]
+            frames += [
+                grp["_ts"].count().rename(f"event_count_{label}"),
+                grp["_ts"].apply(lambda x: x.dt.to_period("M").nunique()).rename(
+                    f"active_periods_{label}"
+                ),
+                grp["_ts"].apply(avg_gap).rename(f"avg_gap_days_{label}"),
+            ]
 
         if not frames:
             return pd.DataFrame()
         return pd.concat(frames, axis=1).fillna(0)
 
-    def _build_merchant_diversity(
-        self, df, customer_col, category_col, windows, max_date,
+    def _build_entity_diversity(
+        self, df, customer_col, cols_to_count, windows, max_date,
     ) -> pd.DataFrame:
+        """
+        Count unique values per specified column per window.
+        Generic — works for any categorical columns (category, merchant, city, tag, etc.).
+        """
         frames = []
-        merch_col = self._detect_col(df, ["merchant", "merchant_name", "store"])
+        # Only use columns that actually exist in df
+        valid_cols = [c for c in cols_to_count if c in df.columns]
+        if not valid_cols and not cols_to_count:
+            # Auto-detect: use all low-cardinality string columns
+            for col in df.columns:
+                if col.startswith("_") or col == customer_col:
+                    continue
+                if df[col].dtype == object and df[col].nunique() < 500:
+                    valid_cols.append(col)
 
         for w in windows:
+            label = "all" if w == "all" else f"{w}m"
             sub = df[self._window_mask(df, max_date, w)] if w != "all" else df
             grp = sub.groupby(customer_col)
-
-            if w == "all":
-                # Canonical names — no suffix — expected by clusterer _extract_profiles.
-                if category_col:
-                    frames.append(
-                        grp[category_col].nunique().rename("n_unique_categories")
-                    )
-                if merch_col:
-                    frames.append(
-                        grp[merch_col].nunique().rename("n_unique_merchants")
-                    )
-            else:
-                label = f"{w}m"
-                if category_col:
-                    frames.append(
-                        grp[category_col].nunique().rename(f"n_unique_categories_{label}")
-                    )
-                if merch_col:
-                    frames.append(
-                        grp[merch_col].nunique().rename(f"n_unique_merchants_{label}")
-                    )
-
-        if not frames:
-            return pd.DataFrame()
-        return pd.concat(frames, axis=1).fillna(0)
-
-    def _build_geographic_mobility(
-        self, df, customer_col, windows, max_date,
-    ) -> pd.DataFrame:
-        frames = []
-        state_col = self._detect_col(df, ["state", "province", "region"])
-        city_col  = self._detect_col(df, ["city", "town", "location"])
-
-        for w in windows:
-            label = str(w) + "m" if w != "all" else "all"
-            sub = df[self._window_mask(df, max_date, w)] if w != "all" else df
-            grp = sub.groupby(customer_col)
-
-            if state_col:
-                frames.append(grp[state_col].nunique().rename(f"n_unique_states_{label}"))
-            if city_col:
-                frames.append(grp[city_col].nunique().rename(f"n_unique_cities_{label}"))
+            for col in valid_cols:
+                frames.append(
+                    grp[col].nunique().rename(f"n_unique_{col}_{label}")
+                )
 
         if not frames:
             return pd.DataFrame()
@@ -899,26 +911,37 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             return pd.DataFrame()
         return pd.concat(frames, axis=1).fillna(0)
 
-    def _build_demographic(self, df, customer_col) -> pd.DataFrame:
+    def _build_static_attributes(
+        self, df, customer_col, cols=None,
+    ) -> pd.DataFrame:
+        """
+        Copy static (non-windowed) attributes as entity-level features.
+        For numeric columns: takes the mean per entity.
+        For binary-encodable columns (2 unique values): encodes as 0/1.
+        For other categoricals: skips (use entity_diversity instead).
+        """
         frames = []
+        if cols is None:
+            cols = []
 
-        # Age from dob
-        dob_col = self._detect_col(df, ["dob", "date_of_birth", "birth_date", "birthdate"])
-        if dob_col:
-            ref = df["_ts"].max()
-            dob = pd.to_datetime(df[dob_col], errors="coerce")
-            df2 = df.copy()
-            df2["_age"] = (ref - dob).dt.days / 365.25
-            age = df2.groupby(customer_col)["_age"].first().rename("age")
-            frames.append(age)
-
-        # Gender (binary)
-        gender_col = self._detect_col(df, ["gender", "sex"])
-        if gender_col:
-            df2 = df.copy()
-            df2["_gf"] = (df2[gender_col].astype(str).str.upper().str[0] == "F").astype(float)
-            gf = df2.groupby(customer_col)["_gf"].first().rename("gender_female")
-            frames.append(gf)
+        for col in cols:
+            if col not in df.columns or col == customer_col or col.startswith("_"):
+                continue
+            s = df.groupby(customer_col)[col]
+            if pd.api.types.is_numeric_dtype(df[col]):
+                frames.append(s.mean().rename(col))
+            else:
+                # Try binary encoding
+                vals = df[col].dropna().unique()
+                if len(vals) == 2:
+                    v0, v1 = sorted(str(v) for v in vals)
+                    encoded = (df[col].astype(str) == v1).astype(float)
+                    df2 = df.copy()
+                    df2["_enc"] = encoded
+                    frames.append(
+                        df2.groupby(customer_col)["_enc"].first().rename(f"{col}_{v1}")
+                    )
+                # else: skip multi-class categoricals
 
         if not frames:
             return pd.DataFrame()
@@ -957,53 +980,47 @@ Return ONLY a valid JSON object (no markdown, no extra text):
     # ── Default plan fallback (if LLM fails) ──────────────────────────────────
 
     def _default_plan(self, cats: list[str]) -> dict:
-        return {
-            "overall_reasoning": "Default plan: standard behavior × category × window features.",
-            "expected_n_features": 120,
-            "builders": [
+        builders = [
+            {
+                "builder": "overall_aggregate",
+                "params": {"windows": [6, 12, "all"], "metrics": ["count", "sum", "mean", "std", "max"]},
+                "rationale": "Overall aggregate statistics across all records",
+            },
+            {
+                "builder": "frequency_recency",
+                "params": {"windows": [6, 12, "all"]},
+                "rationale": "How often and how recently does this entity appear?",
+            },
+            {
+                "builder": "temporal_patterns",
+                "params": {"windows": ["all"]},
+                "rationale": "Time-of-day and day-of-week patterns",
+            },
+        ]
+        if cats:
+            builders = [
                 {
-                    "builder": "category_behavior",
+                    "builder": "group_aggregate",
                     "params": {
                         "categories": "all",
                         "windows": [6, 12],
-                        "metrics": ["count", "total", "avg"],
+                        "metrics": ["count", "sum", "mean"],
                     },
-                    "rationale": "Core category × window behavior",
+                    "rationale": "Core group × window behaviour",
                 },
                 {
-                    "builder": "category_trend",
+                    "builder": "group_trend",
                     "params": {"categories": "all", "base_window": 6, "compare_window": 12},
-                    "rationale": "Trend: is the customer accelerating?",
+                    "rationale": "Is behaviour growing or shrinking?",
                 },
                 {
-                    "builder": "category_loyalty",
+                    "builder": "group_streak",
                     "params": {"categories": "all"},
-                    "rationale": "Consecutive months per category",
+                    "rationale": "Consecutive active periods per group",
                 },
-                {
-                    "builder": "overall_spend",
-                    "params": {"windows": [6, 12, "all"]},
-                    "rationale": "Overall spend behavior",
-                },
-                {
-                    "builder": "overall_frequency",
-                    "params": {"windows": [6, 12, "all"]},
-                    "rationale": "Transaction frequency and recency",
-                },
-                {
-                    "builder": "merchant_diversity",
-                    "params": {"windows": [6, 12, "all"]},
-                    "rationale": "Breadth of spending",
-                },
-                {
-                    "builder": "temporal_patterns",
-                    "params": {"windows": ["all"]},
-                    "rationale": "When does the customer shop?",
-                },
-                {
-                    "builder": "demographic",
-                    "params": {},
-                    "rationale": "Age and gender",
-                },
-            ],
+            ] + builders
+        return {
+            "overall_reasoning": "Default plan: statistical summaries of all available dimensions.",
+            "expected_n_features": 80,
+            "builders": builders,
         }

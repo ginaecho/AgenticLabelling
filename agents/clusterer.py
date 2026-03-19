@@ -5,13 +5,16 @@ Contract: docs/agents/clusterer.md. Skills: docs/skills/orchestrator_bus.md,
 docs/skills/algo_recommender.md, docs/skills/silhouette_optimizer.md.
 
 Fits the configured clustering algorithm on a selected feature subset,
-runs the deepening loop (same logic as notebook 03), and asks Claude
+runs the deepening loop (same logic as notebook 03), and asks the LLM
 whether to sub-cluster or request new features when a cluster is too large.
 
 Enhancements over original:
   - Uses skills.algo_recommender to auto-select algorithm from data shape
   - Uses skills.silhouette_optimizer to auto-select k data-driven
+  - Supports kmeans, hierarchical, dbscan, gmm, fuzzy_cmeans
   - Reports structured status to OrchestratorBus
+  - Category discovery from feature column names (no hard-coded CATEGORIES)
+  - Dynamic log-column detection by column name pattern
 """
 from __future__ import annotations
 
@@ -30,26 +33,42 @@ from skills.silhouette_optimizer import optimize_k
 from skills.algo_recommender import recommend_algorithm
 from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 
-# ── Constants (mirrored from notebook 03) ─────────────────────────────────────
-CATEGORIES = [
-    'entertainment', 'food_dining', 'gas_transport', 'grocery_net', 'grocery_pos',
-    'health_fitness', 'home', 'kids_pets', 'misc_net', 'misc_pos',
-    'personal_care', 'shopping_net', 'shopping_pos', 'travel',
-]
+# ── Constants ──────────────────────────────────────────────────────────────────
 WINDOWS = [6, 12]
 
 DEFAULT_K_SEARCH_RANGE = [3, 4, 5, 6, 7, 8, 10, 12, 15]
 
 
-def _build_log_cols(columns) -> list[str]:
-    candidates = (
-        [f'n_txn_{cat}_{w}m'     for cat in CATEGORIES for w in WINDOWS]
-        + [f'amt_{cat}_{w}m'     for cat in CATEGORIES for w in WINDOWS]
-        + [f'avg_spend_{cat}_{w}m' for cat in CATEGORIES for w in WINDOWS]
-        + ['total_txn_count', 'total_spend', 'avg_txn_amt', 'std_txn_amt',
-           'max_txn_amt', 'n_unique_merchants', 'avg_days_between_txn']
-    )
-    return [c for c in candidates if c in columns]
+def _detect_log_cols(df: pd.DataFrame, skewness_threshold: float = 2.0) -> list[str]:
+    """
+    Detect columns to log1p-transform based on statistical skewness.
+    Only considers non-negative numeric columns (log1p requires x >= 0).
+    No hard-coded column names or prefixes — purely data-driven.
+    """
+    numeric = df.select_dtypes(include=[np.number])
+    non_neg = [col for col in numeric.columns if numeric[col].min() >= 0]
+    if not non_neg:
+        return []
+    skews = numeric[non_neg].skew().abs()
+    return list(skews[skews > skewness_threshold].index)
+
+
+def _discover_groups(df: pd.DataFrame, entity_col: str) -> dict[str, list[str]]:
+    """
+    Discover potential grouping columns (low-cardinality categoricals) and their values.
+    Returns {col_name: [val1, val2, ...]} for each discovered grouping column.
+    No hard-coded column names or patterns.
+    """
+    groups: dict[str, list[str]] = {}
+    for col in df.columns:
+        if col == entity_col or col.startswith("_"):
+            continue
+        # Low-cardinality string/category columns are likely grouping columns
+        if df[col].dtype == object or str(df[col].dtype) == "category":
+            n_unique = df[col].nunique()
+            if 2 <= n_unique <= 200:
+                groups[col] = sorted(df[col].dropna().unique().tolist())
+    return groups
 
 
 def _fit_model(algorithm: str, n_clusters: int, X_scaled: np.ndarray):
@@ -63,10 +82,45 @@ def _fit_model(algorithm: str, n_clusters: int, X_scaled: np.ndarray):
         labels = model.fit_predict(X_scaled)
         algo_name = 'AgglomerativeClustering'
         algo_detail = f'Hierarchical (Ward linkage)  |  k={n_clusters}'
+    elif algorithm == 'dbscan':
+        from sklearn.cluster import DBSCAN
+        min_samples = max(5, X_scaled.shape[1] // 10)
+        model = DBSCAN(eps=0.5, min_samples=min_samples)
+        raw_labels = model.fit_predict(X_scaled)
+        # Remap -1 (noise) to a new positive cluster ID
+        max_label = int(raw_labels.max()) if raw_labels.max() >= 0 else -1
+        labels = raw_labels.copy()
+        noise_mask = labels == -1
+        if noise_mask.any():
+            labels[noise_mask] = max_label + 1
+        algo_name = 'DBSCAN'
+        algo_detail = f'DBSCAN  |  eps=0.5  |  min_samples={min_samples}'
+    elif algorithm == 'gmm':
+        from sklearn.mixture import GaussianMixture
+        model = GaussianMixture(n_components=n_clusters, random_state=42, n_init=5)
+        labels = model.fit_predict(X_scaled)
+        algo_name = 'GaussianMixture'
+        algo_detail = f'GMM  |  n_components={n_clusters}  |  covariance=full'
+    elif algorithm == 'fuzzy_cmeans':
+        try:
+            import skfuzzy as fuzz
+            cntr, u, *_ = fuzz.cluster.cmeans(
+                X_scaled.T, n_clusters, 2, error=0.005, maxiter=1000
+            )
+            labels = np.argmax(u, axis=0)
+            algo_name = 'FuzzyCMeans'
+            algo_detail = f'Fuzzy C-Means  |  c={n_clusters}  |  m=2'
+        except ImportError:
+            # Fallback to GMM when skfuzzy is not installed
+            from sklearn.mixture import GaussianMixture
+            model = GaussianMixture(n_components=n_clusters, random_state=42)
+            labels = model.fit_predict(X_scaled)
+            algo_name = 'GaussianMixture (fuzzy_cmeans fallback)'
+            algo_detail = f'GMM fallback (skfuzzy not installed)  |  n_components={n_clusters}'
     else:
         raise ValueError(
             f'Unknown clustering_algorithm: {algorithm!r}. '
-            'Valid options: "kmeans", "hierarchical".'
+            'Valid options: "kmeans", "hierarchical", "dbscan", "gmm", "fuzzy_cmeans".'
         )
     return labels, algo_name, algo_detail
 
@@ -75,97 +129,53 @@ def _extract_profiles(features_df: pd.DataFrame, cluster_labels: pd.Series,
                       cluster_lineage: dict, X_scaled: np.ndarray,
                       algo_name: str, algo_detail: str) -> dict:
     """
-    Extract per-cluster profiles (mirrors notebook 03 cell 6f316d51 exactly).
+    Extract per-cluster profiles generically from whatever columns are present.
+    No hard-coded column names, prefixes, or CATEGORIES list.
+    Works with any feature matrix.
     """
     leaf_ids = sorted([c for c, v in cluster_lineage.items() if 'split_into' not in v])
     n_total = len(features_df)
+    numeric_cols = list(features_df.select_dtypes(include=[np.number]).columns)
 
-    global_means = {
-        cat: {
-            'n_txn_12m':    features_df[f'n_txn_{cat}_12m'].mean()    if f'n_txn_{cat}_12m'    in features_df.columns else 0,
-            'total_amt_12m': features_df[f'amt_{cat}_12m'].mean()     if f'amt_{cat}_12m'      in features_df.columns else 0,
-            'avg_spend_12m': features_df[f'avg_spend_{cat}_12m'].mean() if f'avg_spend_{cat}_12m' in features_df.columns else 0,
-            'consec_months': features_df[f'consec_months_{cat}'].mean() if f'consec_months_{cat}' in features_df.columns else 0,
-        }
-        for cat in CATEGORIES
-    }
+    # Global means for relative comparison
+    global_means = features_df[numeric_cols].mean()
 
     profiles = {}
     for c in leaf_ids:
-        grp = features_df[cluster_labels == c]
+        mask = cluster_labels == c
+        grp = features_df[mask]
         lin = cluster_lineage[c]
+        n_cluster = len(grp)
 
-        category_stats = {}
-        for cat in CATEGORIES:
-            n12   = grp[f'n_txn_{cat}_12m'].mean()   if f'n_txn_{cat}_12m'   in grp.columns else 0
-            a12   = grp[f'amt_{cat}_12m'].mean()      if f'amt_{cat}_12m'     in grp.columns else 0
-            avg12 = grp[f'avg_spend_{cat}_12m'].mean() if f'avg_spend_{cat}_12m' in grp.columns else 0
-            n6    = grp[f'n_txn_{cat}_6m'].mean()    if f'n_txn_{cat}_6m'    in grp.columns else 0
-            a6    = grp[f'amt_{cat}_6m'].mean()       if f'amt_{cat}_6m'      in grp.columns else 0
-            cm    = grp[f'consec_months_{cat}'].mean() if f'consec_months_{cat}' in grp.columns else 0
+        # Per-column cluster mean and relative deviation from global mean
+        cluster_means = grp[numeric_cols].mean()
+        # Relative = cluster_mean / global_mean (avoid div by zero)
+        relative = (cluster_means / global_means.replace(0, np.nan)).fillna(1.0)
 
-            gm = global_means[cat]
-            rel_n   = round(n12  / gm['n_txn_12m'],    2) if gm['n_txn_12m']    > 0 else 0
-            rel_amt = round(a12  / gm['total_amt_12m'], 2) if gm['total_amt_12m'] > 0 else 0
-            rel_cm  = round(cm   / gm['consec_months'], 2) if gm['consec_months'] > 0 else 0
+        # Top distinguishing features (most above or below average)
+        top_above = relative.nlargest(10).to_dict()
+        top_below = relative.nsmallest(10).to_dict()
 
-            category_stats[cat] = {
-                'n_txn_12m':    round(n12, 1),
-                'total_amt_12m': round(a12, 2),
-                'avg_spend_12m': round(avg12, 2),
-                'n_txn_6m':     round(n6, 1),
-                'total_amt_6m': round(a6, 2),
-                'consec_months': round(cm, 1),
-                'rel_n_txn':    rel_n,
-                'rel_amt':      rel_amt,
-                'rel_consec':   rel_cm,
-            }
-
-        category_stats_sorted = dict(
-            sorted(category_stats.items(), key=lambda x: -x[1]['rel_n_txn'])
-        )
-
-        overall = {}
-        # Primary column names are all-time (no suffix).  Fall back to the
-        # 12-month windowed version when the LLM feature-engineering plan did
-        # not include an "all" window, so overall stats are never stuck at 0.
-        _overall_fallbacks = {
-            'avg_txn_amt':          'avg_txn_amt_12m',
-            'std_txn_amt':          'std_txn_amt_12m',
-            'max_txn_amt':          'max_txn_amt_12m',
-            'pct_high_value':       'pct_high_value_12m',
-            'total_spend':          'total_spend_12m',
-            'total_txn_count':      'total_txn_count_12m',
-            'active_months':        'active_months_12m',
-            'n_unique_categories':  'n_unique_categories_12m',
-            'n_unique_merchants':   'n_unique_merchants_12m',
-            'avg_days_between_txn': 'avg_days_between_txn_12m',
-        }
-        for col in ['avg_txn_amt', 'std_txn_amt', 'max_txn_amt', 'pct_high_value',
-                    'total_spend', 'total_txn_count', 'active_months',
-                    'n_unique_categories', 'n_unique_merchants', 'avg_days_between_txn']:
-            actual_col = col if col in grp.columns else _overall_fallbacks.get(col, col)
-            if actual_col in grp.columns:
-                val = grp[actual_col].mean()
-                overall[col] = round(val * 100, 1) if col == 'pct_high_value' else round(val, 2)
-            else:
-                overall[col] = 0
+        # All feature means as a flat dict (rounded)
+        all_means = {col: round(float(cluster_means[col]), 4) for col in numeric_cols}
+        all_relative = {col: round(float(relative[col]), 3) for col in numeric_cols}
 
         profiles[str(c)] = {
-            'cluster_id':           c,
-            'n_customers':          len(grp),
-            'pct_of_total':         round(len(grp) / n_total, 3),
-            'clustering_algorithm': algo_name,
-            'algorithm_detail':     algo_detail,
-            'lineage': {
-                'depth':          lin['depth'],
-                'parent':         lin['parent'],
-                'siblings':       lin['siblings'],
-                'pct_of_parent':  lin['pct_of_parent'],
-                'is_sub_cluster': lin['parent'] is not None,
+            "n_entities": n_cluster,
+            "pct_total": round(n_cluster / n_total * 100, 1),
+            "top_above_average": {k: round(v, 2) for k, v in top_above.items()},
+            "top_below_average": {k: round(v, 2) for k, v in top_below.items()},
+            "feature_means": all_means,
+            "feature_relative": all_relative,
+            "lineage": {
+                "depth":         lin.get("depth", 0),
+                "parent":        lin.get("parent"),
+                "siblings":      lin.get("siblings", []),
+                "pct_of_parent": lin.get("pct_of_parent", 100.0),
+                "is_sub_cluster": lin.get("is_sub_cluster", False),
             },
-            'category_stats': category_stats_sorted,
-            'overall':        overall,
+            "algorithm": algo_name,
+            "algo_detail": algo_detail,
         }
 
     return profiles
@@ -178,6 +188,8 @@ class ClusteringAgent:
     New in this version:
     - Auto-selects algorithm via skills.algo_recommender (unless overridden in config)
     - Auto-selects k via skills.silhouette_optimizer (unless n_clusters set in config)
+    - Supports kmeans, hierarchical, dbscan, gmm, fuzzy_cmeans
+    - Falls back to alternative algorithm if chosen one fails
     - Reports structured status to OrchestratorBus
     """
 
@@ -186,8 +198,6 @@ class ClusteringAgent:
         config: dict,
         bus: OrchestratorBus,
     ):
-        # ClusteringAgent owns its ML skills (silhouette optimisation, sklearn
-        # clustering, deepening loop). LLM routing decisions go via the bus.
         self.config = config
         self.bus = bus
 
@@ -217,7 +227,7 @@ class ClusteringAgent:
         if history is None:
             history = []
 
-        # Merge per-iteration config overrides (from orchestrator tuning) over base config
+        # Merge per-iteration config overrides over base config
         cfg = {**self.config, **(config_override or {})}
         _min_sil = min_silhouette if min_silhouette is not None else 0.05
 
@@ -236,8 +246,8 @@ class ClusteringAgent:
         if not sel:
             sel = list(features_df.select_dtypes(include=[np.number]).columns)
 
-        log_cols = _build_log_cols(sel)
         X = features_df[sel].copy()
+        log_cols = _detect_log_cols(X)
         for col in log_cols:
             X[col] = np.log1p(X[col])
 
@@ -246,10 +256,11 @@ class ClusteringAgent:
         X_scaled = scaler.fit_transform(X)
 
         # ── Step 2: Algorithm selection ───────────────────────────────────────
+        valid_algos = ('kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans')
         algo_override = str(cfg.get('clustering_algorithm', '')).lower()
         algo_reasoning = ""
 
-        if algo_override in ('kmeans', 'hierarchical'):
+        if algo_override in valid_algos:
             algorithm = algo_override
             algo_reasoning = f"Algorithm fixed by config: {algorithm}"
             print(f'  Algorithm: {algorithm} (from config)')
@@ -276,21 +287,91 @@ class ClusteringAgent:
             print(f'  k: {n_clusters} (from config)')
         else:
             k_range = cfg.get('k_search_range', DEFAULT_K_SEARCH_RANGE)
-            sil_result = optimize_k(
-                X_scaled,
-                algorithm=algorithm,
-                k_range=k_range,
-                verbose=True,
-            )
-            n_clusters = sil_result.best_k
-            k_scores = sil_result.scores
-            print(f'  k auto-selected: {n_clusters}  (silhouette={sil_result.best_silhouette:.4f})')
+            # DBSCAN doesn't use k; use a default for silhouette evaluation
+            if algorithm == 'dbscan':
+                n_clusters = 5  # default; DBSCAN will auto-determine actual count
+                print(f'  DBSCAN: skipping k optimisation (auto-detects cluster count)')
+            else:
+                sil_result = optimize_k(
+                    X_scaled,
+                    algorithm=algorithm if algorithm in ('kmeans', 'hierarchical') else 'kmeans',
+                    k_range=k_range,
+                    verbose=True,
+                )
+                n_clusters = sil_result.best_k
+                k_scores = sil_result.scores
+                print(f'  k auto-selected: {n_clusters}  (silhouette={sil_result.best_silhouette:.4f})')
 
-            if sil_result.warning:
-                print(f'  WARNING: {sil_result.warning}')
+                if sil_result.warning:
+                    print(f'  WARNING: {sil_result.warning}')
 
-        # ── Step 4: Initial clustering ────────────────────────────────────────
-        cluster_labels_arr, algo_name, algo_detail = _fit_model(algorithm, n_clusters, X_scaled)
+        # ── Step 4: Initial clustering (with fallback on failure) ─────────────
+        attempted_algos: list[str] = []
+        cluster_labels_arr = None
+        algo_name = ''
+        algo_detail = ''
+
+        while True:
+            try:
+                cluster_labels_arr, algo_name, algo_detail = _fit_model(
+                    algorithm, n_clusters, X_scaled
+                )
+                break  # success
+            except Exception as exc:
+                attempted_algos.append(algorithm)
+                print(f'  [Clusterer] Algorithm {algorithm!r} failed: {exc}')
+
+                # Ask LLM for an alternative algorithm (avoid infinite loop)
+                remaining = [a for a in valid_algos if a not in attempted_algos]
+                if not remaining or not self.bus:
+                    # Hard fallback
+                    algorithm = 'kmeans' if 'kmeans' not in attempted_algos else 'hierarchical'
+                    print(f'  [Clusterer] Falling back to {algorithm} (no LLM available)')
+                    try:
+                        cluster_labels_arr, algo_name, algo_detail = _fit_model(
+                            algorithm, n_clusters, X_scaled
+                        )
+                    except Exception as exc2:
+                        raise RuntimeError(
+                            f"Clusterer: all attempted algorithms failed. "
+                            f"Attempted: {attempted_algos}. Last error: {exc2}"
+                        ) from exc2
+                    break
+
+                alt_prompt = (
+                    f"The clustering algorithm '{algorithm}' failed with error: {exc}\n"
+                    f"Attempted so far: {attempted_algos}\n"
+                    f"Remaining options: {remaining}\n"
+                    f"Dataset: n_rows={len(features_df)}, n_features={len(sel)}\n\n"
+                    "Choose the best alternative algorithm from the remaining options.\n"
+                    "Return ONLY a valid JSON object: "
+                    '{"algorithm": "<choice>", "reasoning": "<1 sentence>"}'
+                )
+                try:
+                    raw = self.bus.ask(
+                        agent="Clusterer",
+                        purpose="select alternative algorithm after failure",
+                        prompt=alt_prompt,
+                        max_tokens=128,
+                    ).strip()
+                    if '```' in raw:
+                        for part in raw.split('```'):
+                            p = part.strip()
+                            if p.startswith('json'):
+                                p = p[4:].strip()
+                            if p.startswith('{'):
+                                raw = p
+                                break
+                    resp = json.loads(raw)
+                    alt = resp.get('algorithm', remaining[0])
+                    if alt not in remaining:
+                        alt = remaining[0]
+                    print(f'  [Clusterer] LLM suggests alternative: {alt}  ({resp.get("reasoning", "")})')
+                    algorithm = alt
+                except Exception:
+                    algorithm = remaining[0]
+                    print(f'  [Clusterer] Defaulting to alternative: {algorithm}')
+
         n_total = len(features_df)
 
         work_df = features_df.copy()
@@ -314,7 +395,7 @@ class ClusteringAgent:
             cluster_lineage[c]['siblings'] = [x for x in top_level if x != c]
 
         sil = silhouette_score(X_scaled, work_df['cluster'])
-        print(f'  Initial clustering: {n_clusters} clusters  |  silhouette={sil:.4f}')
+        print(f'  Initial clustering: {len(top_level)} clusters  |  silhouette={sil:.4f}')
 
         # ── Step 5: Deepening loop ─────────────────────────────────────────────
         if max_depth > 0:
@@ -352,7 +433,7 @@ class ClusteringAgent:
                     )
 
                     if decision['action'] == 'reselect_features':
-                        print(f'    Claude recommends re-selecting features: {decision["reasoning"]}')
+                        print(f'    LLM recommends re-selecting features: {decision["reasoning"]}')
                         if self.bus:
                             self.bus.report(OrchestratorMessage(
                                 agent="Clusterer",
@@ -364,7 +445,7 @@ class ClusteringAgent:
                                 issues=[f"Cluster {_parent} has {_pct:.1%} of data (>{max_pct:.0%} threshold)"],
                                 metrics={"silhouette": round(sil, 4), "n_clusters": n_clusters},
                                 recommendation="retry",
-                                context={"claude_decision": decision},
+                                context={"llm_decision": decision},
                             ))
                         return ClusteringResult(
                             action='reselect_features',
@@ -381,14 +462,16 @@ class ClusteringAgent:
                             algo_reasoning=algo_reasoning,
                         )
 
-                    print(f'    Claude recommends sub-clustering C{_parent}.')
+                    print(f'    LLM recommends sub-clustering C{_parent}.')
                     _X_sub = X_scaled[_mask.values]
                     sub_labels_arr, _, _ = _fit_model(algorithm, sub_k, _X_sub)
                     _new_ids = list(range(next_id, next_id + sub_k))
                     next_id += sub_k
 
                     _lmap = {i: _new_ids[i] for i in range(sub_k)}
-                    work_df.loc[_mask, 'cluster'] = np.array([_lmap[l] for l in sub_labels_arr], dtype=work_df['cluster'].dtype)
+                    work_df.loc[_mask, 'cluster'] = np.array(
+                        [_lmap[l] for l in sub_labels_arr], dtype=work_df['cluster'].dtype
+                    )
 
                     cluster_lineage[_parent]['split_into'] = _new_ids
                     for _nid in _new_ids:
@@ -425,9 +508,6 @@ class ClusteringAgent:
         )
 
         # ── Step 8: Report to orchestrator ─────────────────────────────────────
-        # Hard-block only below _min_sil (default 0.05 — near-random structure).
-        # Orchestrator may tune this lower if the data genuinely resists clustering.
-        # Silhouette above _min_sil proceeds with a warning when < 0.25.
         if sil < _min_sil:
             if self.bus:
                 self.bus.report(OrchestratorMessage(
@@ -496,7 +576,7 @@ class ClusteringAgent:
                     f"Silhouette={sil:.4f} ({sil_quality})."
                 ),
                 what_was_not_done=(
-                    "Did not try DBSCAN or GMM (not in current skill set)."
+                    "Did not try all algorithm variants simultaneously."
                 ),
                 doubts=(
                     f"Silhouette improved {min(k_scores.values(), default=0):.3f}→{sil:.3f} "
@@ -536,12 +616,12 @@ class ClusteringAgent:
     # ── Helpers ────────────────────────────────────────────────────────────────
 
     def _get_top3_categories(self, grp: pd.DataFrame) -> list[str]:
-        cat_counts = {}
-        for cat in CATEGORIES:
-            col = f'n_txn_{cat}_12m'
-            if col in grp.columns:
-                cat_counts[cat] = grp[col].mean()
-        return sorted(cat_counts, key=lambda c: -cat_counts[c])[:3]
+        """Return top 3 numeric columns by mean value — used to describe oversized clusters."""
+        numeric_cols = list(grp.select_dtypes(include=[np.number]).columns)
+        if not numeric_cols:
+            return []
+        col_means = grp[numeric_cols].mean()
+        return list(col_means.nlargest(3).index)
 
     def _summarise_history(self, history: list[ClusteringResult]) -> str:
         if not history:
@@ -574,7 +654,7 @@ class ClusteringAgent:
 
 The ClusteringAgent reports: Cluster {cluster_id} contains {pct:.1%} of {n_total}
 customers ({n_customers} customers), exceeding the 40% threshold for a single persona.
-Top spending categories in this cluster: {', '.join(top3_cats)}.
+Top categories in this cluster: {', '.join(top3_cats) if top3_cats else 'unknown'}.
 
 History of clustering attempts:
 {history_summary}
