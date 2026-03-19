@@ -39,14 +39,14 @@ WINDOWS = [6, 12]
 DEFAULT_K_SEARCH_RANGE = [3, 4, 5, 6, 7, 8, 10, 12, 15]
 
 
-def _detect_log_cols(df: pd.DataFrame, skewness_threshold: float = 2.0) -> list[str]:
-    """
-    Detect columns to log1p-transform based on statistical skewness.
-    Only considers non-negative numeric columns (log1p requires x >= 0).
-    No hard-coded column names or prefixes — purely data-driven.
-    """
+def _detect_log_cols(df, skewness_threshold: float = 2.0) -> list[str]:
+    """Return non-negative numeric columns whose |skewness| exceeds the threshold."""
     numeric = df.select_dtypes(include=[np.number])
-    non_neg = [col for col in numeric.columns if numeric[col].min() >= 0]
+    if numeric.empty:
+        return []
+    # Deduplicate column names (keep first occurrence) to avoid ambiguous comparisons
+    numeric = numeric.loc[:, ~numeric.columns.duplicated()]
+    non_neg = [col for col in numeric.columns if float(numeric[col].min()) >= 0]
     if not non_neg:
         return []
     skews = numeric[non_neg].skew().abs()
@@ -183,7 +183,7 @@ def _extract_profiles(features_df: pd.DataFrame, cluster_labels: pd.Series,
 
 class ClusteringAgent:
     """
-    Clusters customers on the selected features and runs the deepening loop.
+    Clusters entities on the selected features and runs the deepening loop.
 
     New in this version:
     - Auto-selects algorithm via skills.algo_recommender (unless overridden in config)
@@ -386,7 +386,7 @@ class ClusteringAgent:
                 'parent':        None,
                 'depth':         0,
                 'siblings':      [],
-                'pct_of_total':  round((work_df['cluster'] == c).sum() / n_total, 3),
+                'pct_total':      round((work_df['cluster'] == c).sum() / n_total, 3),
                 'pct_of_parent': 1.0,
             }
 
@@ -425,7 +425,7 @@ class ClusteringAgent:
                     decision = self._ask_oversized_routing(
                         cluster_id=_parent,
                         pct=_pct,
-                        n_customers=_n,
+                        n_entities=_n,
                         n_total=n_total,
                         top3_cats=top3_cats,
                         history_summary=history_summary,
@@ -480,7 +480,7 @@ class ClusteringAgent:
                             'parent':        _parent,
                             'depth':         _round,
                             'siblings':      [x for x in _new_ids if x != _nid],
-                            'pct_of_total':  round(_n_nid / n_total, 3),
+                            'pct_total':      round(_n_nid / n_total, 3),
                             'pct_of_parent': round(_n_nid / _n, 3),
                         }
 
@@ -638,7 +638,7 @@ class ClusteringAgent:
         self,
         cluster_id: int,
         pct: float,
-        n_customers: int,
+        n_entities: int,
         n_total: int,
         top3_cats: list[str],
         history_summary: str,
@@ -650,10 +650,10 @@ class ClusteringAgent:
         OR go back to feature selection.
         """
         feedback_section = f'\nUser feedback: {feedback}\n' if feedback else ''
-        prompt = f"""You are the orchestrator of a customer clustering pipeline.
+        prompt = f"""You are the orchestrator of an entity clustering pipeline.
 
 The ClusteringAgent reports: Cluster {cluster_id} contains {pct:.1%} of {n_total}
-customers ({n_customers} customers), exceeding the 40% threshold for a single persona.
+entities ({n_entities} entities), exceeding the size threshold for a single persona.
 Top categories in this cluster: {', '.join(top3_cats) if top3_cats else 'unknown'}.
 
 History of clustering attempts:

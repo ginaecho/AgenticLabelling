@@ -4,10 +4,10 @@ PersonaNamingAgent
 Contract: docs/agents/persona_namer.md. Skills: docs/skills/orchestrator_bus.md.
 
 Sends cluster profiles to the LLM and applies the Clarity Gate.
-Reuses build_all_clusters_prompt() and _format_cluster_block() logic
-verbatim from notebook 04 cell 5eace074 and Clarity Gate from cell c2e5b2fc.
+Cluster profiles are fully generic (feature_means, top_above_average,
+top_below_average) — no domain-specific field names.
 
-Enhanced: reports structured status to OrchestratorBus.
+Reports structured status to OrchestratorBus.
 """
 from __future__ import annotations
 
@@ -38,52 +38,62 @@ TONE_INSTRUCTIONS = {
 }
 
 
-# ── Helpers (verbatim from notebook 04 cell 5eace074) ─────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _format_cluster_block(cid: str, profile: dict, context_note: str = '') -> str:
-    """Format one cluster's stats as a readable block for the LLM prompt."""
-    n   = profile['n_customers']
-    pct = profile['pct_of_total']
-    ov  = profile['overall']
-    cat_stats = profile['category_stats']
-    algo = profile.get('algorithm_detail', 'clustering')
+    """
+    Format one cluster's stats as a readable block for the LLM prompt.
+    Uses the generic profile structure from ClusteringAgent:
+      n_entities, pct_total, top_above_average, top_below_average, feature_means.
+    """
+    n    = profile.get('n_entities', profile.get('n_customers', '?'))
+    pct  = profile.get('pct_total', profile.get('pct_of_total', 0))
+    algo = profile.get('algo_detail', profile.get('algorithm', 'clustering'))
 
-    cat_lines = []
-    for cat, s in list(cat_stats.items()):
-        if s['n_txn_12m'] > 0:
-            flag = ' ◀◀' if s['rel_n_txn'] >= 2.0 else (' ◀' if s['rel_n_txn'] >= 1.4 else '')
-            low  = ' ▼' if s['rel_n_txn'] <= 0.5 else ''
-            cat_lines.append(
-                f"    {cat:<20} txns/yr={s['n_txn_12m']:>6}  "
-                f"spend/yr=${s['total_amt_12m']:>8}  "
-                f"avg/txn=${s['avg_spend_12m']:>7}  "
-                f"consec={s['consec_months']:>4}mo  "
-                f"vs_avg={s['rel_n_txn']:>5}x{flag}{low}"
-            )
+    top_above  = profile.get('top_above_average', {})
+    top_below  = profile.get('top_below_average', {})
+    feat_means = profile.get('feature_means', {})
 
     header = (
         f"{'='*65}\n"
-        f"CLUSTER {cid}  ({n} customers, {pct:.1%} of all customers)"
+        f"CLUSTER {cid}  ({n} entities, {pct:.1f}% of all entities)"
     )
     if context_note:
         header += f"\n{context_note}"
     header += f"\nAlgorithm: {algo}\n"
 
-    return (
-        header + '\n'.join(cat_lines) +
-        f"\n  Overall: avg_txn=${ov['avg_txn_amt']}  "
-        f"total_spend=${ov['total_spend']}  "
-        f"txns_per_yr={ov['total_txn_count']}  "
-        f"pct_high_value={ov['pct_high_value']}%  "
-        f"avg_days_between={ov['avg_days_between_txn']}"
+    above_lines = []
+    for feat, rel in list(top_above.items())[:10]:
+        mean_val = feat_means.get(feat, '?')
+        flag = ' ◀◀' if rel >= 2.0 else (' ◀' if rel >= 1.4 else '')
+        above_lines.append(
+            f"    {feat:<45} mean={mean_val!s:>10}  vs_avg={rel:.2f}x{flag}"
+        )
+
+    below_lines = []
+    for feat, rel in list(top_below.items())[:5]:
+        mean_val = feat_means.get(feat, '?')
+        below_lines.append(
+            f"    {feat:<45} mean={mean_val!s:>10}  vs_avg={rel:.2f}x ▼"
+        )
+
+    above_section = (
+        "  ABOVE AVERAGE (strongest signals):\n" + "\n".join(above_lines)
+        if above_lines else ""
     )
+    below_section = (
+        "\n  BELOW AVERAGE:\n" + "\n".join(below_lines)
+        if below_lines else ""
+    )
+
+    return header + above_section + below_section
 
 
 def build_all_clusters_prompt(profiles: dict, cluster_lineage: dict,
                                tone_instructions: str) -> str:
     """
     Build a prompt that groups clusters hierarchically.
-    Verbatim from notebook 04 cell 5eace074.
+    Works with any domain — no hard-coded field names or domain vocabulary.
     """
     groups: dict = defaultdict(list)
     for cid, p in profiles.items():
@@ -95,9 +105,7 @@ def build_all_clusters_prompt(profiles: dict, cluster_lineage: dict,
     # Top-level clusters (no parent)
     top_level = sorted(groups.get(None, []), key=lambda x: int(x))
     if top_level:
-        tl_blocks = []
-        for cid in top_level:
-            tl_blocks.append(_format_cluster_block(cid, profiles[cid]))
+        tl_blocks = [_format_cluster_block(cid, profiles[cid]) for cid in top_level]
         sections.append(
             "── TOP-LEVEL CLUSTERS ──────────────────────────────────────────\n"
             + '\n\n'.join(tl_blocks)
@@ -107,16 +115,15 @@ def build_all_clusters_prompt(profiles: dict, cluster_lineage: dict,
     sub_parents = sorted([p for p in groups if p is not None])
     for parent in sub_parents:
         children = sorted(groups[parent], key=lambda x: int(x))
-        parent_n   = sum(profiles[c]['n_customers'] for c in children)
-        parent_pct = sum(profiles[c]['pct_of_total'] for c in children)
+        parent_n   = sum(profiles[c].get('n_entities', 0) for c in children)
+        parent_pct = sum(profiles[c].get('pct_total', 0) for c in children)
         group_header = (
             f"── SUB-CLUSTERS OF CLUSTER {parent} ────────────────────────────────\n"
-            f"   Context: Cluster {parent} originally contained ~{parent_n} customers "
-            f"({parent_pct:.1%} of total), which exceeded the size threshold for a "
+            f"   Context: Cluster {parent} originally contained ~{parent_n} entities "
+            f"({parent_pct:.1f}% of total), which exceeded the size threshold for a "
             f"single persona. It was automatically split into {len(children)} sub-clusters.\n"
             f"   Your job: name each sub-cluster to reflect HOW it differs from its "
-            f"siblings — not just that it 'spends moderately'. Be specific about the "
-            f"behavioral signal that sets it apart from the other sub-clusters below."
+            f"siblings — be specific about the behavioral signal that sets it apart."
         )
         child_blocks = []
         for cid in children:
@@ -130,31 +137,29 @@ def build_all_clusters_prompt(profiles: dict, cluster_lineage: dict,
         sections.append(group_header + '\n\n' + '\n\n'.join(child_blocks))
 
     all_sections = '\n\n\n'.join(sections)
-    n_clusters = len(profiles)
 
     naming_rules = """
 CRITICAL NAMING RULES — read carefully before writing any name:
 
-1. SPECIFICITY — names must describe what the customer ACTUALLY DOES, not a vague
-   lifestyle label. Bad: "The Steady Homebody", "The Regular Spender", "The Average User".
-   Good: "The Daily Gas & Grocery Commuter", "The Online Grocery Subscriber",
-         "The Gym-and-Travel Regular", "The Occasional Big-Ticket Online Shopper".
+1. SPECIFICITY — names must describe what the entity ACTUALLY DOES or IS, grounded
+   in the specific features shown above (especially those marked ◀ or ◀◀).
+   Bad: "The Average One", "The Regular Entity", "The Moderate Group".
+   Good: names referencing the concrete feature patterns that stand out.
    If a name could apply to multiple clusters, it is too vague — rewrite it.
 
 2. FOR SUB-CLUSTERS — the name must explain HOW this sub-cluster differs from its
    siblings. A sub-cluster name that ignores its siblings is not acceptable.
-   Example: if siblings are split between "high travel" and "high grocery", one should
-   be named "The Weekend Traveller" and the other "The Heavy Grocery & Household Buyer".
 
 3. NO DUPLICATES — every name must be unique across all clusters.
 
 4. CONFIDENCE — if a cluster's signals are very mixed and hard to name specifically,
-   lower the confidence score (1-5) and say so in the description.
+   lower the confidence score and say so in the description.
 """
 
-    return f"""You are a consumer behavior analyst interpreting bank transaction clusters.
-Each row shows: annual transactions, annual spend, avg per transaction, consecutive loyal
-months, and vs_avg (1.0 = typical; ◀ = 40%+ above average; ◀◀ = 100%+ above; ▼ = 50%+ below).
+    return f"""You are a behavioral analyst interpreting entity clusters produced by a machine-learning pipeline.
+Each cluster is described by its most distinguishing features:
+  vs_avg: ratio of cluster mean to overall mean (1.0 = typical; ◀ = 40%+ above average; ◀◀ = 100%+ above; ▼ = 50%+ below)
+  mean: the cluster's average value for that feature
 
 {all_sections}
 
@@ -168,8 +173,8 @@ Return ONLY a valid JSON object (no markdown, no extra text) with this structure
   "0": {{
     "name": "...",
     "tagline": "...",
-    "description": "2-3 sentences grounded in specific numbers from the data above",
-    "dominant_categories": ["cat1", "cat2", "cat3"],
+    "description": "2-3 sentences grounded in specific feature values from the data above",
+    "dominant_features": ["feature1", "feature2", "feature3"],
     "traits": ["specific trait 1", "specific trait 2", "specific trait 3",
                "specific trait 4", "specific trait 5"],
     "confidence": <1-10>

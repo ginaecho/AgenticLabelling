@@ -13,7 +13,7 @@ Skills are atomic, testable Python functions or classes used by agents. Each ski
 
 - PCA / autoencoder scoring → [FeatureSelectionAgent](../agents/feature_selector.md)
 - Clarity gate → [PersonaNamingAgent](../agents/persona_namer.md)
-- Random Forest training → [ClassifierAgent](../agents/classifier.md)
+- Classifier training (LLM-selected model) → [ClassifierAgent](../agents/classifier.md)
 - Feature-engineering builders → [FeatureEngineerAgent](../agents/feature_engineer.md)
 
 **Adding a new skill:** implement in `skills/<name>.py`, export from `skills/__init__.py`, add a doc here and in each agent that uses it.

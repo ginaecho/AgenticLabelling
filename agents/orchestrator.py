@@ -455,8 +455,8 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         _t0 = time.perf_counter()
         dataset_profile = self.examiner_agent.run(
             user_intent=state.user_intent or UserIntent(
-                target_entity="customers",
-                business_purpose="understand spending behaviour",
+                target_entity="entities",
+                business_purpose="discover distinct groups in the data",
                 dataset_path=features_path,
             ),
             df=raw_df,
@@ -479,7 +479,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
 
         # ── Step 2: Feature Engineering (only when a raw CSV was provided) ─────
         # When the user gave a .csv path, the FeatureEngineerAgent turns the
-        # transaction-level data into a customer-level feature matrix and saves
+        # event-level data into an entity-level feature matrix and saves
         # it to data/processed/. Downstream agents then use that parquet.
         if need_feature_engineering:
             print('\n[Orchestrator] Launching FeatureEngineerAgent on raw transaction data...')
@@ -489,8 +489,8 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 features_df, fe_result = self.feature_engineer_agent.run(
                     raw_df=full_raw_df,
                     user_intent=state.user_intent or UserIntent(
-                        target_entity='customers',
-                        business_purpose='understand spending behaviour to personalise offers',
+                        target_entity='entities',
+                        business_purpose='discover distinct groups in the data',
                         dataset_path=raw_data_path,
                     ),
                     dataset_profile=dataset_profile,
@@ -501,14 +501,14 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 run_history.append({
                     'iteration': 0,
                     'stage': 'feature_engineering',
-                    'n_customers': fe_result.n_customers,
+                    'n_entities': fe_result.n_entities,
                     'n_features': fe_result.n_features,
                     'groups_built': fe_result.groups_built,
                     'elapsed_s': round(self._timings['FeatureEngineer'][-1], 1),
                 })
                 print(
                     f'  [Orchestrator] Feature engineering done: '
-                    f'{fe_result.n_features} features × {fe_result.n_customers} customers'
+                    f'{fe_result.n_features} features × {fe_result.n_entities} entities'
                 )
             except RuntimeError as e:
                 print(f'\n[Orchestrator] FeatureEngineer BLOCKED: {e}')

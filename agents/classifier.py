@@ -49,14 +49,14 @@ from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 # ── Log-transform detection ────────────────────────────────────────────────────
 
 
-def _detect_log_cols(df: pd.DataFrame, skewness_threshold: float = 2.0) -> list[str]:
-    """
-    Detect columns to log1p-transform based on statistical skewness.
-    Only considers non-negative numeric columns.
-    No hard-coded column names or domain-specific prefixes.
-    """
+def _detect_log_cols(df, skewness_threshold: float = 2.0) -> list[str]:
+    """Return non-negative numeric columns whose |skewness| exceeds the threshold."""
     numeric = df.select_dtypes(include=[np.number])
-    non_neg = [col for col in numeric.columns if numeric[col].min() >= 0]
+    if numeric.empty:
+        return []
+    # Deduplicate column names (keep first occurrence) to avoid ambiguous comparisons
+    numeric = numeric.loc[:, ~numeric.columns.duplicated()]
+    non_neg = [col for col in numeric.columns if float(numeric[col].min()) >= 0]
     if not non_neg:
         return []
     skews = numeric[non_neg].skew().abs()
@@ -254,11 +254,11 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             features_df = features_df[valid]
 
         n_classes = y_names.nunique()
-        n_customers = len(y_names)
-        print(f'  Customers: {n_customers}  |  Personas (classes): {n_classes}')
+        n_entities = len(y_names)
+        print(f'  Entities: {n_entities}  |  Personas (classes): {n_classes}')
         print(f'  Class distribution:')
         for name, count in y_names.value_counts().items():
-            print(f'    {name:<45} {count:>4} ({count/n_customers:.1%})')
+            print(f'    {name:<45} {count:>4} ({count/n_entities:.1%})')
 
         # ── Prepare feature matrix ─────────────────────────────────────────────
         X = features_df.select_dtypes(include=[np.number]).copy()
@@ -275,7 +275,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         # ── Select model ──────────────────────────────────────────────────────
         config_model = config.get('classifier_model', 'auto')
         model_name = self._select_model(
-            n_samples=n_customers,
+            n_samples=n_entities,
             n_features=len(feature_names),
             n_classes=n_classes,
             history=history,

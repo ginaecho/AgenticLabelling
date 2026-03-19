@@ -36,9 +36,12 @@ from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 
 def _detect_log_cols(df, skewness_threshold: float = 2.0) -> list[str]:
     """Return non-negative numeric columns whose |skewness| exceeds the threshold."""
-    import pandas as pd
     numeric = df.select_dtypes(include=[np.number])
-    non_neg = [col for col in numeric.columns if numeric[col].min() >= 0]
+    if numeric.empty:
+        return []
+    # Deduplicate column names (keep first occurrence) to avoid ambiguous comparisons
+    numeric = numeric.loc[:, ~numeric.columns.duplicated()]
+    non_neg = [col for col in numeric.columns if float(numeric[col].min()) >= 0]
     if not non_neg:
         return []
     skews = numeric[non_neg].skew().abs()

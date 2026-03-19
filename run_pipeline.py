@@ -108,7 +108,7 @@ _orch_mod.human_checkpoint = _auto_approve
 # ── Resolve default features path ─────────────────────────────────────────────
 # Always run feature engineering from the raw CSV so the pipeline produces a
 # fresh engineered_features.parquet every run.  This guarantees that cluster
-# profile metrics (n_txn, avg_txn_amt, total_spend, …) are populated from a
+# profile metrics (top_above_average, feature_means, …) are populated from a
 # properly built feature matrix rather than a notebook-generated parquet whose
 # column names may differ from what the Clusterer's _extract_profiles expects.
 _raw_csv = pathlib.Path('data/raw/fraudTrain.csv')

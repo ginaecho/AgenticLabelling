@@ -113,7 +113,7 @@ class FeatureEngineeringPlan:
 
 @dataclass
 class FeatureEngineeringResult:
-    n_customers: int
+    n_entities: int
     n_features: int
     feature_names: list[str]
     groups_built: list[str]
@@ -243,7 +243,7 @@ class FeatureEngineerAgent:
                 what_was_not_done="Pipeline requires at least 20 features.",
                 doubts="",
                 issues=[f"Only {n_features} features built; need ≥ 20."],
-                metrics={"n_features": n_features, "n_customers": len(customer_df)},
+                metrics={"n_features": n_features, "n_entities": len(customer_df)},
                 recommendation="escalate",
             ))
             raise RuntimeError(
@@ -271,7 +271,7 @@ class FeatureEngineerAgent:
             )
 
         result = FeatureEngineeringResult(
-            n_customers=len(customer_df),
+            n_entities=len(customer_df),
             n_features=n_features,
             feature_names=list(customer_df.columns),
             groups_built=[b["builder"] for b in plan.builders],
@@ -300,7 +300,7 @@ class FeatureEngineerAgent:
             ),
             issues=[],
             metrics={
-                "n_customers": len(customer_df),
+                "n_entities": len(customer_df),
                 "n_features": n_features,
                 "n_builders_run": len(plan.builders),
             },
@@ -587,7 +587,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                 max_date=max_date,
             )
 
-        elif name in ("entity_diversity", "merchant_diversity"):
+        elif name in ("entity_diversity",):
             # cols_to_count from params; fall back to all low-cardinality string cols
             cols_to_count = params.get("cols_to_count", [])
             if not cols_to_count and group_col:
@@ -595,17 +595,6 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             return self._build_entity_diversity(
                 raw_df, customer_col,
                 cols_to_count=cols_to_count,
-                windows=params.get("windows", [6, 12, "all"]),
-                max_date=max_date,
-            )
-
-        elif name in ("geographic_mobility",):
-            # Map to entity_diversity using any geo-like columns
-            geo_cols = [c for c in raw_df.columns
-                        if any(kw in c.lower() for kw in ["state", "city", "region", "province", "location", "country", "zip"])]
-            return self._build_entity_diversity(
-                raw_df, customer_col,
-                cols_to_count=geo_cols,
                 windows=params.get("windows", [6, 12, "all"]),
                 max_date=max_date,
             )
@@ -662,17 +651,17 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                 cat_sub = sub[sub[category_col] == cat].groupby(customer_col)[amount_col]
                 for metric in metrics:
                     col_name = self._build_col_name(metric, cat, label)
-                    if metric in ("count", "n_event", "n_txn"):
+                    if metric in ("count", "n_event"):
                         s = cat_sub.count().rename(col_name)
-                    elif metric in ("total", "amt", "sum"):
+                    elif metric in ("total", "sum"):
                         s = cat_sub.sum().rename(col_name)
-                    elif metric in ("avg", "average", "avg_spend", "mean"):
+                    elif metric in ("avg", "average", "mean"):
                         s = cat_sub.mean().rename(col_name)
-                    elif metric in ("median", "median_spend", "median_value"):
+                    elif metric in ("median",):
                         s = cat_sub.median().rename(col_name)
-                    elif metric in ("std", "std_spend", "std_value"):
+                    elif metric in ("std",):
                         s = cat_sub.std().fillna(0).rename(col_name)
-                    elif metric in ("max", "max_spend", "max_value"):
+                    elif metric in ("max",):
                         s = cat_sub.max().rename(col_name)
                     elif metric in ("frequency", "freq"):
                         # events per active day
@@ -681,11 +670,11 @@ Return ONLY a valid JSON object (no markdown, no extra text):
                             lambda x: max((x.max() - x.min()).days, 1)
                         )
                         s = (n / days_active).rename(col_name)
-                    elif metric in ("pct_event", "pct_count"):
+                    elif metric in ("pct_count",):
                         total_n = sub.groupby(customer_col)[amount_col].count()
                         cat_n = cat_sub.count()
                         s = (cat_n / total_n.replace(0, np.nan)).fillna(0).rename(col_name)
-                    elif metric in ("pct_spend", "pct_sum", "pct_value"):
+                    elif metric in ("pct_sum",):
                         total_s = sub.groupby(customer_col)[amount_col].sum()
                         cat_s = cat_sub.sum()
                         s = (cat_s / total_s.replace(0, np.nan)).fillna(0).rename(col_name)
@@ -703,25 +692,15 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         Uses plain statistical terms — no domain-specific prefixes.
         """
         metric_map = {
-            # Count variants
-            "count": "count", "n_event": "count", "n_txn": "count",
-            # Sum variants
-            "total": "sum", "amt": "sum", "sum": "sum",
-            # Mean variants
-            "avg": "mean", "average": "mean", "avg_spend": "mean",
-            "avg_value": "mean", "mean": "mean",
-            # Median
-            "median": "median", "median_spend": "median", "median_value": "median",
-            # Std
-            "std": "std", "std_spend": "std", "std_value": "std",
-            # Max
-            "max": "max", "max_spend": "max", "max_value": "max",
-            # Frequency
+            "count": "count", "n_event": "count",
+            "total": "sum",   "sum": "sum",
+            "avg": "mean",    "average": "mean",  "mean": "mean",
+            "median": "median",
+            "std": "std",
+            "max": "max",
             "frequency": "freq", "freq": "freq",
-            # Percent count
-            "pct_event": "pct_count", "pct_count": "pct_count",
-            # Percent sum
-            "pct_spend": "pct_sum", "pct_value": "pct_sum", "pct_sum": "pct_sum",
+            "pct_count": "pct_count",
+            "pct_sum": "pct_sum",
         }
         m = metric_map.get(metric, metric)
         return f"{m}_{cat}_{label}"
@@ -967,14 +946,14 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             "card_number", "id",
         ]) or df.columns[0]
 
-    def _detect_amount_col(self, df: pd.DataFrame) -> str:
+    def _detect_amount_col(self, df: pd.DataFrame) -> str | None:
         return self._detect_col(df, [
-            "amt", "amount", "transaction_amount", "price", "total", "value",
-        ]) or "amt"
+            "amount", "value", "price", "total", "amt",
+        ])
 
     def _detect_category_col(self, df: pd.DataFrame) -> str | None:
         return self._detect_col(df, [
-            "category", "cat", "type", "transaction_type", "merchant_category",
+            "category", "cat", "type", "transaction_type",
         ])
 
     # ── Default plan fallback (if LLM fails) ──────────────────────────────────
