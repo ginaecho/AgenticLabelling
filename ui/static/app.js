@@ -103,6 +103,7 @@ function renderGrid() {
   }
   ids.forEach((cid) => grid.appendChild(renderCard(cid)));
   updateMergeBtn();
+  autoScrollForDemo();
 }
 
 function renderCard(cid) {
@@ -1134,6 +1135,31 @@ function appendLogLine(line) {
   pre.scrollTop = pre.scrollHeight;
 }
 
+// In demo-mode recordings (Playwright captures only the viewport, no real user
+// to scroll), force the focused container to scroll so newly-appended content
+// is always visible. Without this, long pipeline runs look frozen in the
+// recording because all the action is happening below the fold.
+function autoScrollForDemo() {
+  const cls = document.body.classList;
+  if (!cls.contains('demo-mode')) return;
+  const TARGETS = {
+    'demo-outputs':  '.col-right',
+    'demo-evidence': '#evidence-view',
+    'demo-convos':   '#convos',
+    'demo-log':      '#live-log',
+    'demo-named':    '#cluster-grid',
+  };
+  for (const [klass, sel] of Object.entries(TARGETS)) {
+    if (!cls.contains(klass)) continue;
+    const el = document.querySelector(sel);
+    if (el) el.scrollTop = el.scrollHeight;
+    // Some demo modes (#evidence-view, #cluster-grid) don't have their own
+    // overflow:auto — the body scrolls instead. Push the window to the bottom
+    // too so newly-appended content is captured by the recording either way.
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  }
+}
+
 // ── Evidence tab ─────────────────────────────────────────────────────────
 async function renderEvidence() {
   const wrap = document.getElementById('evidence-grid');
@@ -1228,6 +1254,7 @@ async function renderEvidence() {
   // Lazy-load the outputs file list (separate endpoint)
   loadOutputsFiles();
   wireExplainButtons();
+  autoScrollForDemo();
 }
 
 function wireExplainButtons() {
@@ -2294,6 +2321,7 @@ async function loadMode() {
       }
     });
   }
+  autoScrollForDemo();
 }
 function applyModeToButtons(mode) {
   $$('#mode-toggle .mode-btn').forEach((b) => {
