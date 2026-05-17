@@ -121,6 +121,13 @@ def main() -> int:
     ap.add_argument('--intent-target', type=str, default='customers')
     ap.add_argument('--intent-purpose', type=str,
                     default='discover spending personas for marketing')
+    ap.add_argument('--dataset-description', type=str,
+                    default='customer-level features engineered from credit-card '
+                            'transaction history (fraud-detection corpus). '
+                            'Each row is one customer; columns describe spending '
+                            'amounts, category breakdowns, and recency.',
+                    help='Short factual description of WHAT the data is about. '
+                         'Shown ONLY to the domain judge.')
     ap.add_argument('--reset-feedback', action='store_true',
                     help='Wipe outputs/user_feedback_log.jsonl before starting')
     args = ap.parse_args()
@@ -129,7 +136,7 @@ def main() -> int:
 
     # Lazy imports — only after RUNS_DIR exists and only inside main so
     # the module is importable without anthropic / ui deps for tests.
-    from experiments.judges import critique_run, _build_evidence_packet
+    from experiments.judges import critique_run, build_arbiter_evidence
     from experiments.arbiter import arbitrate
     from experiments.diff_personas import diff
 
@@ -170,9 +177,9 @@ def main() -> int:
 
         _snapshot_outputs(run_dir)
 
-        print('  [loop] running 3 judges…')
-        critiques = critique_run(run_dir)
-        evidence = _build_evidence_packet(run_dir)
+        print('  [loop] running 3 blind judges in parallel…')
+        critiques = critique_run(run_dir, args.dataset_description)
+        evidence = build_arbiter_evidence(run_dir, args.dataset_description)
         with (run_dir / 'critiques.jsonl').open('w', encoding='utf-8') as f:
             for c in critiques:
                 f.write(json.dumps(c.to_dict(), ensure_ascii=False) + '\n')
