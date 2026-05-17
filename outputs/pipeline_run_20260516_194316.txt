@@ -1,0 +1,1091 @@
+[run_pipeline] Logging full output to /Users/tzu-chunchen/Documents/AI/AI_Personalization/outputs/pipeline_run_20260516_194316.txt
+[run_pipeline] Launching live UI at http://127.0.0.1:5057/ (use --no-ui to disable)
+[run_pipeline] Using raw CSV for fresh feature engineering: data/raw/fraudTrain.csv
+ * Serving Flask app 'ui.app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5057
+[33mPress CTRL+C to quit[0m
+  [Orchestrator] Skill catalog loaded: 11778 chars (skill.md)
+  [Orchestrator] Agent catalog loaded: 20866 chars (agent.md)
+
+=================================================================
+Multi-Agent Clustering & Persona Discovery Pipeline
+=================================================================
+Config       : {'dataset_path': None, 'n_clusters': None, 'clustering_algorithm': 'auto', 'max_cluster_size_pct': 0.4, 'sub_n_clusters': 3, 'max_depth': 2, 'silhouette_target': 0.5, 'max_reselect_failures': 3, 'max_relax_failures': 3, 'persona_tone': 'easy', 'ae_bottleneck_cap': 32, 'ae_max_iter': 200, 'classifier_model': 'auto'}
+Features     : data/raw/fraudTrain.csv
+Max iters    : 10
+Classifier F1 threshold: 0.7
+
+=================================================================
+AGENTIC CLUSTERING PIPELINE — Intent Collection
+=================================================================
+
+  [UserInput] Waiting up to 600s for intent from the UI form
+  [UserInput] (open http://127.0.0.1:5057/ and submit the intent form,
+  [UserInput]  or press Ctrl-C to fall back to terminal prompts)
+127.0.0.1 - - [16/May/2026 19:43:18] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:43:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:43:18] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:43:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:18] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:18] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:18] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:29] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:29] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:29] "POST /api/upload HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:31] "GET /?demo=intent HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:31] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:31] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:32] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [16/May/2026 19:43:32] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:32] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:32] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /?demo=graph HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:33] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:34] "GET /?demo=log HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:34] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:34] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:35] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:35] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:35] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /?demo=convos HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:36] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /?demo=outputs HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:38] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /?demo=evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:40] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:41] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:41] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /?demo=tokens HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:42] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:43:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:18] "POST /api/intent HTTP/1.1" 200 -
+
+─────────────────────────────────────────────────────────────────
+Captured intent (from UI):
+  Target entity    : customers
+  Business purpose : cluster customers based on their shopping behaviors and transaction preferences
+  Dataset path     : data/uploads/fraudTrain_1.csv
+  Clusters wanted  : data-driven (auto-select)
+  Must-have types  : travellers, foodies
+─────────────────────────────────────────────────────────────────
+  [Bus] ✓ UserInput (iter 0): SUCCESS — Collected intent from UI: target='customers', purpose='cluster customers based o
+
+Loading raw transaction data: data/uploads/fraudTrain_1.csv
+127.0.0.1 - - [16/May/2026 19:44:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:44:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:10] "GET /api/status HTTP/1.1" 200 -
+  1,296,675 transactions × 23 columns
+127.0.0.1 - - [16/May/2026 19:45:10] "[36mGET /?demo=intent HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:45:11] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:45:11] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:45:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:11] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:11] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:11] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:12] "GET /api/status HTTP/1.1" 200 -
+  (subsampled to 50,000 rows for DatasetExaminer)
+
+[DatasetExaminer] Iteration 0
+  Target entity : customers
+  Purpose       : cluster customers based on their shopping behaviors and transaction preferences
+  No README.md found in dataset folder.
+  Shape: 50,000 rows × 23 columns
+  [DatasetExaminer → Orchestrator] Requesting LLM: suggest feature engineering groups from schema + business purpose (pipeline)
+
+  [Orchestrator] ← DatasetExaminer requests LLM help: suggest feature engineering groups from schema + business purpose (pipeline)
+127.0.0.1 - - [16/May/2026 19:45:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:30] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → DatasetExaminer: LLM answered (in=1706 out=856 18.09s)
+  [Orchestrator → DatasetExaminer] LLM response received (3751 chars)
+  Suggested feature groups: ['transaction_amount_behavior', 'temporal_behavior', 'geographic_behavior', 'merchant_category_preference', 'fraud_risk_profile', 'customer_demographics']
+  [Bus] ⚠ DatasetExaminer (iter 0): WARNING — Profiled 50,000×23 dataset. Found 11 numeric cols. LLM suggested 6 feature group
+         Issue: Mean feature skewness=3.6 is high. Log-transform recommended before clustering.
+         Doubt: Suggested groups are based on column names; actual feature buildability depends on data quality. Mean skewness=3.6.
+
+[Orchestrator] Launching FeatureEngineerAgent on raw transaction data...
+
+[FeatureEngineer] Iteration 0
+  Entity    : customers
+  Purpose   : cluster customers based on their shopping behaviors and transaction preferences
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+127.0.0.1 - - [16/May/2026 19:45:33] "GET /api/status HTTP/1.1" 200 -
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+127.0.0.1 - - [16/May/2026 19:45:35] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (599 chars)
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (637 chars)
+  [Orchestrator → EvidenceExplainer] LLM response received (556 chars)
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (667 chars)
+  [Orchestrator → EvidenceExplainer] LLM response received (746 chars)
+  [Orchestrator → EvidenceExplainer] LLM response received (581 chars)
+  [Orchestrator → EvidenceExplainer] LLM response received (570 chars)
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (574 chars)
+127.0.0.1 - - [16/May/2026 19:45:38] "POST /api/explain HTTP/1.1" 200 -
+  Detected  : entity='cc_num'  value='amt'  category='category'  timestamp='trans_date_trans_time'
+  Date range: 2019-01-01 → 2020-06-21
+  Entities  : 983  |  Records: 1,296,675
+  Categories (14): ['entertainment', 'food_dining', 'gas_transport', 'grocery_net', 'grocery_pos', 'health_fitness', 'home', 'kids_pets', 'misc_net', 'misc_pos', 'personal_care', 'shopping_net', 'shopping_pos', 'travel']
+127.0.0.1 - - [16/May/2026 19:45:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:44] "GET /api/status HTTP/1.1" 200 -
+  [FeatureEngineer → Orchestrator] Requesting LLM: design feature engineering plan (behavior × topic × time_window) (pipeline)
+
+  [Orchestrator] ← FeatureEngineer requests LLM help: design feature engineering plan (behavior × topic × time_window) (pipeline)
+127.0.0.1 - - [16/May/2026 19:45:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:45:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:06] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → FeatureEngineer: LLM answered (in=2723 out=1158 20.96s)
+  [Orchestrator → FeatureEngineer] LLM response received (4504 chars)
+
+  [FeatureEngineer] LLM Feature Plan:
+    Strategy  : Customers are clustered by their credit card transaction behaviors, so the feature engineering strategy captures spendin
+    Expected  : ~128 features
+    Builder   : overall_aggregate               → Captures total spending intensity, variability, and high-tic
+    Builder   : group_aggregate                 → Category-level spend shares and volumes are the primary beha
+    Builder   : group_trend                     → Trend ratios identify customers who are accelerating or redu
+    Builder   : group_streak                    → Consecutive monthly activity streaks per category signal hab
+    Builder   : frequency_recency               → Transaction frequency, active period counts, recency of last
+    Builder   : entity_diversity                → Category breadth reveals focused vs. generalist shoppers; me
+    Builder   : temporal_patterns               → Time-of-day and day-of-week distributions expose lifestyle c
+    Builder   : static_attributes               → Gender and city population size are stable demographic attri
+
+  [FeatureEngineer] Executing plan — 8 builder(s)...
+
+  Step 1/8: overall_aggregate
+    Purpose: Captures total spending intensity, variability, and high-ticket purchase propens
+127.0.0.1 - - [16/May/2026 19:46:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:17] "GET /api/status HTTP/1.1" 200 -
+    Built  : 24 features  (total so far: 24)
+    Sample : ['sum_amt_3m', 'mean_amt_3m', 'std_amt_3m', 'max_amt_3m', 'median_amt_3m'] ...
+  Step 2/8: group_aggregate
+    Purpose: Category-level spend shares and volumes are the primary behavioral differentiato
+127.0.0.1 - - [16/May/2026 19:46:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:24] "POST /api/upload HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:36] "GET /api/status HTTP/1.1" 200 -
+    Built  : 210 features  (total so far: 234)
+    Sample : ['count_entertainment_6m', 'sum_entertainment_6m', 'mean_entertainment_6m', 'pct_count_entertainment_6m', 'pct_sum_entertainment_6m'] ...
+  Step 3/8: group_trend
+    Purpose: Trend ratios identify customers who are accelerating or reducing spend in key ca
+127.0.0.1 - - [16/May/2026 19:46:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:40] "GET /api/status HTTP/1.1" 200 -
+    Built  : 18 features  (total so far: 252)
+    Sample : ['trend_count_entertainment', 'trend_sum_entertainment', 'trend_count_food_dining', 'trend_sum_food_dining', 'trend_count_gas_transport'] ...
+  Step 4/8: group_streak
+    Purpose: Consecutive monthly activity streaks per category signal habitual vs. occasional
+127.0.0.1 - - [16/May/2026 19:46:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:44] "GET /api/status HTTP/1.1" 200 -
+    Built  : 8 features  (total so far: 260)
+    Sample : ['streak_food_dining', 'streak_gas_transport', 'streak_grocery_pos', 'streak_grocery_net', 'streak_shopping_pos'] ...
+  Step 5/8: frequency_recency
+    Purpose: Transaction frequency, active period counts, recency of last transaction, and in
+127.0.0.1 - - [16/May/2026 19:46:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:46:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:02] "GET /api/status HTTP/1.1" 200 -
+    Built  : 13 features  (total so far: 273)
+    Sample : ['days_since_last', 'event_count_3m', 'active_periods_3m', 'avg_gap_days_3m', 'event_count_6m'] ...
+  Step 6/8: entity_diversity
+    Purpose: Category breadth reveals focused vs. generalist shoppers; merchant diversity cap
+127.0.0.1 - - [16/May/2026 19:47:04] "GET /api/status HTTP/1.1" 200 -
+    Built  : 6 features  (total so far: 279)
+    Sample : ['n_unique_category_6m', 'n_unique_merchant_6m', 'n_unique_category_12m', 'n_unique_merchant_12m', 'n_unique_category_all'] ...
+  Step 7/8: temporal_patterns
+    Purpose: Time-of-day and day-of-week distributions expose lifestyle clusters — night-time
+127.0.0.1 - - [16/May/2026 19:47:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:09] "GET /api/status HTTP/1.1" 200 -
+    Built  : 12 features  (total so far: 291)
+    Sample : ['pct_morning_6m', 'pct_midday_6m', 'pct_evening_6m', 'pct_night_6m', 'pct_weekend_6m'] ...
+  Step 8/8: static_attributes
+    Purpose: Gender and city population size are stable demographic attributes that may corre
+    Built  : 2 features  (total so far: 293)
+    Sample : ['gender_M', 'city_pop']
+
+  [FeatureEngineer] Plan complete.
+    Final matrix: 983 customers × 293 features
+
+  [FeatureEngineer] Saved 983 customers × 293 features → data/processed/engineered_features.parquet
+  [Bus] ✓ FeatureEngineer (iter 0): SUCCESS — Engineered 293 features for 983 customers from 1,296,675 transactions. Builders 
+         Doubt: Some features may have many zeros for customers with short history. Log-transform recommended before clustering.
+  [Orchestrator] Feature engineering done: 293 features × 983 entities
+
+─────────────────────────────────────────────────────────────────
+ITERATION 1 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 1  (vif_threshold=10.0)
+  Features: 293  |  Entities: 983
+  AE bottleneck=32  (cap=32, max_iter=200)
+127.0.0.1 - - [16/May/2026 19:47:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:19] "GET /api/status HTTP/1.1" 200 -
+/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/sklearn/neural_network/_multilayer_perceptron.py:785: ConvergenceWarning: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.
+  warnings.warn(
+  Running VIF gate (threshold=10.0)...
+  [VIF] Pre-pass: dropping 3 linearly dependent features: ['event_count_6m', 'event_count_12m', 'event_count_all']
+127.0.0.1 - - [16/May/2026 19:47:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 1: removing 'active_periods_6m'  VIF=14634.13
+127.0.0.1 - - [16/May/2026 19:47:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:47:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:10] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 2: removing 'active_periods_12m'  VIF=11603.65
+127.0.0.1 - - [16/May/2026 19:48:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:39] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:39] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:48:39] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:48:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:39] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:39] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:39] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:53] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 3: removing 'mean_amt_12m'  VIF=9476.72
+127.0.0.1 - - [16/May/2026 19:48:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:48:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:49:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:21] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:50:21] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:50:22] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:50:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:22] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:22] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:22] "GET /api/events/stream HTTP/1.1" 200 -
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+127.0.0.1 - - [16/May/2026 19:50:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:27] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (708 chars)
+127.0.0.1 - - [16/May/2026 19:50:27] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:30] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:50:30] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:50:30] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:50:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:30] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:30] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:30] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:36] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 4: removing 'pct_evening_6m'  VIF=8461.08
+127.0.0.1 - - [16/May/2026 19:50:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:50:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:28] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 5: removing 'n_unique_category_12m'  VIF=7391.31
+127.0.0.1 - - [16/May/2026 19:51:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:51:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 6: removing 'pct_sum_shopping_net_all'  VIF=7251.43
+127.0.0.1 - - [16/May/2026 19:52:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 7: removing 'count_gas_transport_12m'  VIF=7115.64
+127.0.0.1 - - [16/May/2026 19:52:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:31] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 8: removing 'sum_amt_12m'  VIF=4583.82
+127.0.0.1 - - [16/May/2026 19:52:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:43] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 9: removing 'n_unique_category_6m'  VIF=4046.19
+127.0.0.1 - - [16/May/2026 19:52:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 10: removing 'active_periods_3m'  VIF=3859.73
+127.0.0.1 - - [16/May/2026 19:52:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:52:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 11: removing 'sum_travel_all'  VIF=3669.42
+127.0.0.1 - - [16/May/2026 19:53:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 12: removing 'sum_gas_transport_all'  VIF=2970.06
+127.0.0.1 - - [16/May/2026 19:53:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 13: removing 'mean_amt_all'  VIF=2274.90
+127.0.0.1 - - [16/May/2026 19:53:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 14: removing 'pct_evening_all'  VIF=2225.26
+127.0.0.1 - - [16/May/2026 19:53:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:47] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 15: removing 'sum_grocery_net_all'  VIF=2080.68
+127.0.0.1 - - [16/May/2026 19:53:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:53:57] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 16: removing 'sum_grocery_pos_12m'  VIF=1848.60
+127.0.0.1 - - [16/May/2026 19:53:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:09] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 17: removing 'mean_amt_6m'  VIF=1832.73
+127.0.0.1 - - [16/May/2026 19:54:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 18: removing 'pct_count_shopping_net_all'  VIF=1789.80
+127.0.0.1 - - [16/May/2026 19:54:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:29] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 19: removing 'sum_travel_12m'  VIF=1690.16
+127.0.0.1 - - [16/May/2026 19:54:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:42] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 20: removing 'sum_amt_all'  VIF=1666.20
+127.0.0.1 - - [16/May/2026 19:54:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:52] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 21: removing 'sum_misc_pos_all'  VIF=1559.08
+127.0.0.1 - - [16/May/2026 19:54:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:54:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:08] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 22: removing 'count_home_all'  VIF=1504.50
+127.0.0.1 - - [16/May/2026 19:55:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 23: removing 'n_unique_merchant_all'  VIF=1361.75
+127.0.0.1 - - [16/May/2026 19:55:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:55:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:02] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 24: removing 'count_kids_pets_12m'  VIF=1301.19
+127.0.0.1 - - [16/May/2026 19:56:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:16] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 25: removing 'pct_sum_shopping_net_12m'  VIF=1215.17
+127.0.0.1 - - [16/May/2026 19:56:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:47] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 26: removing 'count_food_dining_all'  VIF=1085.09
+127.0.0.1 - - [16/May/2026 19:56:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:56:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:08] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 27: removing 'count_gas_transport_6m'  VIF=1080.42
+127.0.0.1 - - [16/May/2026 19:57:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:24] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 28: removing 'count_health_fitness_12m'  VIF=1079.02
+127.0.0.1 - - [16/May/2026 19:57:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:38] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 29: removing 'count_personal_care_all'  VIF=1055.64
+127.0.0.1 - - [16/May/2026 19:57:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 30: removing 'count_grocery_net_12m'  VIF=1034.29
+127.0.0.1 - - [16/May/2026 19:57:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:57:58] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 31: removing 'count_entertainment_12m'  VIF=940.15
+127.0.0.1 - - [16/May/2026 19:58:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:10] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 32: removing 'pct_high_amt_all'  VIF=877.16
+127.0.0.1 - - [16/May/2026 19:58:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:20] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 33: removing 'median_amt_12m'  VIF=821.56
+127.0.0.1 - - [16/May/2026 19:58:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:28] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 34: removing 'sum_amt_6m'  VIF=756.57
+127.0.0.1 - - [16/May/2026 19:58:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:38] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 35: removing 'std_amt_12m'  VIF=652.42
+127.0.0.1 - - [16/May/2026 19:58:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 36: removing 'sum_gas_transport_12m'  VIF=631.45
+127.0.0.1 - - [16/May/2026 19:58:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:58:58] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 37: removing 'pct_sum_shopping_net_6m'  VIF=628.27
+127.0.0.1 - - [16/May/2026 19:59:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:06] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 38: removing 'active_periods_all'  VIF=621.42
+127.0.0.1 - - [16/May/2026 19:59:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:14] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 39: removing 'avg_gap_days_12m'  VIF=616.74
+127.0.0.1 - - [16/May/2026 19:59:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:24] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 40: removing 'sum_home_12m'  VIF=562.37
+127.0.0.1 - - [16/May/2026 19:59:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 41: removing 'n_unique_merchant_6m'  VIF=549.39
+127.0.0.1 - - [16/May/2026 19:59:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:43] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 42: removing 'sum_kids_pets_all'  VIF=542.88
+127.0.0.1 - - [16/May/2026 19:59:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:53] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 43: removing 'count_shopping_pos_12m'  VIF=459.77
+127.0.0.1 - - [16/May/2026 19:59:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:59:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 44: removing 'event_count_3m'  VIF=446.14
+127.0.0.1 - - [16/May/2026 20:00:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:09] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 45: removing 'count_health_fitness_all'  VIF=439.05
+127.0.0.1 - - [16/May/2026 20:00:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 46: removing 'count_grocery_pos_all'  VIF=435.27
+127.0.0.1 - - [16/May/2026 20:00:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:29] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 47: removing 'std_amt_6m'  VIF=414.68
+127.0.0.1 - - [16/May/2026 20:00:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 48: removing 'sum_entertainment_all'  VIF=404.59
+127.0.0.1 - - [16/May/2026 20:00:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:47] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 49: removing 'mean_gas_transport_12m'  VIF=393.86
+127.0.0.1 - - [16/May/2026 20:00:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 50: removing 'sum_travel_6m'  VIF=383.61
+127.0.0.1 - - [16/May/2026 20:00:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:00:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:03] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 51: removing 'count_home_12m'  VIF=378.04
+127.0.0.1 - - [16/May/2026 20:01:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:09] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 52: removing 'count_personal_care_12m'  VIF=370.79
+127.0.0.1 - - [16/May/2026 20:01:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:17] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 53: removing 'sum_misc_pos_12m'  VIF=370.42
+127.0.0.1 - - [16/May/2026 20:01:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:25] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 54: removing 'median_amt_6m'  VIF=344.53
+127.0.0.1 - - [16/May/2026 20:01:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 55: removing 'count_food_dining_12m'  VIF=336.09
+127.0.0.1 - - [16/May/2026 20:01:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:43] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 56: removing 'count_shopping_net_12m'  VIF=326.99
+127.0.0.1 - - [16/May/2026 20:01:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:53] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 57: removing 'sum_grocery_net_12m'  VIF=320.49
+127.0.0.1 - - [16/May/2026 20:01:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:01:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:03] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 58: removing 'mean_grocery_pos_12m'  VIF=306.29
+127.0.0.1 - - [16/May/2026 20:02:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:13] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 59: removing 'n_unique_category_all'  VIF=304.67
+127.0.0.1 - - [16/May/2026 20:02:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 60: removing 'mean_amt_3m'  VIF=297.60
+127.0.0.1 - - [16/May/2026 20:02:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 61: removing 'count_kids_pets_all'  VIF=284.59
+127.0.0.1 - - [16/May/2026 20:02:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 62: removing 'sum_health_fitness_12m'  VIF=277.31
+127.0.0.1 - - [16/May/2026 20:02:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:41] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 63: removing 'n_unique_merchant_12m'  VIF=273.63
+127.0.0.1 - - [16/May/2026 20:02:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:50] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 64: removing 'count_misc_pos_12m'  VIF=272.96
+127.0.0.1 - - [16/May/2026 20:02:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:02:58] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 65: removing 'sum_personal_care_12m'  VIF=269.54
+127.0.0.1 - - [16/May/2026 20:03:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:04] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 66: removing 'sum_food_dining_all'  VIF=257.12
+127.0.0.1 - - [16/May/2026 20:03:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:10] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 67: removing 'mean_gas_transport_6m'  VIF=252.39
+127.0.0.1 - - [16/May/2026 20:03:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:16] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 68: removing 'pct_high_amt_12m'  VIF=243.12
+127.0.0.1 - - [16/May/2026 20:03:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:24] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 69: removing 'count_entertainment_all'  VIF=237.67
+127.0.0.1 - - [16/May/2026 20:03:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:30] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 70: removing 'pct_sum_misc_net_all'  VIF=233.22
+127.0.0.1 - - [16/May/2026 20:03:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:36] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 71: removing 'count_grocery_net_6m'  VIF=213.94
+127.0.0.1 - - [16/May/2026 20:03:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:42] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 72: removing 'sum_grocery_pos_all'  VIF=206.63
+127.0.0.1 - - [16/May/2026 20:03:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 73: removing 'count_misc_net_all'  VIF=199.34
+127.0.0.1 - - [16/May/2026 20:03:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:54] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 74: removing 'pct_sum_gas_transport_12m'  VIF=196.59
+127.0.0.1 - - [16/May/2026 20:03:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:03:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:00] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 75: removing 'count_gas_transport_all'  VIF=184.31
+127.0.0.1 - - [16/May/2026 20:04:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:04] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 76: removing 'avg_gap_days_6m'  VIF=153.62
+127.0.0.1 - - [16/May/2026 20:04:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:12] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 77: removing 'pct_sum_kids_pets_12m'  VIF=152.83
+127.0.0.1 - - [16/May/2026 20:04:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:18] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 78: removing 'count_grocery_pos_6m'  VIF=146.23
+127.0.0.1 - - [16/May/2026 20:04:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:28] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 79: removing 'sum_home_all'  VIF=140.21
+127.0.0.1 - - [16/May/2026 20:04:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:34] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 80: removing 'count_shopping_pos_all'  VIF=131.08
+127.0.0.1 - - [16/May/2026 20:04:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:46] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 81: removing 'pct_count_grocery_pos_all'  VIF=128.59
+127.0.0.1 - - [16/May/2026 20:04:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:04:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:00] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 82: removing 'count_home_6m'  VIF=127.99
+127.0.0.1 - - [16/May/2026 20:05:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 83: removing 'pct_sum_health_fitness_12m'  VIF=122.97
+127.0.0.1 - - [16/May/2026 20:05:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 84: removing 'count_grocery_net_all'  VIF=121.65
+127.0.0.1 - - [16/May/2026 20:05:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:41] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 85: removing 'sum_entertainment_12m'  VIF=114.45
+127.0.0.1 - - [16/May/2026 20:05:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 86: removing 'pct_count_home_all'  VIF=109.37
+127.0.0.1 - - [16/May/2026 20:05:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:05:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 87: removing 'count_travel_12m'  VIF=107.25
+127.0.0.1 - - [16/May/2026 20:06:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 88: removing 'sum_shopping_pos_12m'  VIF=106.66
+127.0.0.1 - - [16/May/2026 20:06:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 89: removing 'pct_sum_food_dining_12m'  VIF=103.87
+127.0.0.1 - - [16/May/2026 20:06:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:50] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 90: removing 'count_shopping_net_all'  VIF=103.60
+127.0.0.1 - - [16/May/2026 20:06:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:06:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:02] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 91: removing 'count_health_fitness_6m'  VIF=100.64
+127.0.0.1 - - [16/May/2026 20:07:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:16] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 92: removing 'count_kids_pets_6m'  VIF=99.49
+127.0.0.1 - - [16/May/2026 20:07:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:28] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 93: removing 'pct_count_grocery_net_12m'  VIF=99.31
+127.0.0.1 - - [16/May/2026 20:07:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:44] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 94: removing 'sum_kids_pets_12m'  VIF=94.96
+127.0.0.1 - - [16/May/2026 20:07:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:07:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 95: removing 'trend_sum_gas_transport'  VIF=92.82
+127.0.0.1 - - [16/May/2026 20:08:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:10] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [16/May/2026 20:08:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:15] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 20:08:15] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 20:08:15] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 20:08:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:15] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:16] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:16] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:27] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:27] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 96: removing 'mean_personal_care_12m'  VIF=91.57
+127.0.0.1 - - [16/May/2026 20:08:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 20:08:41] "GET /api/status HTTP/1.1" 200 -

@@ -1,0 +1,109 @@
+[run_pipeline] Logging full output to /Users/tzu-chunchen/Documents/AI/AI_Personalization/outputs/pipeline_run_20260516_175734.txt
+[run_pipeline] Launching live UI at http://127.0.0.1:5057/ (use --no-ui to disable)
+[run_pipeline] Using raw CSV for fresh feature engineering: data/raw/fraudTrain.csv
+ * Serving Flask app 'ui.app'
+ * Debug mode: off
+Address already in use
+Port 5057 is in use by another program. Either identify and stop that program, or start the server with a different port.
+  [Orchestrator] Skill catalog loaded: 11778 chars (skill.md)
+  [Orchestrator] Agent catalog loaded: 20866 chars (agent.md)
+
+=================================================================
+Multi-Agent Clustering & Persona Discovery Pipeline
+=================================================================
+Config       : {'dataset_path': None, 'n_clusters': None, 'clustering_algorithm': 'auto', 'max_cluster_size_pct': 0.4, 'sub_n_clusters': 3, 'max_depth': 2, 'silhouette_target': 0.5, 'max_reselect_failures': 3, 'persona_tone': 'easy', 'ae_bottleneck_cap': 32, 'ae_max_iter': 200, 'classifier_model': 'auto'}
+Features     : data/raw/fraudTrain.csv
+Max iters    : 10
+Classifier F1 threshold: 0.7
+
+=================================================================
+AGENTIC CLUSTERING PIPELINE — Intent Collection
+=================================================================
+
+  [UserInput] Waiting up to 600s for intent from the UI form
+  [UserInput] (open http://127.0.0.1:5057/ and submit the intent form,
+  [UserInput]  or press Ctrl-C to fall back to terminal prompts)
+
+  [UserInput] Interrupted — falling back to terminal prompts.
+Before we begin, please answer a few questions.
+(Press Enter to skip optional questions and use defaults.)
+
+
+1. What entity are you clustering?
+  Examples: customers, products, employees, merchants
+  [Non-interactive] Using default: 'customers'
+
+2. What is the business purpose of this clustering?
+  Be specific — this shapes which features are built and how clusters are interpreted.
+  Example: 'understand customer shopping behaviour to personalise product recommendations'
+  [Non-interactive] Using default: ''
+
+  [UserInput] Your answer is quite short — a more specific purpose
+  leads to better features and cluster labels.
+
+  Can you elaborate? (or press Enter to continue with what you gave)
+  Tip: mention what decision or action the clusters will support
+  [Non-interactive] Using default: ''
+
+  Default dataset path: data/raw/fraudTrain.csv
+
+3. Dataset path? (press Enter to use default)
+  [Non-interactive] Using default: ''
+
+4. Any constraints or filters? (optional — press Enter to skip)
+  Example: 'only use last 12 months of transactions', 'exclude VIP customers'
+  [Non-interactive] Using default: ''
+
+5. How many clusters would you like? (press Enter to let the pipeline decide)
+  Example: '5' for exactly 5 clusters. Leave blank for data-driven selection.
+  [Non-interactive] Using default: ''
+
+6. Must any specific types appear as clusters? (optional — press Enter to skip)
+  List types separated by commas — these are semantic labels the pipeline
+  MUST produce as distinct personas.
+  Example: 'traveller, high-value-customer, weekend-shopper'
+  [Non-interactive] Using default: ''
+
+─────────────────────────────────────────────────────────────────
+Captured intent:
+  Target entity    : customers
+  Business purpose : 
+  Dataset path     : data/raw/fraudTrain.csv
+  Clusters wanted  : data-driven (auto-select)
+─────────────────────────────────────────────────────────────────
+  [Bus] ✓ UserInput (iter 0): SUCCESS — Collected intent: target='customers', purpose=''
+         Doubt: Business purpose may still be too vague.
+
+Loading raw transaction data: data/raw/fraudTrain.csv
+Traceback (most recent call last):
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/run_pipeline.py"[0m, line [35m181[0m, in [35m<module>[0m
+    result = orchestrator.run(
+        features_path=_default_features_path,
+        max_total_iterations=10,
+        skip_user_input=False,   # UserInputAgent will prompt for your clustering intent
+    )
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/agents/orchestrator.py"[0m, line [35m472[0m, in [35mrun[0m
+    full_raw_df = _load_df(raw_data_path)
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/agents/orchestrator.py"[0m, line [35m52[0m, in [35m_load_df[0m
+    return [31mpd.read_csv[0m[1;31m(path, sep=sep, low_memory=False)[0m
+           [31m~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py"[0m, line [35m873[0m, in [35mread_csv[0m
+    return _read(filepath_or_buffer, kwds)
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py"[0m, line [35m306[0m, in [35m_read[0m
+    return [31mparser.read[0m[1;31m(nrows)[0m
+           [31m~~~~~~~~~~~[0m[1;31m^^^^^^^[0m
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/pandas/io/parsers/readers.py"[0m, line [35m1947[0m, in [35mread[0m
+    ) = [31mself._engine.read[0m[1;31m(  # type: ignore[attr-defined][0m
+        [31m~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+        [1;31mnrows[0m
+        [1;31m^^^^^[0m
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/pandas/io/parsers/c_parser_wrapper.py"[0m, line [35m219[0m, in [35mread[0m
+    data = self._reader.read(nrows)
+  File [35m"pandas/_libs/parsers.pyx"[0m, line [35m814[0m, in [35mpandas._libs.parsers.TextReader.read[0m
+  File [35m"pandas/_libs/parsers.pyx"[0m, line [35m906[0m, in [35mpandas._libs.parsers.TextReader._read_rows[0m
+  File [35m"pandas/_libs/parsers.pyx"[0m, line [35m885[0m, in [35mpandas._libs.parsers.TextReader._check_tokenize_status[0m
+  File [35m"pandas/_libs/parsers.pyx"[0m, line [35m2076[0m, in [35mpandas._libs.parsers.raise_parser_error[0m
+  File [35m"<frozen codecs>"[0m, line [35m334[0m, in [35mgetstate[0m
+[1;35mKeyboardInterrupt[0m
