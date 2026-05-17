@@ -95,13 +95,38 @@ with open(_root / 'config.yaml') as f:
     config = yaml.safe_load(f)
 
 # ── Auto-approve at human checkpoint ──────────────────────────────────────────
+# We do NOT approve at the first passing iteration. Instead we ask for a few
+# more recluster rounds so the orchestrator's state.best_* tracker can compare
+# multiple full {naming, F1} candidates and pick the actual winner. Path A in
+# orchestrator (max_iterations_reached) saves state.best_naming_result, which
+# is now ranked by F1 (see state.update_best). The approve path also saves the
+# all-time best, so even if we DO approve mid-loop the winning iteration's
+# personas reach outputs/personas.json (and the Named Clusters tab).
 import agents.orchestrator as _orch_mod
 from agents.state import HumanDecision
+
+# Approve only after at least this many passing iterations have been collected.
+# Each subsequent recluster also re-runs _ask_parameter_tuning so the next
+# iteration tries a different algorithm/k for diversity.
+_MIN_PASSING_BEFORE_APPROVE = 3
+_passing_count = {'n': 0}
 
 _orig_chk = _orch_mod.human_checkpoint
 def _auto_approve(personas, cr, clf, bus):
     _orig_chk(personas, cr, clf, bus)
-    print('\n[Auto-approve] Selecting option 1 (Approve).')
+    _passing_count['n'] += 1
+    n = _passing_count['n']
+    if n < _MIN_PASSING_BEFORE_APPROVE:
+        print(f'\n[Auto-approve] Passing iteration #{n} — continuing to collect '
+              f'more candidates before picking the winner ({_MIN_PASSING_BEFORE_APPROVE} target).')
+        return HumanDecision(
+            action='recluster',
+            feedback=(
+                f'Exploration round {n}/{_MIN_PASSING_BEFORE_APPROVE}: keep iterating '
+                'to find a higher-F1 cluster set. Try a different algorithm or k.'
+            ),
+        )
+    print(f'\n[Auto-approve] Collected {n} passing iterations — selecting best by F1.')
     return HumanDecision(action='approve')
 _orch_mod.human_checkpoint = _auto_approve
 

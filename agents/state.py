@@ -180,10 +180,28 @@ class PipelineState:
         cr: ClusteringResult,
         clf: Optional[ClassifierResult] = None,
     ) -> None:
-        """Keep track of the best (highest avg_confidence + passed gate) result."""
-        if nr.passed:
-            if (self.best_naming_result is None
-                    or nr.avg_confidence > self.best_naming_result.avg_confidence):
-                self.best_naming_result = nr
-                self.best_clustering_result = cr
-                self.best_classifier_result = clf
+        """Keep track of the best (passed gate · highest F1 · then avg_confidence) result.
+
+        F1 is the primary tiebreaker because it's what the Classifier gate
+        enforces and what end-users compare across iterations. avg_confidence
+        only breaks the tie if F1 is unavailable / equal.
+        """
+        if not nr.passed:
+            return
+
+        def _score(_nr, _clf):
+            # Composite: F1 dominates (×100 weight), confidence is tiebreaker
+            f1 = float(getattr(_clf, 'cv_f1_macro', 0.0) or 0.0) if _clf else 0.0
+            conf = float(getattr(_nr, 'avg_confidence', 0.0) or 0.0)
+            return f1 * 100.0 + conf
+
+        if self.best_naming_result is None:
+            self.best_naming_result = nr
+            self.best_clustering_result = cr
+            self.best_classifier_result = clf
+            return
+
+        if _score(nr, clf) > _score(self.best_naming_result, self.best_classifier_result):
+            self.best_naming_result = nr
+            self.best_clustering_result = cr
+            self.best_classifier_result = clf

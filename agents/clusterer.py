@@ -212,6 +212,7 @@ class ClusteringAgent:
         iteration: int = 1,
         config_override: dict | None = None,
         min_silhouette: float | None = None,
+        silhouette_target: float | None = None,
     ) -> ClusteringResult:
         """
         Parameters
@@ -230,6 +231,12 @@ class ClusteringAgent:
         # Merge per-iteration config overrides over base config
         cfg = {**self.config, **(config_override or {})}
         _min_sil = min_silhouette if min_silhouette is not None else 0.05
+        # silhouette_target is the orchestrator-level pass bar (dynamic — starts
+        # at config.silhouette_target=0.5, relaxes -0.1 after each 3 consecutive
+        # misses). The clusterer uses it to decide success vs warning so the agent
+        # report aligns with what the orchestrator will do next.
+        _target = silhouette_target if silhouette_target is not None \
+            else float(cfg.get('silhouette_target', 0.5))
 
         print(f'\n[Clusterer] Iteration {iteration}')
         if feedback:
@@ -561,17 +568,20 @@ class ClusteringAgent:
             "weak but usable" if sil >= 0.10 else
             "low (typical for transaction ratio features)"
         )
-        status = "success" if sil >= 0.25 else "warning"
+        # Success/warning is decided against the DYNAMIC orchestrator target,
+        # not a hardcoded threshold — so the chip in the UI matches the actual
+        # pass bar the orchestrator will enforce next.
+        status = "success" if sil >= _target else "warning"
         issues = []
-        if sil < 0.15:
+        if sil < _target:
             issues.append(
-                f"Silhouette={sil:.3f} < 0.15 — clusters overlap; interpretability may be low. "
-                "Consider reviewing feature selection or k."
+                f"Silhouette={sil:.3f} < target {_target:.2f} — orchestrator will "
+                "reselect features (or escalate after 3 consecutive misses)."
             )
         elif sil < 0.25:
             issues.append(
-                f"Silhouette={sil:.3f} < 0.25 — clusters may overlap slightly. "
-                "Consider different k or algorithm."
+                f"Silhouette={sil:.3f} < 0.25 — meets dynamic target {_target:.2f} "
+                "but clusters may still overlap; consider different k or algorithm."
             )
 
         if self.bus:
@@ -599,6 +609,7 @@ class ClusteringAgent:
                     "k_selected": n_clusters,
                     "n_leaf_clusters": n_leaf,
                     "silhouette": round(sil, 4),
+                    "silhouette_target": round(_target, 3),
                     "k_scores": {str(k): v for k, v in k_scores.items()},
                 },
                 recommendation="proceed" if not issues else "retry",

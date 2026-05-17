@@ -485,9 +485,26 @@ async function applyChatConclusion(cid, ds, p) {
       const newName = ds.name || p.new_name;
       const r = await api('PUT', `/api/personas/${cid}`, {name: newName, priority: 'high'});
       state.personas[cid].persona = r.persona;
+      // CRITICAL: refresh draft so the form fields show the new name; otherwise
+      // a subsequent Save edits would push the stale draft name back over the rename.
+      state.draft = JSON.parse(JSON.stringify(r.persona));
+      // Persist the chat key-learnings as a high-priority memory rule so the next
+      // pipeline run (and every agent that reads user_feedback_log) sees WHY the
+      // rename happened — not just the before/after diff.
+      const learning = [p.summary || '', p.reason ? `Why: ${p.reason}` : '']
+        .filter(Boolean).join(' · ');
+      if (learning) {
+        try {
+          await api('POST', '/api/feedback/global', {
+            rule: `Cluster ${cid} renamed → "${newName}". Key learning: ${learning}`,
+            priority: 'high',
+          });
+        } catch (_) { /* non-fatal — rename already saved */ }
+      }
       renderGrid();
       renderDetail();
-      toast(`Renamed → "${newName}"`);
+      document.getElementById('chat-proposal').classList.add('hidden');
+      toast(`Renamed → "${newName}" · learning saved to memory`);
     } else if (action === 'merge') {
       const otherCid = ds.with;
       const r = await api('POST', '/api/clusters/merge', {
@@ -1043,13 +1060,14 @@ function gatesForAgent(agentKey, status, metrics, issues) {
       push(`unique names ${m.names_unique ? '✓' : '✗'}`,
            m.names_unique ? 'pass' : 'fail');
   } else if (agentKey === 'Classifier') {
+    // F1 is the gate metric — show it as the headline number. Accuracy is misleading
+    // on imbalanced clusters (could be 0.96 while small clusters score F1=0) so we
+    // intentionally do NOT surface cv_accuracy as a separate "pass" chip.
     if (m.cv_f1_macro != null) {
       const f1 = Number(m.cv_f1_macro);
-      push(`CV F1 ${f1.toFixed(3)} (gate ≥ 0.70)`,
+      push(`CV F1 (macro) ${f1.toFixed(3)} · gate ≥ 0.70`,
            f1 >= 0.70 ? 'pass' : 'fail');
     }
-    if (m.cv_accuracy != null)
-      push(`accuracy ${Number(m.cv_accuracy).toFixed(3)}`, 'pass');
   } else if (agentKey === 'DatasetExaminer') {
     if (m.n_rows != null) push(`${m.n_rows.toLocaleString()} rows`, 'pass');
     if (m.mean_skewness != null)
@@ -1522,21 +1540,55 @@ function buildFinalSummaryCard(completion) {
     const classifier = reportsByAgent['Classifier'];
 
     const sil = cluster?.metrics?.silhouette;
+    const target = cluster?.metrics?.silhouette_target;
     const k = cluster?.metrics?.n_leaf_clusters || cluster?.metrics?.n_clusters;
-    const algo = cluster?.metrics?.algorithm || '';
+    // Algorithm column — annotate whether it ran, was auto-selected, or was skipped.
+    let algo = '—';
+    let algoTip = 'No clustering ran in this iteration.';
+    if (cluster) {
+      const raw = cluster.metrics?.algorithm || '';
+      const algoReason = cluster.context?.algo_reasoning || '';
+      const isAuto = /auto-select|auto select|recommend|chose/i.test(algoReason);
+      algo = raw ? (isAuto ? `${raw} (auto)` : raw) : '—';
+      algoTip = algoReason
+        ? `Selected: ${raw || '?'} — ${algoReason}`
+        : `Algorithm: ${raw || 'unknown'}`;
+    }
     const f1 = classifier?.metrics?.cv_f1_macro;
     const namingPassed = naming?.metrics?.gate_passed;
     const avgConf = naming?.metrics?.avg_confidence;
 
-    // Status of this iteration overall
+    // Status of this iteration overall + WHY it didn't continue (so the user
+    // can see "iter 1 silhouette was high but Clarity Gate failed" instead of
+    // wondering why we kept iterating).
     let status = 'pending';
-    if (cluster?.status === 'blocked') status = 'blocked';
-    else if (classifier?.status === 'success') status = 'success';
-    else if (cluster) status = cluster.status;
+    let reason = '';
+    if (cluster?.status === 'blocked') {
+      status = 'blocked';
+      reason = (cluster.issues && cluster.issues[0]) || 'Clusterer blocked.';
+    } else if (!cluster) {
+      status = 'skipped';
+      reason = 'Clustering did not run this iteration (re-engineering features).';
+    } else if (cluster.status === 'warning' && sil != null && target != null && sil < target) {
+      status = 'silhouette miss';
+      reason = `silhouette ${Number(sil).toFixed(3)} < target ${Number(target).toFixed(2)} → reselect features`;
+    } else if (naming && namingPassed === false) {
+      status = 'clarity fail';
+      reason = (naming.issues && naming.issues[0]) || 'Clarity Gate failed → re-cluster';
+    } else if (classifier && classifier.status !== 'success') {
+      status = 'F1 low';
+      reason = `CV F1 ${f1 != null ? Number(f1).toFixed(3) : '?'} below gate → ${classifier.context?.action || 'recluster'}`;
+    } else if (classifier?.status === 'success') {
+      status = 'success';
+      reason = 'all gates passed';
+    } else if (naming?.metrics?.gate_passed === true) {
+      status = 'naming ok';
+      reason = 'naming passed; classifier did not run (max iter reached?)';
+    }
 
     return {
-      iter: startEv.iteration, status,
-      algo, k, sil, f1, namingPassed, avgConf,
+      iter: startEv.iteration, status, reason,
+      algo, algoTip, k, sil, target, f1, namingPassed, avgConf,
       tokensIn: totIn, tokensOut: totOut, cost,
       elapsedS,
     };
@@ -1589,29 +1641,34 @@ function buildFinalSummaryCard(completion) {
         <div class="ft-cell"><b>${fmtTime(totalTime)}</b><span>wall-clock time</span></div>
         <div class="ft-cell"><b>${winnerIter != null ? 'iter ' + winnerIter : '—'}</b><span>winning iteration</span></div>
       </div>
-      <p class="lead">One row per iteration. The winning iteration is highlighted — chosen by Clarity Gate pass + highest F1, falling back to silhouette.</p>
+      <p class="lead">One row per iteration. The winning iteration is highlighted — chosen by Clarity Gate pass + highest F1, falling back to silhouette. The <b>Why</b> column explains what made the orchestrator continue past iterations whose silhouette already looked high.</p>
       <table class="finalsum-table">
         <thead>
           <tr>
             <th>Iter</th><th>Algo</th><th>k</th><th>Silhouette</th><th>CV F1</th>
-            <th>Naming</th><th>Tokens</th><th>Cost</th><th>Time</th><th>Status</th>
+            <th>Naming</th><th>Tokens</th><th>Cost</th><th>Time</th><th>Status</th><th>Why</th>
           </tr>
         </thead>
         <tbody>
-          ${rows.map(r => `
+          ${rows.map(r => {
+            const silStr = r.sil != null && r.target != null
+              ? `${fmtSil(r.sil)} <span class="muted" style="font-size:10.5px">/ tgt ${Number(r.target).toFixed(2)}</span>`
+              : fmtSil(r.sil);
+            return `
             <tr class="${r.status}${r.iter === winnerIter ? ' winner' : ''}">
               <td><b>${r.iter}${r.iter === winnerIter ? ' ★' : ''}</b></td>
-              <td>${escapeHtml(r.algo || '—')}</td>
+              <td title="${escapeHtml(r.algoTip || '')}">${escapeHtml(r.algo || '—')}</td>
               <td>${r.k ?? '—'}</td>
-              <td>${fmtSil(r.sil)}</td>
+              <td>${silStr}</td>
               <td>${fmtF1(r.f1)}</td>
               <td>${r.namingPassed === true ? '✓' : r.namingPassed === false ? '✗' : '—'}${r.avgConf != null ? ` (${Number(r.avgConf).toFixed(1)}/10)` : ''}</td>
               <td>${fmtNum(r.tokensIn + r.tokensOut)}</td>
               <td>${fmtUsd(r.cost)}</td>
               <td>${fmtTime(r.elapsedS)}</td>
-              <td><span class="iter-badge ${r.status}">${r.status}</span></td>
-            </tr>
-          `).join('')}
+              <td><span class="iter-badge ${r.status.replace(/\s+/g,'-')}">${escapeHtml(r.status)}</span></td>
+              <td class="why-cell" title="${escapeHtml(r.reason || '')}">${escapeHtml(r.reason || '—')}</td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>`;
@@ -2126,7 +2183,7 @@ function buildOutputBody(agent, m) {
       const f = Number(m.cv_f1_macro);
       rows.push(fmtKV('CV F1 macro (gate ≥ 0.70)', f.toFixed(4), f >= 0.7 ? 'good' : 'bad'));
     }
-    if (m.cv_accuracy != null)   rows.push(fmtKV('CV accuracy', Number(m.cv_accuracy).toFixed(4)));
+    if (m.cv_f1_weighted != null) rows.push(fmtKV('CV F1 weighted', Number(m.cv_f1_weighted).toFixed(4)));
     if (m.n_classes != null)     rows.push(fmtKV('classes', m.n_classes));
   } else if (agent === 'Orchestrator') {
     if (m.silhouette_target_previous != null) {
@@ -3060,14 +3117,20 @@ async function boot() {
 }
 
 // ── Demo / recording focus mode ──────────────────────────────────────────
-// Add ?demo=<graph|convos|outputs|evidence|tokens> to the URL to isolate one
-// part of the UI for a clean screen recording (Shift+Cmd+5 on macOS).
+// Add ?demo=<graph|convos|outputs|evidence|tokens|named|intent|log> to the URL
+// to isolate one part of the UI for a clean screen recording.
 function applyDemoMode() {
   const params = new URLSearchParams(window.location.search);
   const area = params.get('demo');
   if (!area) return;
   document.body.classList.add('demo-mode', `demo-${area}`);
   if (area === 'evidence') selectView('evidence');
+  if (area === 'named') {
+    // The Named Clusters tab is the 'clusters' view. Switch to it now so the
+    // recording captures the cluster grid the moment personas.json is written
+    // (the SSE pipeline_complete handler already triggers a reload of personas).
+    selectView('clusters');
+  }
   // Render a small exit button so you can leave demo mode without editing the URL
   if (!document.getElementById('demo-exit')) {
     const btn = document.createElement('button');

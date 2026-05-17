@@ -562,7 +562,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         # relax logic can lower it on the fly (state.silhouette_target_override).
         config_silhouette_target = float(self.config.get('silhouette_target', 0.5))
         max_reselect_failures = int(self.config.get('max_reselect_failures', 3))
-        max_relax_failures = int(self.config.get('max_relax_failures', 5))
+        max_relax_failures = int(self.config.get('max_relax_failures', 3))
 
         def _current_silhouette_target() -> float:
             return state.silhouette_target_override \
@@ -678,6 +678,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 iteration=iteration,
                 config_override=_cluster_override or None,
                 min_silhouette=state.tuning_params.get('min_silhouette'),
+                silhouette_target=_current_silhouette_target(),
             )
             self._timings['Clusterer'].append(time.perf_counter() - _t0)
             state.clustering_history.append(cr)
@@ -863,25 +864,43 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             })
 
             if decision.action == 'approve':
-                print('\n[Orchestrator] Approved! Saving outputs...')
-                save_outputs(cr, nr, clf, self.bus)
+                # Make sure the CURRENT iteration competes for best (it just passed
+                # all gates) so the all-time best comparison is fair.
+                state.update_best(nr, cr, clf)
+                # SAVE THE ALL-TIME BEST, not necessarily the current iteration.
+                # If an earlier iteration scored higher F1, that one wins — so the
+                # Named Clusters tab always shows the actual best-performing run.
+                best_cr  = state.best_clustering_result or cr
+                best_nr  = state.best_naming_result or nr
+                best_clf = state.best_classifier_result or clf
+                if best_nr is not nr:
+                    print(
+                        f'\n[Orchestrator] Approved at iter {cr.iteration}, but iter '
+                        f'{best_nr.iteration} scored higher (F1={best_clf.cv_f1_macro:.3f} '
+                        f'vs {clf.cv_f1_macro:.3f}). Saving iter {best_nr.iteration} as the winner.'
+                    )
+                else:
+                    print('\n[Orchestrator] Approved! Saving outputs...')
+                save_outputs(best_cr, best_nr, best_clf, self.bus)
                 self._print_timing_summary()
                 self.bus.emit(
                     'pipeline_complete',
                     status='success',
-                    n_clusters=len(nr.personas) if nr.personas else 0,
-                    silhouette=getattr(cr, 'silhouette', None),
-                    cv_f1_macro=clf.cv_f1_macro,
+                    n_clusters=len(best_nr.personas) if best_nr.personas else 0,
+                    silhouette=getattr(best_cr, 'silhouette', None),
+                    cv_f1_macro=best_clf.cv_f1_macro,
+                    winning_iteration=getattr(best_nr, 'iteration', None),
                 )
                 return {
                     'status': 'success',
-                    'personas': nr.personas,
+                    'personas': best_nr.personas,
                     'classifier': {
-                        'cv_accuracy': clf.cv_accuracy,
-                        'cv_f1_macro': clf.cv_f1_macro,
-                        'cv_f1_weighted': clf.cv_f1_weighted,
-                        'per_class_f1': clf.per_class_f1,
+                        'cv_accuracy': best_clf.cv_accuracy,
+                        'cv_f1_macro': best_clf.cv_f1_macro,
+                        'cv_f1_weighted': best_clf.cv_f1_weighted,
+                        'per_class_f1': best_clf.per_class_f1,
                     },
+                    'winning_iteration': getattr(best_nr, 'iteration', None),
                     'run_history': run_history,
                     'timing': self._timing_dict(),
                     'llm_usage': self._llm_usage_dict(),
@@ -897,6 +916,13 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 }
 
             elif decision.action == 'recluster':
+                # When the checkpoint asks for another iteration, tune params first
+                # so the next round tries a different algorithm/k — otherwise we'd
+                # just re-cluster with identical settings and produce identical
+                # personas. This is what gives the orchestrator iteration diversity
+                # when run_pipeline.py defers approval to collect more candidates.
+                new_params = self._ask_parameter_tuning(iteration, run_history, state)
+                state.tuning_params.update(new_params)
                 state.cluster_feedback = decision.feedback
                 state.naming_feedback = ''
                 state.classifier_feedback = ''
@@ -1095,6 +1121,42 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             new=new_target,
             mode=mode,
         )
+        # Emit a HIGH-VISIBILITY Orchestrator agent_report so the degrade lands in
+        # the right-column outputs panel as a warning chip — not just a buried
+        # event log line. This makes the "0.5 → 0.4" relax decision impossible
+        # to miss when reviewing why a run accepted a lower-quality clustering.
+        try:
+            from skills.orchestrator_bus import OrchestratorMessage
+            self.bus.report(OrchestratorMessage(
+                agent="Orchestrator",
+                iteration=state.total_iterations,
+                status="warning",
+                what_was_done=(
+                    f"Silhouette target relaxed {current_target:.2f} → {new_target:.2f} "
+                    f"({mode} mode) after 3 consecutive iterations failed to clear the bar."
+                ),
+                what_was_not_done=(
+                    "Did not raise the target back; future iterations only need to "
+                    f"clear {new_target:.2f} to be accepted."
+                ),
+                doubts=(
+                    "Lower target accepts weaker cluster separation — interpretability "
+                    "of the resulting personas may drop."
+                ),
+                issues=[
+                    f"⚠ silhouette_target degraded {current_target:.2f}→{new_target:.2f} "
+                    f"(step #{int(round((0.5 - new_target) / 0.1))}, {mode})"
+                ],
+                metrics={
+                    "silhouette_target_previous": round(current_target, 3),
+                    "silhouette_target_new": round(new_target, 3),
+                    "mode": mode,
+                },
+                recommendation="proceed",
+                context={"reason": "max_relax_failures reached"},
+            ))
+        except Exception:  # noqa: BLE001
+            pass
 
     def _wait_for_target_change(self, current_target: float, suggested: float, state) -> float:
         """Block until the user submits a new silhouette_target via /api/silhouette-target."""

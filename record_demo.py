@@ -24,6 +24,7 @@ Outputs land in `recordings/`:
     recordings/outputs.webm    ← right-column per-agent computed results
     recordings/evidence.webm   ← Data & evidence tab updating per iteration
     recordings/tokens.webm     ← 3-ledger Tokens & cost panel ticking up
+    recordings/named.webm      ← Named Clusters tab (populates after pipeline_complete)
 
 Notes
 -----
@@ -43,9 +44,16 @@ import time
 import requests
 
 BASE_URL = "http://127.0.0.1:5057"
-# Order matters for tiling: intent first (user fills it), then live views
-REGIONS = ["intent", "graph", "log", "convos", "outputs", "evidence", "tokens"]
+# Order matters for tiling: intent first (user fills it), then live views, then
+# 'named' which only has content after pipeline_complete (the cluster grid +
+# detail panel populate once personas land in outputs/personas.json).
+REGIONS = ["intent", "graph", "log", "convos", "outputs", "evidence", "tokens", "named"]
 VIEWPORT = {"width": 1280, "height": 720}
+# Bare "full" walkthrough — keep the window small enough to FIT inside the
+# user's visible Mac screen (minus the menu bar + dock). 1280×800 fits on every
+# MacBook 13"/14"/16" without parts of the UI being clipped offscreen, which is
+# what made scrolling unrecordable on the previous attempt.
+VIEWPORT_FULL = {"width": 1280, "height": 800}
 OUT_DIR = pathlib.Path("recordings")
 
 
@@ -91,6 +99,13 @@ def main() -> None:
                     help="don't submit intent automatically — wait for user")
     ap.add_argument("--regions", nargs="*", default=REGIONS,
                     help=f"which regions to record (default: all {len(REGIONS)})")
+    ap.add_argument("--skip-pipeline-check", action="store_true",
+                    help="don't require pipeline_running=true (useful when recording "
+                         "post-completion views like 'named' against already-saved personas)")
+    ap.add_argument("--stop-on-key", action="store_true",
+                    help="record until you press Enter in this terminal instead of waiting "
+                         "for pipeline_complete (use when capturing manual interactions like "
+                         "renaming clusters)")
     args = ap.parse_args()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -99,8 +114,10 @@ def main() -> None:
     status = _status()
     if not status:
         sys.exit(f"ERROR: cannot reach {BASE_URL}/api/status — is the pipeline running?")
-    if not status.get("pipeline_running"):
-        sys.exit("ERROR: pipeline is not in 'running' state. Start `python run_pipeline.py` first.")
+    if not status.get("pipeline_running") and not args.skip_pipeline_check:
+        sys.exit("ERROR: pipeline is not in 'running' state. Start `python run_pipeline.py` "
+                 "first, or pass --skip-pipeline-check to record against the previous run's "
+                 "saved personas (useful for the 'named' region).")
     if "awaiting_intent" not in {e for e in []} and not args.auto_submit:
         print("  [demo] note: pipeline state =", json.dumps(status, indent=2))
 
@@ -130,13 +147,17 @@ def main() -> None:
         for region in args.regions:
             ctx_dir = OUT_DIR / region
             ctx_dir.mkdir(exist_ok=True)
+            _vp = VIEWPORT_FULL if region == "full" else VIEWPORT
             ctx = browser.new_context(
-                viewport=VIEWPORT,
+                viewport=_vp,
                 record_video_dir=str(ctx_dir),
-                record_video_size=VIEWPORT,
+                record_video_size=_vp,
             )
             page = ctx.new_page()
-            url = f"{BASE_URL}/?demo={region}"
+            # 'full' is a special pseudo-region: load the bare UI (no ?demo= param)
+            # so topbar, tabs, detail panel — everything — is interactive and
+            # visible. Use this when you want to capture a free-form walkthrough.
+            url = BASE_URL + "/" if region == "full" else f"{BASE_URL}/?demo={region}"
             # 'networkidle' never fires because the UI keeps an SSE connection
             # open forever — use 'domcontentloaded' + a small explicit sleep.
             page.goto(url, wait_until="domcontentloaded", timeout=15000)
@@ -145,8 +166,10 @@ def main() -> None:
             pages[region] = page
             print(f"  [demo] opened {url}  → recording to {ctx_dir}/")
 
-        # Submit intent so the pipeline kicks off (recordings already running)
-        if args.auto_submit:
+        # Submit intent so the pipeline kicks off (recordings already running).
+        # Skip when --skip-pipeline-check (no live pipeline) or --stop-on-key
+        # (recording a manual interaction, not a fresh run).
+        if args.auto_submit and not args.skip_pipeline_check and not args.stop_on_key:
             time.sleep(2)   # let pages settle
             try:
                 _submit_intent(args.target, args.purpose, args.dataset, args.k)
@@ -154,22 +177,45 @@ def main() -> None:
                 print(f"  [demo] WARNING: intent submit failed: {exc}")
                 print("  [demo] submit it manually in the browser — recording continues")
 
-        # Wait for pipeline_complete OR timeout
-        print(f"  [demo] recording … waiting for pipeline_complete (timeout {args.timeout}s)")
-        deadline = time.time() + args.timeout
-        try:
-            while time.time() < deadline:
-                s = _status()
-                last_complete = s.get("last_complete")
-                if last_complete:
-                    elapsed = int(args.timeout - (deadline - time.time()))
-                    print(f"  [demo] pipeline_complete fired (status={last_complete.get('status')}) "
-                          f"after {elapsed}s — recording 8 more seconds for final UI render")
-                    time.sleep(8)
-                    break
-                time.sleep(2)
-        except KeyboardInterrupt:
-            print("\n  [demo] interrupted — saving recordings up to this point")
+        if args.stop_on_key:
+            print("\n  [demo] recording … interact with the browser, then press Enter here to stop.")
+            try:
+                input()
+            except (KeyboardInterrupt, EOFError):
+                pass
+            print("  [demo] Enter received — closing pages and writing video files")
+        elif args.skip_pipeline_check:
+            # No live pipeline to wait for — just record for the full --timeout,
+            # giving the user time to interact (rename clusters, etc.) in the
+            # already-open browser window.
+            print(f"  [demo] recording for {args.timeout}s (no live pipeline). "
+                  f"Interact in the browser; the recording stops when timeout hits "
+                  f"or you Ctrl+C this process.")
+            try:
+                time.sleep(args.timeout)
+            except KeyboardInterrupt:
+                print("\n  [demo] interrupted — saving recordings up to this point")
+        else:
+            # Wait for pipeline_complete OR timeout
+            print(f"  [demo] recording … waiting for pipeline_complete (timeout {args.timeout}s)")
+            deadline = time.time() + args.timeout
+            try:
+                while time.time() < deadline:
+                    s = _status()
+                    last_complete = s.get("last_complete")
+                    if last_complete:
+                        elapsed = int(args.timeout - (deadline - time.time()))
+                        # 20 s tail so the Named Clusters tab has time to (a) detect
+                        # pipeline_complete via SSE, (b) auto-switch view, and (c) render
+                        # all cluster cards from the freshly-saved personas.json before
+                        # the recording stops. 8 s was too short for slower machines.
+                        print(f"  [demo] pipeline_complete fired (status={last_complete.get('status')}) "
+                              f"after {elapsed}s — recording 20 more seconds for Named Clusters tab to render")
+                        time.sleep(20)
+                        break
+                    time.sleep(2)
+            except KeyboardInterrupt:
+                print("\n  [demo] interrupted — saving recordings up to this point")
 
         # Close pages, then contexts → flushes video files to disk
         for region, page in pages.items():

@@ -635,6 +635,27 @@ body.demo-tokens #cluster-grid,
 body.demo-tokens #evidence-view { display: none !important; }
 body.demo-tokens #cost-panel { padding: 24px; }
 
+/* named-clusters focus — populated by pipeline_complete (SSE auto-switches view).
+   Before the pipeline finishes, show a friendly placeholder so the recording
+   doesn't capture a blank canvas during the wait. */
+body.demo-named #live-pipeline,
+body.demo-named #evidence-view,
+body.demo-named #intent-form-wrap { display: none !important; }
+body.demo-named #cluster-grid {
+  display: grid !important;
+  padding: 24px 30px;
+  max-width: 1400px; margin: 0 auto;
+}
+body.demo-named #cluster-grid:empty::before {
+  content: 'Waiting for the pipeline to finish — Named Clusters will appear here.';
+  display: block;
+  text-align: center; padding: 80px 40px;
+  background: var(--panel); border: 1px dashed var(--border);
+  border-radius: 12px; color: var(--muted);
+  font-size: 15px;
+  grid-column: 1 / -1;
+}
+
 /* intent-form-only focus — record the user filling the intent form */
 body.demo-intent .col-mid > *:not(#intent-form-wrap),
 body.demo-intent .col-right,
