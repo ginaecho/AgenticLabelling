@@ -199,6 +199,18 @@ After a successful (or best-effort) run:
 
 `run_pipeline.py` boots a live web UI in a background thread and auto-opens it in your browser (use `--no-ui` for headless, `--ui-port 5090` to change port). The UI is fused with the pipeline through an event bus: every agent step, LLM call, gate decision, and escalation streams over Server-Sent Events to the browser in real time.
 
+<img src="docs/screenshots/01_per_cluster_chat_and_save.png" alt="Named Clusters tab — persona cards with per-cluster multi-turn chat and Conclude → propose action panel" width="900"/>
+
+*Named Clusters tab — every cluster becomes an editable card. Open one and start a multi-turn conversation with the agent about why it picked those features, then **Conclude → propose action** to rename, merge, or save guidance for the next pipeline run.*
+
+<img src="docs/screenshots/02_pca_with_adaptive_escalation.png" alt="Data & Evidence tab — per-iteration PCA projection plus orchestrator warning about silhouette miss" width="900"/>
+
+*Data & Evidence tab — per-iteration 2-D PCA projection of the clustered data, with the orchestrator's adaptive-escalation warning surfaced in line: "Silhouette=0.142 < target 0.40 — orchestrator will reselect features (or escalate after 3 consecutive misses)".*
+
+<img src="docs/screenshots/03_adaptive_memory_drawer.png" alt="Adaptive memory drawer — global rules learned from user feedback feed back into the next pipeline run" width="900"/>
+
+*Adaptive Memory drawer — every rename, merge, hint, and chat conclusion lands here as a prioritised rule. The next pipeline run reads this file and the Decision Maker prompts adapt accordingly — that is the "adaptive learning" loop, made literal.*
+
 ### What you can see in real time
 
 - **Architecture graph** — the seven agents light up as each one runs; the Orchestrator pulses while it's waiting for the Decision Maker.
