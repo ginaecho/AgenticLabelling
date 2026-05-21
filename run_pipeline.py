@@ -95,13 +95,38 @@ with open(_root / 'config.yaml') as f:
     config = yaml.safe_load(f)
 
 # ── Auto-approve at human checkpoint ──────────────────────────────────────────
+# We do NOT approve at the first passing iteration. Instead we ask for a few
+# more recluster rounds so the orchestrator's state.best_* tracker can compare
+# multiple full {naming, F1} candidates and pick the actual winner. Path A in
+# orchestrator (max_iterations_reached) saves state.best_naming_result, which
+# is now ranked by F1 (see state.update_best). The approve path also saves the
+# all-time best, so even if we DO approve mid-loop the winning iteration's
+# personas reach outputs/personas.json (and the Named Clusters tab).
 import agents.orchestrator as _orch_mod
 from agents.state import HumanDecision
+
+# Approve only after at least this many passing iterations have been collected.
+# Each subsequent recluster also re-runs _ask_parameter_tuning so the next
+# iteration tries a different algorithm/k for diversity.
+_MIN_PASSING_BEFORE_APPROVE = 3
+_passing_count = {'n': 0}
 
 _orig_chk = _orch_mod.human_checkpoint
 def _auto_approve(personas, cr, clf, bus):
     _orig_chk(personas, cr, clf, bus)
-    print('\n[Auto-approve] Selecting option 1 (Approve).')
+    _passing_count['n'] += 1
+    n = _passing_count['n']
+    if n < _MIN_PASSING_BEFORE_APPROVE:
+        print(f'\n[Auto-approve] Passing iteration #{n} — continuing to collect '
+              f'more candidates before picking the winner ({_MIN_PASSING_BEFORE_APPROVE} target).')
+        return HumanDecision(
+            action='recluster',
+            feedback=(
+                f'Exploration round {n}/{_MIN_PASSING_BEFORE_APPROVE}: keep iterating '
+                'to find a higher-F1 cluster set. Try a different algorithm or k.'
+            ),
+        )
+    print(f'\n[Auto-approve] Collected {n} passing iterations — selecting best by F1.')
     return HumanDecision(action='approve')
 _orch_mod.human_checkpoint = _auto_approve
 
@@ -111,7 +136,63 @@ import argparse
 _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument('--data', type=str, default=None,
                      help='Path to input CSV/parquet (overrides config.yaml)')
+_parser.add_argument('--no-ui', action='store_true',
+                     help='Skip launching the interactive UI (headless mode)')
+_parser.add_argument('--ui-port', type=int, default=5057,
+                     help='Port for the interactive UI (default 5057)')
+_parser.add_argument('--max-iterations', type=int, default=10,
+                     help='Maximum inner pipeline iterations (default 10)')
+_parser.add_argument('--bypass', action='store_true',
+                     help='No prompts. Synthesize user intent from --intent-* '
+                          'flags and auto-approve. Implies --no-ui.')
+_parser.add_argument('--intent-target', type=str, default='customers',
+                     help='Bypass: target entity for clustering')
+_parser.add_argument('--intent-purpose', type=str,
+                     default='discover spending personas for marketing',
+                     help='Bypass: business purpose')
 _args, _ = _parser.parse_known_args()
+if _args.bypass:
+    _args.no_ui = True
+
+# ── Launch the interactive UI in a background thread ─────────────────────────
+# The pipeline keeps running in the foreground; the UI streams live agent
+# activity over Server-Sent Events and auto-switches to the cluster grid
+# when the pipeline completes. Use --no-ui for headless runs.
+if not _args.no_ui:
+    import threading
+    import webbrowser
+
+    def _launch_ui_background(host: str, port: int) -> None:
+        try:
+            from ui.app import app as _ui_app
+        except Exception as _exc:  # noqa: BLE001
+            print(f'[run_pipeline] Could not import UI ({_exc}). Continuing headless.')
+            return
+
+        def _serve():
+            try:
+                _ui_app.run(host=host, port=port, debug=False,
+                            use_reloader=False, threaded=True)
+            except Exception as _serve_exc:  # noqa: BLE001
+                print(f'[run_pipeline] UI server stopped: {_serve_exc}')
+
+        t = threading.Thread(target=_serve, name='ui-server', daemon=True)
+        t.start()
+
+        url = f'http://{host}:{port}/'
+        print(f'[run_pipeline] Launching live UI at {url} (use --no-ui to disable)')
+
+        def _open_when_ready():
+            time.sleep(1.2)
+            try:
+                webbrowser.open(url)
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=_open_when_ready, name='ui-opener',
+                         daemon=True).start()
+
+    _launch_ui_background('127.0.0.1', _args.ui_port)
 
 _config_data_path = config.get('dataset_path')
 _raw_csv = pathlib.Path('data/raw/fraudTrain.csv')
@@ -134,16 +215,84 @@ else:
 
 # ── Run pipeline ──────────────────────────────────────────────────────────────
 orchestrator = Orchestrator(config)
-result = orchestrator.run(
-    features_path=_default_features_path,
-    max_total_iterations=10,
-    skip_user_input=False,   # UserInputAgent will prompt for your clustering intent
-)
 
-# ── Bail out if the pipeline was blocked or quit before saving outputs ─────────
-if result.get('status') in ('blocked', 'quit'):
-    print(f"\n[run_pipeline] Pipeline ended with status={result['status']} — no outputs to display.")
-    sys.exit(0)
+_bypass_intent = None
+if _args.bypass:
+    from agents.state import UserIntent
+    _bypass_intent = UserIntent(
+        target_entity=_args.intent_target,
+        business_purpose=_args.intent_purpose,
+        dataset_path=_default_features_path,
+        constraints='',
+    )
+    print(f'[run_pipeline] BYPASS mode — synthesized intent: '
+          f'target={_args.intent_target!r}  purpose={_args.intent_purpose!r}')
+
+# Abort/restart loop: the UI can POST /api/abort to write
+# outputs/pipeline_abort.json. The orchestrator picks it up at an iteration
+# boundary and returns status='aborted'. We then wait for the user to submit
+# a new intent (pending_intent.json) and re-run from scratch — orchestrator
+# config is restored from baseline so per-run overrides don't leak.
+def _wait_for_new_intent() -> None:
+    """Block until outputs/pending_intent.json appears (UI re-submits)."""
+    p = pathlib.Path('outputs/pending_intent.json')
+    print('[run_pipeline] Waiting for a new intent from the UI '
+          '(submit via the intent form)... press Ctrl-C to give up.')
+    while not p.exists():
+        time.sleep(0.5)
+    print('[run_pipeline] New intent received — restarting the pipeline.\n')
+
+
+while True:
+    # After an abort the user submitted a fresh intent via the UI; switch off
+    # bypass for the restarted run so UserInputAgent reads it from disk.
+    _skip_input = bool(_args.bypass) and _bypass_intent is not None
+    _intent = _bypass_intent
+
+    result = orchestrator.run(
+        features_path=_default_features_path,
+        max_total_iterations=_args.max_iterations,
+        skip_user_input=_skip_input,
+        user_intent=_intent,
+    )
+
+    _status = result.get('status')
+
+    # ── Recoverable terminations: keep the UI server alive and let the user
+    # submit a fresh intent. Anything that's NOT an explicit user-driven exit
+    # ("quit") falls through to the restart wait.
+    if _status == 'aborted':
+        if result.get('restart', True):
+            _wait_for_new_intent()
+            _bypass_intent = None   # restart goes through normal intent flow
+            continue
+        print('\n[run_pipeline] Pipeline aborted; restart=false — exiting.')
+        sys.exit(0)
+
+    if _status == 'quit':
+        # User explicitly typed 'quit' at the human checkpoint — exit.
+        print('\n[run_pipeline] Pipeline ended with status=quit — exiting.')
+        sys.exit(0)
+
+    if _status == 'blocked':
+        print(f"\n[run_pipeline] Pipeline blocked (a precondition failed — "
+              f"see log above). Submit a new intent in the UI to try again.")
+        _wait_for_new_intent()
+        _bypass_intent = None
+        continue
+
+    # Sanity check: if the orchestrator returned a success-ish status but the
+    # outputs aren't on disk, treat it as a soft failure and wait for a new
+    # intent rather than killing the UI.
+    if not pathlib.Path('outputs/personas.json').exists():
+        print('\n[run_pipeline] Expected outputs/personas.json after a '
+              f'{_status!r} run, but the file is missing.')
+        print('[run_pipeline] Submit a new intent in the UI to try again.')
+        _wait_for_new_intent()
+        _bypass_intent = None
+        continue
+
+    break
 
 # ── Banner for best-effort fallback ───────────────────────────────────────────
 if result.get('status') == 'best_effort':
@@ -156,10 +305,9 @@ if result.get('status') == 'best_effort':
     print(f'{"⚠" * 65}\n')
 
 # ── Load saved outputs ────────────────────────────────────────────────────────
+# personas.json existence was verified inside the restart loop above; here
+# we trust it.
 _personas_path = pathlib.Path('outputs/personas.json')
-if not _personas_path.exists():
-    print('\n[run_pipeline] outputs/personas.json not found — pipeline may not have completed.')
-    sys.exit(1)
 personas_data      = json.loads(_personas_path.read_text())
 clf_metrics        = json.loads(pathlib.Path('outputs/classifier_metrics.json').read_text()) \
                      if pathlib.Path('outputs/classifier_metrics.json').exists() else {}
@@ -572,3 +720,43 @@ print(f'    classifier_metrics.json — CV scores + feature importances')
 print(f'    pipeline_run_*.txt     — full terminal log from this run')
 print(f'    agents_conversation.txt — agent status messages + full LLM prompts/responses')
 print('█' * W)
+
+if _args.no_ui:
+    print('\n  Fine-tune these personas interactively in the browser:')
+    print('      python -m ui.launch')
+else:
+    print(f'\n  The interactive UI is still running at http://127.0.0.1:{_args.ui_port}/')
+    print('  Edit personas, regenerate names, merge clusters, or add global rules.')
+print('  (edits + suggestions are logged to outputs/user_feedback_log.jsonl')
+print('   and replayed to the Decision Maker on every subsequent run.)\n')
+
+if not _args.no_ui:
+    print('  Submit a new intent in the UI to start another run, '
+          'or Ctrl-C to exit.')
+    _intent_path = pathlib.Path('outputs/pending_intent.json')
+    _abort_path = pathlib.Path('outputs/pipeline_abort.json')
+    # Ignore the intent file that was just consumed by this run — only react
+    # to one that appears AFTER this completion message.
+    _baseline_intent_mtime = (
+        _intent_path.stat().st_mtime if _intent_path.exists() else 0.0
+    )
+    try:
+        while True:
+            time.sleep(1.0)
+            # New intent submitted → re-exec for a fully-fresh restart.
+            if _intent_path.exists() and _intent_path.stat().st_mtime > _baseline_intent_mtime:
+                print('\n[run_pipeline] New intent detected — restarting the pipeline '
+                      'in a fresh process.')
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+            # Abort signal arrived → consume it and also restart.
+            if _abort_path.exists():
+                try:
+                    _abort_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                print('\n[run_pipeline] Abort signal received post-completion — '
+                      'waiting for a new intent.')
+                _wait_for_new_intent()
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+    except KeyboardInterrupt:
+        print('\n[run_pipeline] Shutting down UI. Bye!')

@@ -1,0 +1,78 @@
+[run_pipeline] Logging full output to /Users/tzu-chunchen/Documents/AI/AI_Personalization/outputs/pipeline_run_20260516_193949.txt
+[run_pipeline] Launching live UI at http://127.0.0.1:5057/ (use --no-ui to disable)
+[run_pipeline] Using raw CSV for fresh feature engineering: data/raw/fraudTrain.csv
+ * Serving Flask app 'ui.app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5057
+[33mPress CTRL+C to quit[0m
+  [Orchestrator] Skill catalog loaded: 11778 chars (skill.md)
+  [Orchestrator] Agent catalog loaded: 20866 chars (agent.md)
+
+=================================================================
+Multi-Agent Clustering & Persona Discovery Pipeline
+=================================================================
+Config       : {'dataset_path': None, 'n_clusters': None, 'clustering_algorithm': 'auto', 'max_cluster_size_pct': 0.4, 'sub_n_clusters': 3, 'max_depth': 2, 'silhouette_target': 0.5, 'max_reselect_failures': 3, 'max_relax_failures': 3, 'persona_tone': 'easy', 'ae_bottleneck_cap': 32, 'ae_max_iter': 200, 'classifier_model': 'auto'}
+Features     : data/raw/fraudTrain.csv
+Max iters    : 10
+Classifier F1 threshold: 0.7
+
+=================================================================
+AGENTIC CLUSTERING PIPELINE — Intent Collection
+=================================================================
+
+  [UserInput] Waiting up to 600s for intent from the UI form
+  [UserInput] (open http://127.0.0.1:5057/ and submit the intent form,
+  [UserInput]  or press Ctrl-C to fall back to terminal prompts)
+127.0.0.1 - - [16/May/2026 19:39:51] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:39:52] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:39:52] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:39:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:39:52] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:39:52] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:39:52] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:39:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:39:55] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:40:07] "POST /api/upload HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:40:07] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:40:07] "GET /api/outputs-files HTTP/1.1" 200 -
+  [UserInput] Could not read pending_intent.json: Expecting value: line 1 column 1 (char 0)
+Before we begin, please answer a few questions.
+(Press Enter to skip optional questions and use defaults.)
+
+
+1. What entity are you clustering?
+  Examples: customers, products, employees, merchants
+  > 127.0.0.1 - - [16/May/2026 19:40:57] "POST /api/intent HTTP/1.1" 200 -
+  [Non-interactive] Using default: 'customers'
+
+2. What is the business purpose of this clustering?
+  Be specific — this shapes which features are built and how clusters are interpreted.
+  Example: 'understand customer shopping behaviour to personalise product recommendations'
+  >   [Non-interactive] Using default: ''
+
+  [UserInput] Your answer is quite short — a more specific purpose
+  leads to better features and cluster labels.
+
+  Can you elaborate? (or press Enter to continue with what you gave)
+  Tip: mention what decision or action the clusters will support
+  >   [Non-interactive] Using default: ''
+
+  Default dataset path: data/raw/fraudTrain.csv
+
+3. Dataset path? (press Enter to use default)
+  >   [Non-interactive] Using default: ''
+
+4. Any constraints or filters? (optional — press Enter to skip)
+  Example: 'only use last 12 months of transactions', 'exclude VIP customers'
+  >   [Non-interactive] Using default: ''
+
+5. How many clusters would you like? (press Enter to let the pipeline decide)
+  Example: '5' for exactly 5 clusters. Leave blank for data-driven selection.
+  >   [Non-interactive] Using default: ''
+
+6. Must any specific types appear as clusters? (optional — press Enter to skip)
+  List types separated by commas — these are semantic labels the pipeline
+  MUST produce as distinct personas.
+  Example: 'traveller, high-value-customer, weekend-shopper'
+  > 

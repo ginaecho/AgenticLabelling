@@ -1,0 +1,1282 @@
+[run_pipeline] Logging full output to /Users/tzu-chunchen/Documents/AI/AI_Personalization/outputs/pipeline_run_20260516_190944.txt
+[run_pipeline] Launching live UI at http://127.0.0.1:5057/ (use --no-ui to disable)
+[run_pipeline] Using raw CSV for fresh feature engineering: data/raw/fraudTrain.csv
+ * Serving Flask app 'ui.app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5057
+[33mPress CTRL+C to quit[0m
+  [Orchestrator] Skill catalog loaded: 11778 chars (skill.md)
+  [Orchestrator] Agent catalog loaded: 20866 chars (agent.md)
+
+=================================================================
+Multi-Agent Clustering & Persona Discovery Pipeline
+=================================================================
+Config       : {'dataset_path': None, 'n_clusters': None, 'clustering_algorithm': 'auto', 'max_cluster_size_pct': 0.4, 'sub_n_clusters': 3, 'max_depth': 2, 'silhouette_target': 0.5, 'max_reselect_failures': 3, 'max_relax_failures': 3, 'persona_tone': 'easy', 'ae_bottleneck_cap': 32, 'ae_max_iter': 200, 'classifier_model': 'auto'}
+Features     : data/raw/fraudTrain.csv
+Max iters    : 10
+Classifier F1 threshold: 0.7
+
+=================================================================
+AGENTIC CLUSTERING PIPELINE — Intent Collection
+=================================================================
+
+  [UserInput] Waiting up to 600s for intent from the UI form
+  [UserInput] (open http://127.0.0.1:5057/ and submit the intent form,
+  [UserInput]  or press Ctrl-C to fall back to terminal prompts)
+127.0.0.1 - - [16/May/2026 19:09:46] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:09:46] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:09:46] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:09:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:46] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:46] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:46] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:47] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:47] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:47] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:09:58] "POST /api/upload HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:00] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:00] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /?demo=graph HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:08] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:10:48] "POST /api/intent HTTP/1.1" 200 -
+
+─────────────────────────────────────────────────────────────────
+Captured intent (from UI):
+  Target entity    : customers
+  Business purpose : cluster customers baed on shopping preferecnes and transaction behaviors
+  Dataset path     : data/uploads/fraudTrain_14.csv
+  Clusters wanted  : data-driven (auto-select)
+  Must-have types  : travellers, foodie
+─────────────────────────────────────────────────────────────────
+  [Bus] ✓ UserInput (iter 0): SUCCESS — Collected intent from UI: target='customers', purpose='cluster customers baed on
+
+Loading raw transaction data: data/uploads/fraudTrain_14.csv
+127.0.0.1 - - [16/May/2026 19:10:57] "GET /api/status HTTP/1.1" 200 -
+  1,296,675 transactions × 23 columns
+  (subsampled to 50,000 rows for DatasetExaminer)
+
+[DatasetExaminer] Iteration 0
+  Target entity : customers
+  Purpose       : cluster customers baed on shopping preferecnes and transaction behaviors
+  No README.md found in dataset folder.
+  Shape: 50,000 rows × 23 columns
+  [DatasetExaminer → Orchestrator] Requesting LLM: suggest feature engineering groups from schema + business purpose (pipeline)
+
+  [Orchestrator] ← DatasetExaminer requests LLM help: suggest feature engineering groups from schema + business purpose (pipeline)
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /?demo=graph HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:01] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:01] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /?demo=convos HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:03] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /?demo=outputs HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:06] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /?demo=evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:08] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /?demo=tokens HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:10] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:13] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → DatasetExaminer: LLM answered (in=1708 out=849 16.82s)
+  [Orchestrator → DatasetExaminer] LLM response received (3837 chars)
+  Suggested feature groups: ['transaction_amount_behavior', 'spending_category_profile', 'transaction_frequency_timing', 'geographic_mobility', 'demographic_profile', 'fraud_risk_profile']
+  [Bus] ⚠ DatasetExaminer (iter 0): WARNING — Profiled 50,000×23 dataset. Found 11 numeric cols. LLM suggested 6 feature group
+         Issue: Mean feature skewness=3.6 is high. Log-transform recommended before clustering.
+         Doubt: Suggested groups are based on column names; actual feature buildability depends on data quality. Mean skewness=3.6.
+
+[Orchestrator] Launching FeatureEngineerAgent on raw transaction data...
+
+[FeatureEngineer] Iteration 0
+  Entity    : customers
+  Purpose   : cluster customers baed on shopping preferecnes and transaction behaviors
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+127.0.0.1 - - [16/May/2026 19:11:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:19] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (587 chars)
+127.0.0.1 - - [16/May/2026 19:11:19] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (516 chars)
+127.0.0.1 - - [16/May/2026 19:11:19] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (658 chars)
+127.0.0.1 - - [16/May/2026 19:11:19] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (715 chars)
+127.0.0.1 - - [16/May/2026 19:11:19] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (609 chars)
+127.0.0.1 - - [16/May/2026 19:11:23] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (662 chars)
+127.0.0.1 - - [16/May/2026 19:11:23] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (650 chars)
+127.0.0.1 - - [16/May/2026 19:11:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:23] "POST /api/explain HTTP/1.1" 200 -
+  Detected  : entity='cc_num'  value='amt'  category='category'  timestamp='trans_date_trans_time'
+  Date range: 2019-01-01 → 2020-06-21
+  Entities  : 983  |  Records: 1,296,675
+  Categories (14): ['entertainment', 'food_dining', 'gas_transport', 'grocery_net', 'grocery_pos', 'health_fitness', 'home', 'kids_pets', 'misc_net', 'misc_pos', 'personal_care', 'shopping_net', 'shopping_pos', 'travel']
+127.0.0.1 - - [16/May/2026 19:11:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:29] "GET /api/status HTTP/1.1" 200 -
+  [FeatureEngineer → Orchestrator] Requesting LLM: design feature engineering plan (behavior × topic × time_window) (pipeline)
+
+  [Orchestrator] ← FeatureEngineer requests LLM help: design feature engineering plan (behavior × topic × time_window) (pipeline)
+127.0.0.1 - - [16/May/2026 19:11:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:50] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → FeatureEngineer: LLM answered (in=2725 out=1128 20.55s)
+  [Orchestrator → FeatureEngineer] LLM response received (4231 chars)
+
+  [FeatureEngineer] LLM Feature Plan:
+    Strategy  : Customers are clustered by credit card (cc_num), so all features are aggregated per card. The core behavioural signals a
+    Expected  : ~118 features
+    Builder   : overall_aggregate               → Captures total spending volume, average ticket size, volatil
+    Builder   : frequency_recency               → Event count, active periods, recency, and average gap days d
+    Builder   : group_aggregate                 → Spend share (pct_count, pct_sum) and average ticket per cate
+    Builder   : group_trend                     → Trend ratios (recent 6 months vs. full 12 months) for the mo
+    Builder   : group_streak                    → Consecutive months of activity per category signals loyalty 
+    Builder   : entity_diversity                → Unique category and merchant counts measure breadth of shopp
+    Builder   : temporal_patterns               → Time-of-day and weekend proportions reveal lifestyle rhythms
+    Builder   : static_attributes               → Gender, city population size (urban vs. rural), approximate 
+
+  [FeatureEngineer] Executing plan — 8 builder(s)...
+
+  Step 1/8: overall_aggregate
+    Purpose: Captures total spending volume, average ticket size, volatility, and high-value 
+127.0.0.1 - - [16/May/2026 19:11:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:11:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:01] "GET /api/status HTTP/1.1" 200 -
+    Built  : 24 features  (total so far: 24)
+    Sample : ['sum_amt_3m', 'mean_amt_3m', 'std_amt_3m', 'max_amt_3m', 'median_amt_3m'] ...
+  Step 2/8: frequency_recency
+    Purpose: Event count, active periods, recency, and average gap days distinguish high-freq
+127.0.0.1 - - [16/May/2026 19:12:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:07] "GET /api/status HTTP/1.1" 200 -
+    Built  : 13 features  (total so far: 37)
+    Sample : ['days_since_last', 'event_count_3m', 'active_periods_3m', 'avg_gap_days_3m', 'event_count_6m'] ...
+  Step 3/8: group_aggregate
+    Purpose: Spend share (pct_count, pct_sum) and average ticket per category define the cust
+127.0.0.1 - - [16/May/2026 19:12:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:13] "GET /api/status HTTP/1.1" 200 -
+    Built  : 126 features  (total so far: 163)
+    Sample : ['pct_count_entertainment_6m', 'pct_sum_entertainment_6m', 'mean_entertainment_6m', 'pct_count_food_dining_6m', 'pct_sum_food_dining_6m'] ...
+  Step 4/8: group_trend
+    Purpose: Trend ratios (recent 6 months vs. full 12 months) for the most behaviourally mea
+    Built  : 18 features  (total so far: 181)
+    Sample : ['trend_count_entertainment', 'trend_sum_entertainment', 'trend_count_food_dining', 'trend_sum_food_dining', 'trend_count_gas_transport'] ...
+  Step 5/8: group_streak
+    Purpose: Consecutive months of activity per category signals loyalty and habitual purchas
+127.0.0.1 - - [16/May/2026 19:12:15] "GET /api/status HTTP/1.1" 200 -
+    Built  : 8 features  (total so far: 189)
+    Sample : ['streak_food_dining', 'streak_gas_transport', 'streak_grocery_pos', 'streak_grocery_net', 'streak_shopping_net'] ...
+  Step 6/8: entity_diversity
+    Purpose: Unique category and merchant counts measure breadth of shopping behaviour — diff
+127.0.0.1 - - [16/May/2026 19:12:17] "GET /api/status HTTP/1.1" 200 -
+    Built  : 4 features  (total so far: 193)
+    Sample : ['n_unique_category_6m', 'n_unique_merchant_6m', 'n_unique_category_all', 'n_unique_merchant_all']
+  Step 7/8: temporal_patterns
+    Purpose: Time-of-day and weekend proportions reveal lifestyle rhythms — night-time online
+127.0.0.1 - - [16/May/2026 19:12:19] "GET /api/status HTTP/1.1" 200 -
+    Built  : 12 features  (total so far: 205)
+    Sample : ['pct_morning_6m', 'pct_midday_6m', 'pct_evening_6m', 'pct_night_6m', 'pct_weekend_6m'] ...
+  Step 8/8: static_attributes
+    Purpose: Gender, city population size (urban vs. rural), approximate age (from dob), and 
+    Built  : 4 features  (total so far: 209)
+    Sample : ['gender_M', 'city_pop', 'lat', 'long']
+
+  [FeatureEngineer] Plan complete.
+    Final matrix: 983 customers × 209 features
+
+  [FeatureEngineer] Saved 983 customers × 209 features → data/processed/engineered_features.parquet
+  [Bus] ✓ FeatureEngineer (iter 0): SUCCESS — Engineered 209 features for 983 customers from 1,296,675 transactions. Builders 
+         Doubt: Some features may have many zeros for customers with short history. Log-transform recommended before clustering.
+  [Orchestrator] Feature engineering done: 209 features × 983 entities
+
+─────────────────────────────────────────────────────────────────
+ITERATION 1 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 1  (vif_threshold=10.0)
+  Features: 209  |  Entities: 983
+  AE bottleneck=32  (cap=32, max_iter=200)
+127.0.0.1 - - [16/May/2026 19:12:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:27] "GET /api/status HTTP/1.1" 200 -
+/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/sklearn/neural_network/_multilayer_perceptron.py:785: ConvergenceWarning: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.
+  warnings.warn(
+  Running VIF gate (threshold=10.0)...
+127.0.0.1 - - [16/May/2026 19:12:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:32] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:32] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 1: removing 'active_periods_6m'  VIF=12703.46
+127.0.0.1 - - [16/May/2026 19:12:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:43] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 2: removing 'active_periods_12m'  VIF=9782.04
+127.0.0.1 - - [16/May/2026 19:12:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:49] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 3: removing 'pct_evening_6m'  VIF=7797.63
+127.0.0.1 - - [16/May/2026 19:12:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:12:57] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 4: removing 'mean_amt_12m'  VIF=6394.47
+127.0.0.1 - - [16/May/2026 19:12:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 5: removing 'pct_sum_shopping_net_all'  VIF=5107.60
+127.0.0.1 - - [16/May/2026 19:13:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 6: removing 'event_count_12m'  VIF=4286.67
+127.0.0.1 - - [16/May/2026 19:13:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 7: removing 'n_unique_category_6m'  VIF=3739.56
+127.0.0.1 - - [16/May/2026 19:13:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:30] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 8: removing 'active_periods_3m'  VIF=2796.56
+127.0.0.1 - - [16/May/2026 19:13:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:36] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 9: removing 'mean_amt_6m'  VIF=1895.90
+127.0.0.1 - - [16/May/2026 19:13:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:44] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 10: removing 'pct_evening_all'  VIF=1882.01
+127.0.0.1 - - [16/May/2026 19:13:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:52] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 11: removing 'mean_amt_all'  VIF=1290.52
+127.0.0.1 - - [16/May/2026 19:13:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:13:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:06] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 12: removing 'pct_count_shopping_net_all'  VIF=1243.79
+127.0.0.1 - - [16/May/2026 19:14:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:22] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 13: removing 'event_count_6m'  VIF=1096.30
+127.0.0.1 - - [16/May/2026 19:14:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:32] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 14: removing 'pct_sum_shopping_net_12m'  VIF=1014.03
+127.0.0.1 - - [16/May/2026 19:14:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:40] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 15: removing 'median_amt_12m'  VIF=784.74
+127.0.0.1 - - [16/May/2026 19:14:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:46] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 16: removing 'mean_gas_transport_6m'  VIF=744.27
+127.0.0.1 - - [16/May/2026 19:14:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:54] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 17: removing 'sum_amt_12m'  VIF=733.88
+127.0.0.1 - - [16/May/2026 19:14:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:14:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:00] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 18: removing 'pct_high_amt_all'  VIF=648.12
+127.0.0.1 - - [16/May/2026 19:15:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:09] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 19: removing 'active_periods_all'  VIF=617.03
+127.0.0.1 - - [16/May/2026 19:15:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 20: removing 'std_amt_12m'  VIF=593.59
+127.0.0.1 - - [16/May/2026 19:15:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 21: removing 'avg_gap_days_12m'  VIF=530.07
+127.0.0.1 - - [16/May/2026 19:15:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 22: removing 'pct_sum_shopping_net_6m'  VIF=494.07
+127.0.0.1 - - [16/May/2026 19:15:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 23: removing 'n_unique_merchant_all'  VIF=426.46
+127.0.0.1 - - [16/May/2026 19:15:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 24: removing 'std_amt_6m'  VIF=359.00
+127.0.0.1 - - [16/May/2026 19:15:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 25: removing 'mean_grocery_pos_12m'  VIF=354.56
+127.0.0.1 - - [16/May/2026 19:15:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:51] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 26: removing 'mean_gas_transport_12m'  VIF=327.08
+127.0.0.1 - - [16/May/2026 19:15:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:15:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 27: removing 'event_count_all'  VIF=309.44
+127.0.0.1 - - [16/May/2026 19:15:57] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 28: removing 'median_amt_6m'  VIF=290.54
+127.0.0.1 - - [16/May/2026 19:15:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 29: removing 'mean_entertainment_6m'  VIF=273.72
+127.0.0.1 - - [16/May/2026 19:16:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:05] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 30: removing 'mean_amt_3m'  VIF=237.47
+127.0.0.1 - - [16/May/2026 19:16:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:11] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 31: removing 'pct_high_amt_12m'  VIF=224.85
+127.0.0.1 - - [16/May/2026 19:16:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 32: removing 'pct_count_health_fitness_12m'  VIF=217.58
+127.0.0.1 - - [16/May/2026 19:16:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 33: removing 'n_unique_category_all'  VIF=205.35
+127.0.0.1 - - [16/May/2026 19:16:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:28] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 34: removing 'n_unique_merchant_6m'  VIF=201.55
+127.0.0.1 - - [16/May/2026 19:16:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:36] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 35: removing 'pct_sum_gas_transport_12m'  VIF=188.51
+127.0.0.1 - - [16/May/2026 19:16:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:42] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 36: removing 'sum_amt_6m'  VIF=177.59
+127.0.0.1 - - [16/May/2026 19:16:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:46] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 37: removing 'avg_gap_days_6m'  VIF=165.60
+127.0.0.1 - - [16/May/2026 19:16:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:50] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 38: removing 'mean_health_fitness_12m'  VIF=149.62
+127.0.0.1 - - [16/May/2026 19:16:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:16:56] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 39: removing 'pct_sum_kids_pets_12m'  VIF=131.67
+127.0.0.1 - - [16/May/2026 19:16:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:00] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 40: removing 'pct_sum_misc_net_all'  VIF=120.00
+127.0.0.1 - - [16/May/2026 19:17:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:04] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 41: removing 'pct_count_home_12m'  VIF=114.91
+127.0.0.1 - - [16/May/2026 19:17:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:08] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 42: removing 'pct_count_grocery_net_12m'  VIF=112.69
+127.0.0.1 - - [16/May/2026 19:17:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:14] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 43: removing 'pct_count_grocery_pos_all'  VIF=112.29
+127.0.0.1 - - [16/May/2026 19:17:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:22] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 44: removing 'pct_sum_food_dining_12m'  VIF=94.72
+127.0.0.1 - - [16/May/2026 19:17:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:32] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 45: removing 'trend_count_food_dining'  VIF=92.71
+127.0.0.1 - - [16/May/2026 19:17:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:36] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:17:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:36] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:17:36] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:17:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:36] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:36] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:36] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:42] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 46: removing 'mean_personal_care_12m'  VIF=90.82
+127.0.0.1 - - [16/May/2026 19:17:44] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 47: removing 'pct_sum_grocery_pos_12m'  VIF=85.71
+127.0.0.1 - - [16/May/2026 19:17:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:52] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 48: removing 'pct_count_gas_transport_6m'  VIF=81.52
+127.0.0.1 - - [16/May/2026 19:17:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:17:59] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 49: removing 'mean_kids_pets_all'  VIF=80.67
+127.0.0.1 - - [16/May/2026 19:18:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 50: removing 'median_amt_all'  VIF=71.10
+127.0.0.1 - - [16/May/2026 19:18:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:11] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 51: removing 'pct_sum_gas_transport_all'  VIF=70.07
+127.0.0.1 - - [16/May/2026 19:18:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 52: removing 'pct_sum_entertainment_12m'  VIF=68.68
+127.0.0.1 - - [16/May/2026 19:18:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 53: removing 'max_amt_3m'  VIF=68.09
+127.0.0.1 - - [16/May/2026 19:18:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:23] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 54: removing 'sum_amt_all'  VIF=67.14
+127.0.0.1 - - [16/May/2026 19:18:25] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 55: removing 'mean_grocery_pos_6m'  VIF=63.34
+127.0.0.1 - - [16/May/2026 19:18:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:29] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 56: removing 'trend_sum_gas_transport'  VIF=61.34
+127.0.0.1 - - [16/May/2026 19:18:31] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 57: removing 'pct_sum_misc_pos_12m'  VIF=59.46
+127.0.0.1 - - [16/May/2026 19:18:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 58: removing 'mean_grocery_net_all'  VIF=56.63
+127.0.0.1 - - [16/May/2026 19:18:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 59: removing 'pct_sum_health_fitness_12m'  VIF=56.30
+127.0.0.1 - - [16/May/2026 19:18:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 60: removing 'trend_count_health_fitness'  VIF=54.31
+127.0.0.1 - - [16/May/2026 19:18:41] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 61: removing 'mean_entertainment_12m'  VIF=53.73
+127.0.0.1 - - [16/May/2026 19:18:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 62: removing 'pct_sum_shopping_pos_12m'  VIF=51.70
+127.0.0.1 - - [16/May/2026 19:18:47] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 63: removing 'pct_sum_home_all'  VIF=50.94
+127.0.0.1 - - [16/May/2026 19:18:49] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 64: removing 'pct_sum_grocery_net_12m'  VIF=50.26
+127.0.0.1 - - [16/May/2026 19:18:51] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 65: removing 'max_amt_12m'  VIF=46.10
+127.0.0.1 - - [16/May/2026 19:18:53] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 66: removing 'avg_gap_days_all'  VIF=45.31
+127.0.0.1 - - [16/May/2026 19:18:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 67: removing 'mean_food_dining_12m'  VIF=44.19
+127.0.0.1 - - [16/May/2026 19:18:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:58] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:18:58] "GET /api/outputs-files HTTP/1.1" 200 -
+  [VIF] Round 68: removing 'pct_high_amt_6m'  VIF=43.53
+127.0.0.1 - - [16/May/2026 19:18:59] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 69: removing 'pct_sum_kids_pets_all'  VIF=41.53
+127.0.0.1 - - [16/May/2026 19:19:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 70: removing 'pct_morning_all'  VIF=41.34
+127.0.0.1 - - [16/May/2026 19:19:03] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 71: removing 'pct_sum_travel_all'  VIF=40.11
+127.0.0.1 - - [16/May/2026 19:19:05] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 72: removing 'pct_count_personal_care_12m'  VIF=39.05
+127.0.0.1 - - [16/May/2026 19:19:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 73: removing 'pct_count_entertainment_all'  VIF=38.65
+127.0.0.1 - - [16/May/2026 19:19:09] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 74: removing 'pct_count_grocery_pos_6m'  VIF=37.69
+127.0.0.1 - - [16/May/2026 19:19:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:19:13] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 75: removing 'trend_sum_grocery_pos'  VIF=35.69
+127.0.0.1 - - [16/May/2026 19:19:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 76: removing 'pct_count_food_dining_12m'  VIF=35.18
+  [VIF] Round 77: removing 'median_amt_3m'  VIF=34.17
+127.0.0.1 - - [16/May/2026 19:19:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:19:19] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 78: removing 'trend_count_grocery_net'  VIF=33.46
+  [VIF] Round 79: removing 'days_since_last'  VIF=32.97
+127.0.0.1 - - [16/May/2026 19:19:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 80: removing 'mean_shopping_pos_6m'  VIF=32.81
+127.0.0.1 - - [16/May/2026 19:19:23] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 81: removing 'mean_travel_6m'  VIF=32.16
+127.0.0.1 - - [16/May/2026 19:19:25] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 82: removing 'mean_shopping_net_6m'  VIF=31.17
+127.0.0.1 - - [16/May/2026 19:19:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 83: removing 'pct_sum_food_dining_all'  VIF=30.84
+127.0.0.1 - - [16/May/2026 19:19:29] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 84: removing 'pct_sum_health_fitness_6m'  VIF=30.22
+127.0.0.1 - - [16/May/2026 19:19:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:19:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 85: removing 'pct_sum_personal_care_all'  VIF=28.96
+127.0.0.1 - - [16/May/2026 19:19:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 86: removing 'pct_count_gas_transport_12m'  VIF=28.69
+127.0.0.1 - - [16/May/2026 19:19:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:19:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 87: removing 'mean_health_fitness_all'  VIF=27.93
+127.0.0.1 - - [16/May/2026 19:19:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 88: removing 'pct_sum_kids_pets_6m'  VIF=27.66
+127.0.0.1 - - [16/May/2026 19:19:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:19:44] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 89: removing 'max_amt_6m'  VIF=27.06
+127.0.0.1 - - [16/May/2026 19:19:46] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 90: removing 'pct_midday_6m'  VIF=26.57
+  [VIF] Round 91: removing 'std_amt_all'  VIF=26.30
+127.0.0.1 - - [16/May/2026 19:19:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 92: removing 'event_count_3m'  VIF=24.36
+127.0.0.1 - - [16/May/2026 19:19:50] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 93: removing 'mean_misc_pos_all'  VIF=24.22
+  [VIF] Round 94: removing 'pct_count_kids_pets_12m'  VIF=24.05
+127.0.0.1 - - [16/May/2026 19:19:52] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 95: removing 'pct_sum_home_6m'  VIF=23.71
+127.0.0.1 - - [16/May/2026 19:19:54] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 96: removing 'pct_count_home_all'  VIF=22.18
+  [VIF] Round 97: removing 'pct_sum_grocery_net_all'  VIF=21.84
+127.0.0.1 - - [16/May/2026 19:19:56] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 98: removing 'pct_count_travel_12m'  VIF=21.84
+  [VIF] Round 99: removing 'mean_misc_net_12m'  VIF=21.78
+127.0.0.1 - - [16/May/2026 19:19:58] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 100: removing 'mean_kids_pets_12m'  VIF=21.75
+  [VIF] Round 101: removing 'pct_count_misc_net_12m'  VIF=20.72
+127.0.0.1 - - [16/May/2026 19:20:00] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 102: removing 'pct_sum_personal_care_6m'  VIF=19.35
+  [VIF] Round 103: removing 'pct_count_entertainment_12m'  VIF=18.94
+127.0.0.1 - - [16/May/2026 19:20:02] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 104: removing 'pct_count_shopping_pos_12m'  VIF=18.30
+  [VIF] Round 105: removing 'pct_count_grocery_net_6m'  VIF=16.74
+127.0.0.1 - - [16/May/2026 19:20:04] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 106: removing 'pct_count_shopping_net_12m'  VIF=15.98
+127.0.0.1 - - [16/May/2026 19:20:06] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 107: removing 'pct_sum_health_fitness_all'  VIF=15.72
+  [VIF] Round 108: removing 'pct_sum_gas_transport_6m'  VIF=15.15
+127.0.0.1 - - [16/May/2026 19:20:08] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 109: removing 'pct_sum_food_dining_6m'  VIF=14.56
+127.0.0.1 - - [16/May/2026 19:20:10] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 110: removing 'mean_gas_transport_all'  VIF=14.32
+  [VIF] Round 111: removing 'pct_sum_misc_pos_6m'  VIF=14.15
+127.0.0.1 - - [16/May/2026 19:20:12] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 112: removing 'pct_sum_shopping_pos_all'  VIF=13.43
+  [VIF] Round 113: removing 'mean_personal_care_all'  VIF=13.41
+127.0.0.1 - - [16/May/2026 19:20:14] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 114: removing 'mean_home_12m'  VIF=13.13
+127.0.0.1 - - [16/May/2026 19:20:16] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 115: removing 'pct_count_food_dining_all'  VIF=12.73
+  [VIF] Round 116: removing 'streak_grocery_pos'  VIF=12.69
+127.0.0.1 - - [16/May/2026 19:20:18] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 117: removing 'pct_midday_all'  VIF=12.37
+  [VIF] Round 118: removing 'mean_grocery_net_12m'  VIF=12.13
+127.0.0.1 - - [16/May/2026 19:20:20] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 119: removing 'mean_grocery_pos_all'  VIF=11.90
+  [VIF] Round 120: removing 'pct_night_6m'  VIF=11.58
+  [VIF] Round 121: removing 'trend_sum_entertainment'  VIF=11.55
+127.0.0.1 - - [16/May/2026 19:20:22] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 122: removing 'pct_count_health_fitness_all'  VIF=10.99
+  [VIF] Round 123: removing 'mean_travel_12m'  VIF=10.70
+127.0.0.1 - - [16/May/2026 19:20:24] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 124: removing 'mean_misc_net_6m'  VIF=10.64
+  [VIF] Round 125: removing 'pct_count_misc_pos_12m'  VIF=10.36
+127.0.0.1 - - [16/May/2026 19:20:26] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 126: removing 'mean_food_dining_6m'  VIF=10.05
+  [VIF] All features have VIF ≤ 10.0  (max=8.88).
+  After VIF gate: 83 features  (removed 126)
+127.0.0.1 - - [16/May/2026 19:20:28] "GET /api/status HTTP/1.1" 200 -
+  High-correlation pairs (|r|>0.85):
+    pct_count_personal_care_6m ↔ pct_count_personal_care_all  r=0.873
+    pct_count_kids_pets_6m ↔ pct_count_kids_pets_all  r=0.872
+  [FeatureSelector → Orchestrator] Requesting LLM: select best feature subset from 83 VIF-filtered candidates (pipeline)
+
+  [Orchestrator] ← FeatureSelector requests LLM help: select best feature subset from 83 VIF-filtered candidates (pipeline)
+127.0.0.1 - - [16/May/2026 19:20:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:38] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:20:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:38] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:20:38] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:20:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:38] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:38] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:38] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:42] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → FeatureSelector: LLM answered (in=2716 out=770 14.29s)
+  [Orchestrator → FeatureSelector] LLM response received (2107 chars)
+  Selected 42 features.
+  VIF removed: 126  |  Max VIF remaining: 8.88
+  Reasoning: Selected features span six behavioral dimensions: geography/demographics (long, lat, gender_M, city_pop), temporal/recency patterns (pct_weekend_all, peak_hour_all, avg_gap_days_3m), spending magnitude and variability (sum_amt_3m, std_amt_3m, pct_high_amt_3m, max_amt_all, mean_home_all), category spending shares across key verticals (grocery, food/dining, travel, health/fitness, shopping, entertainment, personal care, kids/pets, gas, misc), and category trend signals (trend_sum_food_dining, trend_sum_grocery_net, trend_count_travel, trend_sum_health_fitness, trend_count_gas_transport, trend_sum_shopping_net, trend_sum_travel). From correlated pairs, pct_count_personal_care_all was kept over the 6m variant, and pct_count_kids_pets_all was kept over the 6m variant, while redundant same-category time-window duplicates were pruned to one representative window per category to maximize interpretability and cluster distinctiveness.
+  [Bus] ✓ FeatureSelector (iter 1): SUCCESS — Scored 209 features (PCA+AE). Removed 126 via VIF gate. LLM selected 42 from 83 
+         Doubt: 2 high-correlation pairs still present after VIF gate — LLM was asked to avoid both in each pair.
+
+[Clusterer] Iteration 1
+  [AlgoRecommender] → HIERARCHICAL  (confidence=0.67)
+    · n_rows=983 is small → Hierarchical is stable
+    · Mean |skewness|=1.1 is moderate → slight Hierarchical preference
+    · Max |skewness|=5.5 > 5.0 → extreme outliers; DBSCAN signal
+    · Scores: hierarchical=2, dbscan=1, kmeans=0, gmm=0, fuzzy_cmeans=0
+  Algorithm auto-selected: hierarchical  (confidence=0.67)
+  [SilhouetteOptimizer] Trying k ∈ [3, 4, 5, 6, 7, 8, 10, 12, 15] with algorithm=hierarchical
+127.0.0.1 - - [16/May/2026 19:20:44] "GET /api/status HTTP/1.1" 200 -
+    k=  3  silhouette=0.5581
+    k=  4  silhouette=0.0919
+    k=  5  silhouette=0.1105
+    k=  6  silhouette=0.1204
+    k=  7  silhouette=0.1238
+    k=  8  silhouette=0.1408
+    k= 10  silhouette=0.1399
+127.0.0.1 - - [16/May/2026 19:20:46] "GET /api/status HTTP/1.1" 200 -
+    k= 12  silhouette=0.1401
+    k= 15  silhouette=0.1228
+  [SilhouetteOptimizer] Best k=3  silhouette=0.5581
+  k auto-selected: 3  (silhouette=0.5581)
+  Initial clustering: 3 clusters  |  silhouette=0.5581
+  Round 1: oversized clusters → [0]
+  [Clusterer → Orchestrator] Requesting LLM: route oversized cluster C0 (92%): sub-cluster or reselect features (pipeline)
+
+  [Orchestrator] ← Clusterer requests LLM help: route oversized cluster C0 (92%): sub-cluster or reselect features (pipeline)
+127.0.0.1 - - [16/May/2026 19:20:48] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → Clusterer: LLM answered (in=1346 out=90 2.64s)
+  [Orchestrator → Clusterer] LLM response received (394 chars)
+    LLM recommends re-selecting features: With 92.4% of entities collapsing into a single cluster, the current features (sum_amt_all, city_pop, sum_amt_12m) lack sufficient discriminative power to separate the population into meaningful personas. Feature selection should explore additional behavioral or demographic dimensions that can reveal finer-grained distinctions between entities.
+  [Bus] ✗ Clusterer (iter 1): BLOCKED — Clustered with k=3, ran deepening loop
+         Issue: Cluster 0 has 92.4% of data (>40% threshold)
+         Doubt: Oversized cluster may reflect feature redundancy
+
+[Orchestrator] Clustering → reselect features: With 92.4% of entities collapsing into a single cluster, the current features (sum_amt_all, city_pop, sum_amt_12m) lack sufficient discriminative power to separate the population into meaningful personas. Feature selection should explore additional behavioral or demographic dimensions that can reveal finer-grained distinctions between entities.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 2...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+127.0.0.1 - - [16/May/2026 19:20:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:53] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → Orchestrator: LLM answered (in=1720 out=165 4.03s)
+  [Orchestrator → Orchestrator] LLM response received (520 chars)
+  [Orchestrator] Tuned → vif=15.0, algo=kmeans, k_range=[3, 4, 5, 6, 7, 8], min_sil=0.05
+  [Orchestrator] Reasoning: VIF removed 126/168 features (75%), indicating heavy multicollinearity — raising vif_threshold to 15 retains more signal. Narrowing k_range to 3–8 and fixing kmeans improves convergence stability for banking data; focusing on core spend/frequency/balance features guides the selector toward the most discriminative dimensions.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 2 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 2  (vif_threshold=15.0)
+  Feedback from previous round: With 92.4% of entities collapsing into a single cluster, the current features (sum_amt_all, city_pop, sum_amt_12m) lack sufficient discriminative power to separate the population into meaningful personas. Feature selection should explore additional behavioral or demographic dimensions that can reveal finer-grained distinctions between entities.
+Orchestrator guidance: spend frequency transaction_ratio balance
+  Features: 209  |  Entities: 983
+  [Orchestrator → EvidenceExplainer] LLM response received (668 chars)
+127.0.0.1 - - [16/May/2026 19:20:54] "POST /api/explain HTTP/1.1" 200 -
+  AE bottleneck=32  (cap=32, max_iter=200)
+  [Orchestrator → EvidenceExplainer] LLM response received (627 chars)
+127.0.0.1 - - [16/May/2026 19:20:54] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:55] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (670 chars)
+127.0.0.1 - - [16/May/2026 19:20:55] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (694 chars)
+127.0.0.1 - - [16/May/2026 19:20:55] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (697 chars)
+127.0.0.1 - - [16/May/2026 19:20:55] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (670 chars)
+127.0.0.1 - - [16/May/2026 19:20:55] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:20:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:13] "GET /api/status HTTP/1.1" 200 -
+/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/sklearn/neural_network/_multilayer_perceptron.py:785: ConvergenceWarning: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.
+  warnings.warn(
+  Running VIF gate (threshold=15.0)...
+127.0.0.1 - - [16/May/2026 19:21:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:27] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 1: removing 'active_periods_6m'  VIF=12703.46
+127.0.0.1 - - [16/May/2026 19:21:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:36] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:44] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 2: removing 'active_periods_12m'  VIF=9782.04
+127.0.0.1 - - [16/May/2026 19:21:44] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:44] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:46] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:21:56] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 3: removing 'pct_evening_6m'  VIF=7797.63
+127.0.0.1 - - [16/May/2026 19:21:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:16] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 4: removing 'mean_amt_12m'  VIF=6394.47
+127.0.0.1 - - [16/May/2026 19:22:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 5: removing 'pct_sum_shopping_net_all'  VIF=5107.60
+127.0.0.1 - - [16/May/2026 19:22:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 6: removing 'event_count_12m'  VIF=4286.67
+127.0.0.1 - - [16/May/2026 19:22:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:22:57] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 7: removing 'n_unique_category_6m'  VIF=3739.56
+127.0.0.1 - - [16/May/2026 19:22:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 8: removing 'active_periods_3m'  VIF=2796.56
+127.0.0.1 - - [16/May/2026 19:23:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 9: removing 'mean_amt_6m'  VIF=1895.90
+127.0.0.1 - - [16/May/2026 19:23:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:23] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 10: removing 'pct_evening_all'  VIF=1882.01
+127.0.0.1 - - [16/May/2026 19:23:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:31] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 11: removing 'mean_amt_all'  VIF=1290.52
+127.0.0.1 - - [16/May/2026 19:23:33] "[36mGET /?demo=evidence HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:33] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:33] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:33] "GET /api/outputs-files HTTP/1.1" 200 -
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+127.0.0.1 - - [16/May/2026 19:23:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:37] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (541 chars)
+127.0.0.1 - - [16/May/2026 19:23:37] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (727 chars)
+127.0.0.1 - - [16/May/2026 19:23:39] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:42] "[36mGET /?demo=tokens HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:42] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:42] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:43] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:43] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:43] "GET /api/events/stream HTTP/1.1" 200 -
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+127.0.0.1 - - [16/May/2026 19:23:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:46] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (624 chars)
+127.0.0.1 - - [16/May/2026 19:23:47] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (632 chars)
+127.0.0.1 - - [16/May/2026 19:23:47] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 12: removing 'pct_count_shopping_net_all'  VIF=1243.79
+127.0.0.1 - - [16/May/2026 19:23:48] "[36mGET /?demo=outputs HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:48] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:23:48] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:48] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:49] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:49] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:23:58] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:00] "[36mGET /?demo=graph HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:24:00] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:24:00] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:00] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:00] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:01] "GET /api/events/stream HTTP/1.1" 200 -
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from DatasetExaminer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [VIF] Round 13: removing 'event_count_6m'  VIF=1096.30
+127.0.0.1 - - [16/May/2026 19:24:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:04] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (671 chars)
+127.0.0.1 - - [16/May/2026 19:24:05] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (630 chars)
+127.0.0.1 - - [16/May/2026 19:24:05] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:18] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 14: removing 'pct_sum_shopping_net_12m'  VIF=1014.03
+127.0.0.1 - - [16/May/2026 19:24:20] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:26] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 15: removing 'median_amt_12m'  VIF=784.74
+127.0.0.1 - - [16/May/2026 19:24:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:36] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 16: removing 'mean_gas_transport_6m'  VIF=744.27
+127.0.0.1 - - [16/May/2026 19:24:38] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:43] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 17: removing 'sum_amt_12m'  VIF=733.88
+127.0.0.1 - - [16/May/2026 19:24:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:51] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 18: removing 'pct_high_amt_all'  VIF=648.12
+127.0.0.1 - - [16/May/2026 19:24:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:24:57] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 19: removing 'active_periods_all'  VIF=617.03
+127.0.0.1 - - [16/May/2026 19:24:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 20: removing 'std_amt_12m'  VIF=593.59
+127.0.0.1 - - [16/May/2026 19:25:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:05] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 21: removing 'avg_gap_days_12m'  VIF=530.07
+127.0.0.1 - - [16/May/2026 19:25:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:11] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 22: removing 'pct_sum_shopping_net_6m'  VIF=494.07
+127.0.0.1 - - [16/May/2026 19:25:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 23: removing 'n_unique_merchant_all'  VIF=426.46
+127.0.0.1 - - [16/May/2026 19:25:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 24: removing 'std_amt_6m'  VIF=359.00
+127.0.0.1 - - [16/May/2026 19:25:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:25] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 25: removing 'mean_grocery_pos_12m'  VIF=354.56
+127.0.0.1 - - [16/May/2026 19:25:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:31] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 26: removing 'mean_gas_transport_12m'  VIF=327.08
+127.0.0.1 - - [16/May/2026 19:25:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 27: removing 'event_count_all'  VIF=309.44
+127.0.0.1 - - [16/May/2026 19:25:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 28: removing 'median_amt_6m'  VIF=290.54
+127.0.0.1 - - [16/May/2026 19:25:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 29: removing 'mean_entertainment_6m'  VIF=273.72
+127.0.0.1 - - [16/May/2026 19:25:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:49] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 30: removing 'mean_amt_3m'  VIF=237.47
+127.0.0.1 - - [16/May/2026 19:25:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 31: removing 'pct_high_amt_12m'  VIF=224.85
+127.0.0.1 - - [16/May/2026 19:25:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:25:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:03] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 32: removing 'pct_count_health_fitness_12m'  VIF=217.58
+127.0.0.1 - - [16/May/2026 19:26:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:09] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 33: removing 'n_unique_category_all'  VIF=205.35
+127.0.0.1 - - [16/May/2026 19:26:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:14] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 34: removing 'n_unique_merchant_6m'  VIF=201.55
+127.0.0.1 - - [16/May/2026 19:26:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:20] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 35: removing 'pct_sum_gas_transport_12m'  VIF=188.51
+127.0.0.1 - - [16/May/2026 19:26:22] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:24] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 36: removing 'sum_amt_6m'  VIF=177.59
+127.0.0.1 - - [16/May/2026 19:26:26] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:28] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:32] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 37: removing 'avg_gap_days_6m'  VIF=165.60
+127.0.0.1 - - [16/May/2026 19:26:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:41] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 38: removing 'mean_health_fitness_12m'  VIF=149.62
+127.0.0.1 - - [16/May/2026 19:26:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 39: removing 'pct_sum_kids_pets_12m'  VIF=131.67
+127.0.0.1 - - [16/May/2026 19:26:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:51] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 40: removing 'pct_sum_misc_net_all'  VIF=120.00
+127.0.0.1 - - [16/May/2026 19:26:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 41: removing 'pct_count_home_12m'  VIF=114.91
+127.0.0.1 - - [16/May/2026 19:26:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:26:59] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 42: removing 'pct_count_grocery_net_12m'  VIF=112.69
+127.0.0.1 - - [16/May/2026 19:27:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:03] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 43: removing 'pct_count_grocery_pos_all'  VIF=112.29
+127.0.0.1 - - [16/May/2026 19:27:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:07] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 44: removing 'pct_sum_food_dining_12m'  VIF=94.72
+127.0.0.1 - - [16/May/2026 19:27:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:11] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 45: removing 'trend_count_food_dining'  VIF=92.71
+127.0.0.1 - - [16/May/2026 19:27:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:15] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 46: removing 'mean_personal_care_12m'  VIF=90.82
+127.0.0.1 - - [16/May/2026 19:27:17] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 47: removing 'pct_sum_grocery_pos_12m'  VIF=85.71
+127.0.0.1 - - [16/May/2026 19:27:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:21] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 48: removing 'pct_count_gas_transport_6m'  VIF=81.52
+127.0.0.1 - - [16/May/2026 19:27:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:25] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 49: removing 'mean_kids_pets_all'  VIF=80.67
+127.0.0.1 - - [16/May/2026 19:27:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:29] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 50: removing 'median_amt_all'  VIF=71.10
+127.0.0.1 - - [16/May/2026 19:27:30] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:27:30] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [16/May/2026 19:27:30] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:30] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:30] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:30] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:30] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 51: removing 'pct_sum_gas_transport_all'  VIF=70.07
+127.0.0.1 - - [16/May/2026 19:27:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 52: removing 'pct_sum_entertainment_12m'  VIF=68.68
+127.0.0.1 - - [16/May/2026 19:27:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 53: removing 'max_amt_3m'  VIF=68.09
+127.0.0.1 - - [16/May/2026 19:27:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:43] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 54: removing 'sum_amt_all'  VIF=67.14
+127.0.0.1 - - [16/May/2026 19:27:45] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 55: removing 'mean_grocery_pos_6m'  VIF=63.34
+127.0.0.1 - - [16/May/2026 19:27:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:49] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 56: removing 'trend_sum_gas_transport'  VIF=61.34
+127.0.0.1 - - [16/May/2026 19:27:51] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 57: removing 'pct_sum_misc_pos_12m'  VIF=59.46
+127.0.0.1 - - [16/May/2026 19:27:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:27:55] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 58: removing 'mean_grocery_net_all'  VIF=56.63
+127.0.0.1 - - [16/May/2026 19:27:57] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 59: removing 'pct_sum_health_fitness_12m'  VIF=56.30
+127.0.0.1 - - [16/May/2026 19:27:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:01] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 60: removing 'trend_count_health_fitness'  VIF=54.31
+127.0.0.1 - - [16/May/2026 19:28:04] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 61: removing 'mean_entertainment_12m'  VIF=53.73
+127.0.0.1 - - [16/May/2026 19:28:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:08] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 62: removing 'pct_sum_shopping_pos_12m'  VIF=51.70
+127.0.0.1 - - [16/May/2026 19:28:10] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 63: removing 'pct_sum_home_all'  VIF=50.94
+127.0.0.1 - - [16/May/2026 19:28:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:14] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 64: removing 'pct_sum_grocery_net_12m'  VIF=50.26
+127.0.0.1 - - [16/May/2026 19:28:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:18] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 65: removing 'max_amt_12m'  VIF=46.10
+127.0.0.1 - - [16/May/2026 19:28:20] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 66: removing 'avg_gap_days_all'  VIF=45.31
+127.0.0.1 - - [16/May/2026 19:28:22] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 67: removing 'mean_food_dining_12m'  VIF=44.19
+127.0.0.1 - - [16/May/2026 19:28:24] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:26] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 68: removing 'pct_high_amt_6m'  VIF=43.53
+127.0.0.1 - - [16/May/2026 19:28:28] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 69: removing 'pct_sum_kids_pets_all'  VIF=41.53
+127.0.0.1 - - [16/May/2026 19:28:30] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 70: removing 'pct_morning_all'  VIF=41.34
+127.0.0.1 - - [16/May/2026 19:28:32] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 71: removing 'pct_sum_travel_all'  VIF=40.11
+127.0.0.1 - - [16/May/2026 19:28:34] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:36] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 72: removing 'pct_count_personal_care_12m'  VIF=39.05
+127.0.0.1 - - [16/May/2026 19:28:38] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 73: removing 'pct_count_entertainment_all'  VIF=38.65
+127.0.0.1 - - [16/May/2026 19:28:40] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 74: removing 'pct_count_grocery_pos_6m'  VIF=37.69
+127.0.0.1 - - [16/May/2026 19:28:42] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:28:44] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 75: removing 'trend_sum_grocery_pos'  VIF=35.69
+127.0.0.1 - - [16/May/2026 19:28:46] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 76: removing 'pct_count_food_dining_12m'  VIF=35.18
+127.0.0.1 - - [16/May/2026 19:28:48] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 77: removing 'median_amt_3m'  VIF=34.17
+127.0.0.1 - - [16/May/2026 19:28:50] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 78: removing 'trend_count_grocery_net'  VIF=33.46
+127.0.0.1 - - [16/May/2026 19:28:52] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 79: removing 'days_since_last'  VIF=32.97
+127.0.0.1 - - [16/May/2026 19:28:54] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 80: removing 'mean_shopping_pos_6m'  VIF=32.81
+127.0.0.1 - - [16/May/2026 19:28:56] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 81: removing 'mean_travel_6m'  VIF=32.16
+127.0.0.1 - - [16/May/2026 19:28:58] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 82: removing 'mean_shopping_net_6m'  VIF=31.17
+127.0.0.1 - - [16/May/2026 19:29:00] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 83: removing 'pct_sum_food_dining_all'  VIF=30.84
+127.0.0.1 - - [16/May/2026 19:29:02] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 84: removing 'pct_sum_health_fitness_6m'  VIF=30.22
+127.0.0.1 - - [16/May/2026 19:29:04] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 85: removing 'pct_sum_personal_care_all'  VIF=28.96
+127.0.0.1 - - [16/May/2026 19:29:06] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 86: removing 'pct_count_gas_transport_12m'  VIF=28.69
+127.0.0.1 - - [16/May/2026 19:29:08] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 87: removing 'mean_health_fitness_all'  VIF=27.93
+  [VIF] Round 88: removing 'pct_sum_kids_pets_6m'  VIF=27.66
+127.0.0.1 - - [16/May/2026 19:29:10] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 89: removing 'max_amt_6m'  VIF=27.06
+127.0.0.1 - - [16/May/2026 19:29:12] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 90: removing 'pct_midday_6m'  VIF=26.57
+127.0.0.1 - - [16/May/2026 19:29:14] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 91: removing 'std_amt_all'  VIF=26.30
+  [VIF] Round 92: removing 'event_count_3m'  VIF=24.36
+127.0.0.1 - - [16/May/2026 19:29:16] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 93: removing 'mean_misc_pos_all'  VIF=24.22
+127.0.0.1 - - [16/May/2026 19:29:18] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 94: removing 'pct_count_kids_pets_12m'  VIF=24.05
+127.0.0.1 - - [16/May/2026 19:29:20] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 95: removing 'pct_sum_home_6m'  VIF=23.71
+  [VIF] Round 96: removing 'pct_count_home_all'  VIF=22.18
+127.0.0.1 - - [16/May/2026 19:29:22] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 97: removing 'pct_sum_grocery_net_all'  VIF=21.84
+127.0.0.1 - - [16/May/2026 19:29:24] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 98: removing 'pct_count_travel_12m'  VIF=21.84
+  [VIF] Round 99: removing 'mean_misc_net_12m'  VIF=21.78
+127.0.0.1 - - [16/May/2026 19:29:26] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 100: removing 'mean_kids_pets_12m'  VIF=21.75
+  [VIF] Round 101: removing 'pct_count_misc_net_12m'  VIF=20.72
+127.0.0.1 - - [16/May/2026 19:29:29] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 102: removing 'pct_sum_personal_care_6m'  VIF=19.35
+127.0.0.1 - - [16/May/2026 19:29:31] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 103: removing 'pct_count_entertainment_12m'  VIF=18.94
+127.0.0.1 - - [16/May/2026 19:29:33] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 104: removing 'pct_count_shopping_pos_12m'  VIF=18.30
+  [VIF] Round 105: removing 'pct_count_grocery_net_6m'  VIF=16.74
+127.0.0.1 - - [16/May/2026 19:29:35] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 106: removing 'pct_count_shopping_net_12m'  VIF=15.98
+127.0.0.1 - - [16/May/2026 19:29:37] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 107: removing 'pct_sum_health_fitness_all'  VIF=15.72
+  [VIF] Round 108: removing 'pct_sum_gas_transport_6m'  VIF=15.15
+127.0.0.1 - - [16/May/2026 19:29:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] All features have VIF ≤ 15.0  (max=14.56).
+  After VIF gate: 101 features  (removed 108)
+  High-correlation pairs (|r|>0.85):
+    mean_travel_12m ↔ mean_travel_all  r=0.913
+    mean_home_12m ↔ mean_home_all  r=0.906
+    mean_personal_care_6m ↔ mean_personal_care_all  r=0.897
+    pct_count_misc_pos_12m ↔ pct_count_misc_pos_all  r=0.892
+    mean_grocery_net_6m ↔ mean_grocery_net_12m  r=0.890
+  [FeatureSelector → Orchestrator] Requesting LLM: select best feature subset from 101 VIF-filtered candidates (pipeline)
+
+  [Orchestrator] ← FeatureSelector requests LLM help: select best feature subset from 101 VIF-filtered candidates (pipeline)
+127.0.0.1 - - [16/May/2026 19:29:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:29:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:29:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:29:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:29:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:29:52] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → FeatureSelector: LLM answered (in=2895 out=748 13.13s)
+  [Orchestrator → FeatureSelector] LLM response received (2099 chars)
+  Selected 41 features.
+  VIF removed: 108  |  Max VIF remaining: 14.56
+  Reasoning: Following orchestrator guidance on spend, frequency, transaction_ratio, and balance dimensions, I selected features spanning: geographic/demographic context (long, lat, gender_M, city_pop), spending magnitude and variability (sum_amt_3m, std_amt_3m, pct_high_amt_3m, mean_home_all), category spend shares across food/dining, grocery, travel, health, shopping, entertainment, gas, and misc (pct_sum and pct_count variants), behavioral trends over time (trend_sum and trend_count features), and transaction timing/frequency (avg_gap_days_3m, peak_hour_all, pct_weekend_all). I avoided highly correlated pairs by preferring one time-window per feature family (e.g. mean_home_all over mean_home_12m, pct_count_misc_pos_12m over pct_count_misc_pos_all) and dropped redundant duplicates, ensuring broad multi-dimensional coverage to surface distinct shopping-behavior and demographic segments rather than collapsing into a dominant single cluster.
+  [Bus] ✓ FeatureSelector (iter 2): SUCCESS — Scored 209 features (PCA+AE). Removed 108 via VIF gate. LLM selected 41 from 101
+         Doubt: 12 high-correlation pairs still present after VIF gate — LLM was asked to avoid both in each pair.
+
+[Clusterer] Iteration 2
+  Config overrides: {'clustering_algorithm': 'kmeans', 'k_search_range': [3, 4, 5, 6, 7, 8]}
+127.0.0.1 - - [16/May/2026 19:29:54] "GET /api/status HTTP/1.1" 200 -
+  Algorithm: kmeans (from config)
+  [SilhouetteOptimizer] Trying k ∈ [3, 4, 5, 6, 7, 8] with algorithm=kmeans
+127.0.0.1 - - [16/May/2026 19:29:56] "GET /api/status HTTP/1.1" 200 -
+    k=  3  silhouette=0.5516
+    k=  4  silhouette=0.1085
+    k=  5  silhouette=0.1291
+127.0.0.1 - - [16/May/2026 19:29:58] "GET /api/status HTTP/1.1" 200 -
+    k=  6  silhouette=0.1447
+    k=  7  silhouette=0.1592
+    k=  8  silhouette=0.1539
+  [SilhouetteOptimizer] Best k=3  silhouette=0.5516
+  k auto-selected: 3  (silhouette=0.5516)
+127.0.0.1 - - [16/May/2026 19:30:00] "GET /api/status HTTP/1.1" 200 -
+  Initial clustering: 3 clusters  |  silhouette=0.5516
+  Round 1: oversized clusters → [0]
+  [Clusterer → Orchestrator] Requesting LLM: route oversized cluster C0 (92%): sub-cluster or reselect features (pipeline)
+
+  [Orchestrator] ← Clusterer requests LLM help: route oversized cluster C0 (92%): sub-cluster or reselect features (pipeline)
+127.0.0.1 - - [16/May/2026 19:30:02] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → Clusterer: LLM answered (in=1439 out=97 2.65s)
+  [Orchestrator → Clusterer] LLM response received (439 chars)
+    LLM recommends re-selecting features: The cluster has already failed to separate on the current features in iteration 1, and 92.4% of entities remain collapsed into a single cluster, indicating these features (sum_amt_all, city_pop, sum_amt_12m) fundamentally lack discriminative power. Feature selection must explore additional behavioral or demographic dimensions to reveal meaningful distinctions before clustering is retried.
+  [Bus] ✗ Clusterer (iter 2): BLOCKED — Clustered with k=3, ran deepening loop
+         Issue: Cluster 0 has 92.4% of data (>40% threshold)
+         Doubt: Oversized cluster may reflect feature redundancy
+
+[Orchestrator] Clustering → reselect features: The cluster has already failed to separate on the current features in iteration 1, and 92.4% of entities remain collapsed into a single cluster, indicating these features (sum_amt_all, city_pop, sum_amt_12m) fundamentally lack discriminative power. Feature selection must explore additional behavioral or demographic dimensions to reveal meaningful distinctions before clustering is retried.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 3...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+127.0.0.1 - - [16/May/2026 19:30:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:06] "GET /api/status HTTP/1.1" 200 -
+  [Orchestrator] → Orchestrator: LLM answered (in=1799 out=201 4.7s)
+  [Orchestrator → Orchestrator] LLM response received (715 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=gmm, k_range=[4, 5, 6, 7, 8, 10], min_sil=0.05
+  [Orchestrator] Reasoning: The previous two iterations both suffered from severe cluster imbalance (92.4% in one cluster), suggesting kmeans is struggling with this data distribution — switching to GMM which handles overlapping, non-spherical clusters better. Lowering VIF threshold from 15 to 10 to reduce multicollinearity and force selection of more independent features, which should help break the dominant-cluster pathology. Expanding k_range upward to allow more granular splits per the user preference to recluster oversized clusters.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 3 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 3  (vif_threshold=10.0)
+  Feedback from previous round: The cluster has already failed to separate on the current features in iteration 1, and 92.4% of entities remain collapsed into a single cluster, indicating these features (sum_amt_all, city_pop, sum_amt_12m) fundamentally lack discriminative power. Feature selection must explore additional behavioral or demographic dimensions to reveal meaningful distinctions before clustering is retried.
+Orchestrator guidance: spend frequency transaction_ratio balance recency
+  [Orchestrator → EvidenceExplainer] LLM response received (668 chars)
+127.0.0.1 - - [16/May/2026 19:30:08] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (687 chars)
+127.0.0.1 - - [16/May/2026 19:30:08] "POST /api/explain HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:09] "GET /api/status HTTP/1.1" 200 -
+  Features: 209  |  Entities: 983
+  AE bottleneck=32  (cap=32, max_iter=200)
+127.0.0.1 - - [16/May/2026 19:30:11] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:13] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:15] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:17] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:23] "GET /api/status HTTP/1.1" 200 -
+/Users/tzu-chunchen/Documents/AI/AI_Personalization/.venv/lib/python3.13/site-packages/sklearn/neural_network/_multilayer_perceptron.py:785: ConvergenceWarning: Stochastic Optimizer: Maximum iterations (200) reached and the optimization hasn't converged yet.
+  warnings.warn(
+  Running VIF gate (threshold=10.0)...
+127.0.0.1 - - [16/May/2026 19:30:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:39] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 1: removing 'active_periods_6m'  VIF=12703.46
+127.0.0.1 - - [16/May/2026 19:30:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:48] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:50] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:52] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:54] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:56] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:30:58] "GET /api/status HTTP/1.1" 200 -
+  [VIF] Round 2: removing 'active_periods_12m'  VIF=9782.04
+127.0.0.1 - - [16/May/2026 19:31:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:31:02] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:31:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:31:06] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:31:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [16/May/2026 19:31:10] "GET /api/status HTTP/1.1" 200 -

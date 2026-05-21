@@ -1,0 +1,109 @@
+[run_pipeline] Logging full output to /Users/tzu-chunchen/Documents/AI/AI_Personalization/outputs/pipeline_run_20260517_123951.txt
+[run_pipeline] Launching live UI at http://127.0.0.1:5090/ (use --no-ui to disable)
+[run_pipeline] Using CLI-specified data: data/raw/wholesale_customers/wholesale_customers.csv
+ * Serving Flask app 'ui.app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5090
+[33mPress CTRL+C to quit[0m
+  [Orchestrator] Skill catalog loaded: 11778 chars (skill.md)
+  [Orchestrator] Agent catalog loaded: 20866 chars (agent.md)
+
+=================================================================
+Multi-Agent Clustering & Persona Discovery Pipeline
+=================================================================
+Config       : {'dataset_path': None, 'n_clusters': None, 'clustering_algorithm': 'auto', 'max_cluster_size_pct': 0.4, 'sub_n_clusters': 3, 'max_depth': 2, 'silhouette_target': 0.5, 'max_reselect_failures': 3, 'max_relax_failures': 3, 'persona_tone': 'easy', 'ae_bottleneck_cap': 32, 'ae_max_iter': 200, 'classifier_model': 'auto'}
+Features     : data/raw/wholesale_customers/wholesale_customers.csv
+Max iters    : 10
+Classifier F1 threshold: 0.7
+
+=================================================================
+AGENTIC CLUSTERING PIPELINE — Intent Collection
+=================================================================
+
+  [UserInput] Waiting up to 600s for intent from the UI form
+  [UserInput] (open http://127.0.0.1:5057/ and submit the intent form,
+  [UserInput]  or press Ctrl-C to fall back to terminal prompts)
+127.0.0.1 - - [17/May/2026 12:39:53] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:39:53] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [17/May/2026 12:39:53] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [17/May/2026 12:39:53] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:39:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:39:53] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:39:53] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:39:53] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:00] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:04] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:06] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:06] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:06] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:07] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [17/May/2026 12:40:07] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:07] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:07] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /?demo=graph HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:08] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:09] "GET /?demo=tokens HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:09] "GET /static/style.css HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:09] "GET /static/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:10] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:10] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:10] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:10] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:12] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:14] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:16] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:18] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [17/May/2026 12:40:18] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [17/May/2026 12:40:18] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [17/May/2026 12:40:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:18] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:18] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:18] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:19] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:23] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:25] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:27] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:29] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:31] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:33] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:35] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:35] "POST /api/upload HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:37] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:41] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:41] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:41] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:42] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:42] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:43] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:44] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:44] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:46] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:46] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:47] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:48] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:48] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:49] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:50] "GET /api/evidence HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:50] "GET /api/outputs-files HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:51] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:53] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:55] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:57] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:40:59] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:41:01] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:41:03] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:41:05] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:41:07] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:41:09] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [17/May/2026 12:41:11] "GET /api/status HTTP/1.1" 200 -

@@ -133,7 +133,8 @@ def _extract_profiles(features_df: pd.DataFrame, cluster_labels: pd.Series,
     No hard-coded column names, prefixes, or CATEGORIES list.
     Works with any feature matrix.
     """
-    leaf_ids = sorted([c for c, v in cluster_lineage.items() if 'split_into' not in v])
+    leaf_ids = sorted([c for c, v in cluster_lineage.items()
+                       if 'split_into' not in v and 'merged_into' not in v])
     n_total = len(features_df)
     numeric_cols = list(features_df.select_dtypes(include=[np.number]).columns)
 
@@ -212,6 +213,7 @@ class ClusteringAgent:
         iteration: int = 1,
         config_override: dict | None = None,
         min_silhouette: float | None = None,
+        silhouette_target: float | None = None,
     ) -> ClusteringResult:
         """
         Parameters
@@ -230,6 +232,12 @@ class ClusteringAgent:
         # Merge per-iteration config overrides over base config
         cfg = {**self.config, **(config_override or {})}
         _min_sil = min_silhouette if min_silhouette is not None else 0.05
+        # silhouette_target is the orchestrator-level pass bar (dynamic — starts
+        # at config.silhouette_target=0.5, relaxes -0.1 after each 3 consecutive
+        # misses). The clusterer uses it to decide success vs warning so the agent
+        # report aligns with what the orchestrator will do next.
+        _target = silhouette_target if silhouette_target is not None \
+            else float(cfg.get('silhouette_target', 0.5))
 
         print(f'\n[Clusterer] Iteration {iteration}')
         if feedback:
@@ -500,8 +508,75 @@ class ClusteringAgent:
                     )
                     print(f'    Split C{_parent} ({_n} cust) → {_sizes}')
 
+        # ── Step 5.5: Merge tiny / singleton leaf clusters ───────────────────
+        # Diagnoses the "F1=0 on n=1 cluster" failure mode: a leaf cluster
+        # with fewer than min_cluster_size members is unpredictable under
+        # stratified CV (per-class F1 collapses to 0; XGBoost may crash when
+        # the singleton class is dropped from a fold). Merge each tiny leaf
+        # into the nearest non-tiny leaf by centroid distance in X_scaled.
+        min_cluster_size = int(cfg.get('min_cluster_size', 5))
+        singleton_merges: list[dict] = []
+        if min_cluster_size > 1:
+            while True:
+                leaf_ids_now = [c for c, v in cluster_lineage.items()
+                                if 'split_into' not in v and 'merged_into' not in v]
+                sizes = {c: int((work_df['cluster'] == c).sum()) for c in leaf_ids_now}
+                tiny = sorted([c for c, n in sizes.items() if n < min_cluster_size],
+                              key=lambda c: sizes[c])
+                if not tiny:
+                    break
+                # Compute leaf centroids
+                centroids = {}
+                for c in leaf_ids_now:
+                    mask = (work_df['cluster'] == c).values
+                    if mask.any():
+                        centroids[c] = X_scaled[mask].mean(axis=0)
+                # Pick targets (must be >= min_cluster_size). Fallback: any non-tiny
+                # leaf; ultimate fallback: the largest leaf even if it's also tiny.
+                candidates = [c for c in leaf_ids_now if sizes[c] >= min_cluster_size]
+                if not candidates:
+                    candidates = sorted(leaf_ids_now, key=lambda c: -sizes[c])[:1]
+                if len(candidates) == 1 and candidates[0] in tiny:
+                    # All clusters are tiny — bail out to avoid infinite loop
+                    break
+
+                for src in tiny:
+                    if src not in centroids:
+                        continue
+                    avail = [t for t in candidates if t != src]
+                    if not avail:
+                        break
+                    # Nearest by Euclidean distance between centroids
+                    dists = {t: float(np.linalg.norm(centroids[src] - centroids[t]))
+                             for t in avail}
+                    tgt = min(dists, key=dists.get)
+                    n_src = sizes[src]
+                    work_df.loc[work_df['cluster'] == src, 'cluster'] = tgt
+                    cluster_lineage[src]['merged_into'] = tgt
+                    cluster_lineage[src]['merge_reason'] = (
+                        f'n={n_src} < min_cluster_size={min_cluster_size}'
+                    )
+                    singleton_merges.append({
+                        'from': src, 'to': tgt, 'n_moved': n_src,
+                        'distance': round(dists[tgt], 3),
+                    })
+                    print(
+                        f'  [Clusterer] Merged tiny cluster C{src} (n={n_src}) → '
+                        f'C{tgt} (nearest by centroid, dist={dists[tgt]:.2f}). '
+                        f'Reason: n < min_cluster_size={min_cluster_size}.'
+                    )
+                    # Update centroid of target (weighted) so subsequent merges
+                    # see the new center.
+                    tgt_n = int((work_df['cluster'] == tgt).sum())
+                    if tgt in centroids and tgt_n > 0:
+                        centroids[tgt] = X_scaled[(work_df['cluster'] == tgt).values].mean(axis=0)
+                # One pass per while-iteration; re-check sizes in next loop
+        if singleton_merges:
+            print(f'  [Clusterer] Singleton-merge step: {len(singleton_merges)} cluster(s) merged.')
+
         # ── Step 6: Final leaf info ────────────────────────────────────────────
-        leaf_ids = sorted([c for c, v in cluster_lineage.items() if 'split_into' not in v])
+        leaf_ids = sorted([c for c, v in cluster_lineage.items()
+                           if 'split_into' not in v and 'merged_into' not in v])
         n_leaf = len(leaf_ids)
         sil = silhouette_score(X_scaled, work_df['cluster'])
 
@@ -561,17 +636,37 @@ class ClusteringAgent:
             "weak but usable" if sil >= 0.10 else
             "low (typical for transaction ratio features)"
         )
-        status = "success" if sil >= 0.25 else "warning"
+        # Success/warning is decided against the DYNAMIC orchestrator target,
+        # not a hardcoded threshold — so the chip in the UI matches the actual
+        # pass bar the orchestrator will enforce next.
+        status = "success" if sil >= _target else "warning"
         issues = []
-        if sil < 0.15:
+        if sil < _target:
             issues.append(
-                f"Silhouette={sil:.3f} < 0.15 — clusters overlap; interpretability may be low. "
-                "Consider reviewing feature selection or k."
+                f"Silhouette={sil:.3f} < target {_target:.2f} — orchestrator will "
+                "reselect features (or escalate after 3 consecutive misses)."
             )
         elif sil < 0.25:
             issues.append(
-                f"Silhouette={sil:.3f} < 0.25 — clusters may overlap slightly. "
-                "Consider different k or algorithm."
+                f"Silhouette={sil:.3f} < 0.25 — meets dynamic target {_target:.2f} "
+                "but clusters may still overlap; consider different k or algorithm."
+            )
+
+        # Build doubt + merge diagnosis
+        doubt_parts = []
+        if k_scores:
+            doubt_parts.append(
+                f"Silhouette improved {min(k_scores.values(), default=0):.3f}→{sil:.3f} "
+                f"across k range — marginal gain."
+            )
+        if singleton_merges:
+            merge_summary = ", ".join(
+                f"C{m['from']}(n={m['n_moved']})→C{m['to']}" for m in singleton_merges
+            )
+            doubt_parts.append(
+                f"Diagnosed {len(singleton_merges)} tiny cluster(s) "
+                f"(n<{min_cluster_size}) — root cause of per-class F1=0 / "
+                f"singleton-class CV failure. Merged into nearest leaf: {merge_summary}."
             )
 
         if self.bus:
@@ -584,27 +679,30 @@ class ClusteringAgent:
                     f"(auto-selected via silhouette). "
                     f"Ran deepening loop → {n_leaf} leaf clusters. "
                     f"Silhouette={sil:.4f} ({sil_quality})."
+                    + (f" Merged {len(singleton_merges)} tiny cluster(s) "
+                       f"(n<{min_cluster_size}) into nearest leaf."
+                       if singleton_merges else "")
                 ),
                 what_was_not_done=(
                     "Did not try all algorithm variants simultaneously."
                 ),
-                doubts=(
-                    f"Silhouette improved {min(k_scores.values(), default=0):.3f}→{sil:.3f} "
-                    f"across k range — marginal gain."
-                    if k_scores else ""
-                ),
+                doubts=" ".join(doubt_parts),
                 issues=issues,
                 metrics={
                     "algorithm": algo_name,
                     "k_selected": n_clusters,
                     "n_leaf_clusters": n_leaf,
                     "silhouette": round(sil, 4),
+                    "silhouette_target": round(_target, 3),
                     "k_scores": {str(k): v for k, v in k_scores.items()},
+                    "singleton_merges": len(singleton_merges),
+                    "min_cluster_size": min_cluster_size,
                 },
                 recommendation="proceed" if not issues else "retry",
                 context={
                     "algo_reasoning": algo_reasoning,
                     "k_scores": k_scores,
+                    "singleton_merges": singleton_merges,
                 },
             ))
 

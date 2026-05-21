@@ -113,6 +113,12 @@ class PipelineState:
     selected_features: list[str] = field(default_factory=list)
     needs_feature_selection: bool = True
 
+    # Escalation rules (silhouette < target → reselect; N failures → re-engineer)
+    needs_feature_engineering: bool = False
+    consecutive_silhouette_failures: int = 0   # → re-engineer at max_reselect_failures (3)
+    silhouette_fail_for_relax: int = 0         # → relax target at max_relax_failures (5)
+    silhouette_target_override: Optional[float] = None   # dynamic, set by relax logic
+
     # Feedback strings routed to specific agents
     fs_feedback: str = ''
     cluster_feedback: str = ''
@@ -139,6 +145,11 @@ class PipelineState:
     best_silhouette_value: float = -1.0
     best_silhouette_features: list[str] = field(default_factory=list)
 
+    # Composite score of the all-time best iteration (F1 + Silhouette − VIF penalty).
+    # Recomputed every call to update_best so the per-iteration comparison is fair.
+    best_composite_score: float = float('-inf')
+    best_max_vif: float = 0.0
+
     # Dynamic tuning parameters — LLM adjusts these after each failed iteration
     # so agents are NOT locked into hardcoded thresholds.
     tuning_params: dict = field(default_factory=lambda: {
@@ -148,6 +159,11 @@ class PipelineState:
         'min_silhouette': 0.05,   # hard-block below this; LLM may raise/lower
         'feature_focus': '',      # hint injected into FeatureSelector prompt
     })
+
+    # Case-memory recall from skills.case_memory (CaseRecall or None).
+    # Set once at the start of run() and consumed by _ask_parameter_tuning
+    # to render a "prior experience" hint block for the tuning LLM.
+    case_recall: object = None
 
     def update_features(self, fs_result: FeatureSelectionResult) -> None:
         self.selected_features = fs_result.selected_features
@@ -168,16 +184,74 @@ class PipelineState:
             self.best_silhouette_cluster = cr
             self.best_silhouette_features = list(selected_features)
 
+    @staticmethod
+    def composite_score(silhouette: Optional[float],
+                         cv_f1_macro: Optional[float],
+                         max_vif: Optional[float]) -> float:
+        """Decision metric for the best iteration. Higher is better.
+
+        Weighting (all three deliberately on different scales so each one matters
+        without any single metric dominating):
+          • F1 macro      → ×100  (primary signal: classifier learnability of the labels)
+          • Silhouette    → ×30   (cluster separation quality)
+          • VIF penalty   → −log10(max(1, max_vif)) × 5  (feature multicollinearity)
+
+        A perfect iteration (F1=1.0, Sil=1.0, VIF=1.0) ≈ 100 + 30 − 0 = 130.
+        A terrible iteration (F1=0.2, Sil=0.1, VIF=50) ≈ 20 + 3 − 8.5 ≈ 14.5.
+        Negative silhouette or F1 contribute 0 (not negative) — we don't want
+        a single dead-bad signal to dominate when the others are fine.
+        """
+        import math
+        f1_part  = max(0.0, float(cv_f1_macro or 0.0)) * 100.0
+        sil_part = max(0.0, float(silhouette or 0.0)) * 30.0
+        vif_part = -math.log10(max(1.0, float(max_vif or 1.0))) * 5.0
+        return f1_part + sil_part + vif_part
+
     def update_best(
         self,
         nr: NamingResult,
         cr: ClusteringResult,
         clf: Optional[ClassifierResult] = None,
-    ) -> None:
-        """Keep track of the best (highest avg_confidence + passed gate) result."""
-        if nr.passed:
-            if (self.best_naming_result is None
-                    or nr.avg_confidence > self.best_naming_result.avg_confidence):
-                self.best_naming_result = nr
-                self.best_clustering_result = cr
-                self.best_classifier_result = clf
+        max_vif: Optional[float] = None,
+    ) -> bool:
+        """Keep the iteration with the highest composite score (F1 + Sil − VIF penalty).
+
+        Unlike before, this runs for EVERY iteration that produced a Classifier
+        result — not only iterations whose PersonaNamer cleared the Clarity
+        Gate. That's because the user-facing best-iteration decision combines
+        three signals (F1↑, Silhouette↑, VIF↓), so we must score every iter
+        with a Classifier result, not gate by naming quality alone.
+
+        Returns True if this iteration is the new best (helps the caller log it).
+        """
+        if cr is None or clf is None:
+            return False
+
+        sil = cr.silhouette if cr.silhouette is not None else 0.0
+        f1  = clf.cv_f1_macro if clf.cv_f1_macro is not None else 0.0
+        vif = float(max_vif) if max_vif is not None else self.best_max_vif or 1.0
+        new_score = self.composite_score(sil, f1, vif)
+
+        if new_score > self.best_composite_score:
+            self.best_composite_score = new_score
+            self.best_naming_result = nr
+            self.best_clustering_result = cr
+            self.best_classifier_result = clf
+            self.best_max_vif = vif
+            return True
+        return False
+
+    def current_max_vif(self) -> float:
+        """Largest VIF among the currently-selected features (1.0 if unknown).
+        Sourced from the most recent FeatureSelectionResult; used as the VIF
+        component of the composite score for the current iteration."""
+        if not self.fs_history:
+            return 1.0
+        last = self.fs_history[-1]
+        vt = getattr(last, 'vif_table', None) or {}
+        if not vt:
+            return 1.0
+        try:
+            return max(float(v) for v in vt.values() if v is not None)
+        except (ValueError, TypeError):
+            return 1.0
