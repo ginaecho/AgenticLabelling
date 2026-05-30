@@ -67,12 +67,25 @@ def _load_df(path: str) -> pd.DataFrame:
     return df
 
 
-def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: OrchestratorBus) -> HumanDecision:
-    """
-    Print persona + classifier summary and ask the user what to do next.
+PENDING_HUMAN_CHECKPOINT_PATH = pathlib.Path('outputs/pending_human_checkpoint.json')
+HUMAN_CHECKPOINT_TIMEOUT_S = 600  # 10 min — UI modal gives the user plenty of time
 
-    Returns HumanDecision with action in:
-      'approve' | 'recluster' | 'reselect_features' | 'quit'
+
+def _display_checkpoint_summary(personas: dict, cluster_result, classifier_result,
+                                bus: OrchestratorBus) -> dict:
+    """Print persona + classifier summary to stdout and return a structured
+    payload the UI modal can render. Pure side-effect printing + payload —
+    no input, no blocking.
+
+    Returned dict shape (also emitted via SSE `awaiting_human_checkpoint`):
+        {
+          "silhouette": float, "n_leaf": int, "algorithm": str,
+          "cv_accuracy": float|None, "cv_f1_macro": float|None,
+          "cv_f1_weighted": float|None,
+          "personas": [{"cid", "name", "tagline", "confidence", "cv_f1"}, ...],
+          "worst_personas": [(name, f1), ...],
+          "agent_log_summary": str,
+        }
     """
     print('\n' + '=' * 65)
     print('HUMAN CHECKPOINT — Persona & Classifier Review')
@@ -97,6 +110,7 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
     print(f'{"Cluster":<10} {"Conf":>4}  {"CV-F1":>6}  {"Persona Name":<45}  Tagline')
     print('-' * 115)
     _per_class = (classifier_result.per_class_f1 if classifier_result is not None else {}) or {}
+    persona_rows = []
     for cid, p in personas.items():
         name    = p.get('name', '?')
         conf    = p.get('confidence', '?')
@@ -104,8 +118,13 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
         cv_f1   = _per_class.get(name, None)
         cv_f1_str = f'{cv_f1:.3f}' if cv_f1 is not None else '  n/a'
         print(f'  C{cid:<7}  {conf:>4}  {cv_f1_str:>6}  {name:<45}  {tagline}')
+        persona_rows.append({
+            'cid': str(cid), 'name': name, 'tagline': tagline,
+            'confidence': conf,
+            'cv_f1': float(cv_f1) if isinstance(cv_f1, (int, float)) else None,
+        })
 
-    # Highlight worst-performing personas
+    worst = []
     if _per_class:
         worst = sorted(_per_class.items(), key=lambda x: x[1])[:3]
         print()
@@ -114,48 +133,140 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
             bar = '█' * int(score * 20)
             print(f'  {name:<45}  {score:.3f}  {bar}')
 
-    # Pipeline log summary
     print()
     print('Pipeline Agent Log (recent):')
-    print(bus.summary_for_llm(last_n=10))
+    log_summary = bus.summary_for_llm(last_n=10)
+    print(log_summary)
 
-    print()
-    print('Options:')
+    return {
+        'silhouette': float(cluster_result.silhouette) if cluster_result.silhouette is not None else None,
+        'n_leaf': cluster_result.n_leaf,
+        'algorithm': cluster_result.algo_name,
+        'cv_accuracy': float(classifier_result.cv_accuracy) if classifier_result is not None else None,
+        'cv_f1_macro': float(classifier_result.cv_f1_macro) if classifier_result is not None else None,
+        'cv_f1_weighted': float(classifier_result.cv_f1_weighted) if classifier_result is not None else None,
+        'personas': persona_rows,
+        'worst_personas': [{'name': n, 'cv_f1': float(s)} for n, s in worst],
+        'agent_log_summary': log_summary[:4000],
+    }
+
+
+def _collect_human_decision(summary: dict, bus: OrchestratorBus,
+                            timeout_s: float = HUMAN_CHECKPOINT_TIMEOUT_S) -> HumanDecision:
+    """Wait for the user's decision via the UI modal, falling back to terminal.
+
+    Flow:
+      1. Emit `awaiting_human_checkpoint` SSE event carrying the summary.
+      2. Poll outputs/pending_human_checkpoint.json for up to timeout_s seconds.
+      3. If the file appears, parse {action, feedback} and return.
+      4. If polling times out OR stdin has terminal input first, fall through
+         to the existing terminal prompt so this still works headless.
+
+    The polling loop checks stdin every tick (non-blocking via select) so a
+    user typing 1/2/3/4 in the terminal also unblocks the run.
+    """
+    import select
+    import sys as _sys
+
+    # Defensive cleanup: stale file from a prior checkpoint must not auto-resolve us.
+    try:
+        if PENDING_HUMAN_CHECKPOINT_PATH.exists():
+            PENDING_HUMAN_CHECKPOINT_PATH.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    try:
+        bus.emit('awaiting_human_checkpoint', timeout_s=timeout_s, **summary)
+    except Exception:  # noqa: BLE001
+        pass  # bus problems shouldn't block the terminal fallback
+
+    print('\nOptions:')
     print('  [1] Approve — save results and finish')
     print('  [2] Re-cluster — try different clustering parameters')
     print('  [3] Re-select features — go back to feature selection')
     print('  [4] Quit without saving')
-    print()
+    print('\n  (or click an option in the browser modal — pipeline is paused)')
+    print('Your choice [1/2/3/4]: ', end='', flush=True)
 
-    while True:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        # 1) UI modal wrote a decision file?
+        if PENDING_HUMAN_CHECKPOINT_PATH.exists():
+            try:
+                payload = json.loads(PENDING_HUMAN_CHECKPOINT_PATH.read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError):
+                payload = {}
+            try:
+                PENDING_HUMAN_CHECKPOINT_PATH.unlink(missing_ok=True)
+            except OSError:
+                pass
+            action = str(payload.get('action') or 'approve').lower()
+            feedback = str(payload.get('feedback') or '').strip()
+            if action not in ('approve', 'recluster', 'reselect_features', 'quit'):
+                action = 'approve'
+            try:
+                bus.emit('human_checkpoint_resolved', source='ui',
+                         action=action, feedback=feedback)
+            except Exception:  # noqa: BLE001
+                pass
+            print(f'\n  [UI] {action!r} received from browser modal.')
+            return HumanDecision(action=action, feedback=feedback)
+        # 2) Stdin readable? (terminal fallback)
         try:
-            choice = input('Your choice [1/2/3/4]: ').strip()
+            ready, _, _ = select.select([_sys.stdin], [], [], 0.4)
+        except (ValueError, OSError):
+            ready = []
+        if ready:
+            try:
+                choice = _sys.stdin.readline().strip()
+            except (EOFError, KeyboardInterrupt):
+                print('\nNo input received — defaulting to Approve.')
+                return HumanDecision(action='approve')
+            return _handle_terminal_choice(choice)
+    # Timeout — default to approve so unattended runs still finish.
+    try:
+        bus.emit('human_checkpoint_resolved', source='timeout', action='approve')
+    except Exception:  # noqa: BLE001
+        pass
+    print(f'\n  No decision received within {int(timeout_s)}s — defaulting to Approve.')
+    return HumanDecision(action='approve')
+
+
+def _handle_terminal_choice(choice: str) -> HumanDecision:
+    """Map a typed 1/2/3/4 to a HumanDecision, prompting for a reason when needed."""
+    choice = (choice or '').strip()
+    if choice == '1':
+        return HumanDecision(action='approve')
+    if choice == '2':
+        try:
+            reason = input('  Reason / feedback for re-clustering (or Enter to skip): ').strip()
         except (EOFError, KeyboardInterrupt):
-            print('\nNo input received — defaulting to Approve.')
-            return HumanDecision(action='approve')
+            reason = ''
+        return HumanDecision(action='recluster', feedback=reason)
+    if choice == '3':
+        try:
+            reason = input('  Reason / feedback for feature re-selection (or Enter to skip): ').strip()
+        except (EOFError, KeyboardInterrupt):
+            reason = ''
+        return HumanDecision(action='reselect_features', feedback=reason)
+    if choice == '4':
+        return HumanDecision(action='quit')
+    # Anything else: treat as approve to avoid spinning further on bad input.
+    print(f'  Unrecognised choice {choice!r} — defaulting to Approve.')
+    return HumanDecision(action='approve')
 
-        if choice == '1':
-            return HumanDecision(action='approve')
 
-        elif choice == '2':
-            try:
-                reason = input('  Reason / feedback for re-clustering (or Enter to skip): ').strip()
-            except (EOFError, KeyboardInterrupt):
-                reason = ''
-            return HumanDecision(action='recluster', feedback=reason)
+def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: OrchestratorBus) -> HumanDecision:
+    """Display the checkpoint and collect the user's decision (UI or terminal).
 
-        elif choice == '3':
-            try:
-                reason = input('  Reason / feedback for feature re-selection (or Enter to skip): ').strip()
-            except (EOFError, KeyboardInterrupt):
-                reason = ''
-            return HumanDecision(action='reselect_features', feedback=reason)
+    Returns HumanDecision with action in:
+      'approve' | 'recluster' | 'reselect_features' | 'quit'
 
-        elif choice == '4':
-            return HumanDecision(action='quit')
-
-        else:
-            print('  Invalid choice. Please enter 1, 2, 3, or 4.')
+    Composed of two pure halves so run_pipeline.py's `_auto_approve` wrapper
+    can call only `_display_checkpoint_summary` and skip the wait.
+    """
+    summary = _display_checkpoint_summary(personas, cluster_result, classifier_result, bus)
+    return _collect_human_decision(summary, bus)
 
 
 def save_outputs(cluster_result, naming_result, classifier_result, bus: OrchestratorBus) -> None:

@@ -213,9 +213,13 @@ from agents.state import HumanDecision
 _MIN_PASSING_BEFORE_APPROVE = 3
 _passing_count = {'n': 0}
 
-_orig_chk = _orch_mod.human_checkpoint
 def _auto_approve(personas, cr, clf, bus):
-    _orig_chk(personas, cr, clf, bus)
+    # Call only the display half — previously we called the full
+    # `human_checkpoint`, which BLOCKED on `input()` and stalled the pipeline
+    # forever. The display function prints the same summary + persona table to
+    # stdout (and now also emits `awaiting_human_checkpoint` so the UI can
+    # render the modal if a user wants to see it) without waiting for input.
+    _orch_mod._display_checkpoint_summary(personas, cr, clf, bus)
     _passing_count['n'] += 1
     n = _passing_count['n']
     if n < _MIN_PASSING_BEFORE_APPROVE:

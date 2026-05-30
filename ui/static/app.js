@@ -2902,6 +2902,89 @@ function wireThresholdModal() {
   });
 }
 
+// ── Human-checkpoint modal (end of every passing iteration) ────────────────
+// Triggered by `awaiting_human_checkpoint` SSE events emitted by
+// agents/orchestrator.py::_collect_human_decision. Shows the per-iteration
+// stats + persona table; user clicks Approve / Re-cluster / Re-select / Quit;
+// POST /api/human-checkpoint writes outputs/pending_human_checkpoint.json
+// which the paused orchestrator consumes.
+let _pendingCheckpoint = null;
+let _checkpointTimeoutTimer = null;
+
+function openCheckpointModal(e) {
+  _pendingCheckpoint = e;
+  const sil = (e.silhouette != null) ? Number(e.silhouette).toFixed(3) : 'n/a';
+  const f1 = (e.cv_f1_macro != null) ? Number(e.cv_f1_macro).toFixed(3) : 'n/a';
+  const acc = (e.cv_accuracy != null) ? Number(e.cv_accuracy).toFixed(3) : 'n/a';
+  $('#checkpoint-stats').innerHTML = `
+    <div><b>Algorithm:</b> ${escapeHtml(e.algorithm || '?')}
+         &nbsp;·&nbsp; <b>Leaf clusters:</b> ${e.n_leaf ?? '?'}</div>
+    <div><b>Silhouette:</b> ${sil}
+         &nbsp;·&nbsp; <b>CV F1 (macro):</b> ${f1}
+         &nbsp;·&nbsp; <b>CV accuracy:</b> ${acc}</div>`;
+  const rows = (e.personas || []).map(p => {
+    const f1Cell = (p.cv_f1 != null) ? Number(p.cv_f1).toFixed(3) : 'n/a';
+    return `<tr>
+      <td><b>C${escapeHtml(String(p.cid))}</b></td>
+      <td>${escapeHtml(String(p.name || ''))}</td>
+      <td class="muted">${escapeHtml(String(p.tagline || ''))}</td>
+      <td style="text-align:right">${p.confidence ?? '?'}</td>
+      <td style="text-align:right">${f1Cell}</td>
+    </tr>`;
+  }).join('');
+  $('#checkpoint-personas').innerHTML = rows
+    ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+         <thead><tr style="text-align:left;border-bottom:1px solid var(--border)">
+           <th>#</th><th>Persona</th><th>Tagline</th>
+           <th style="text-align:right">Conf</th><th style="text-align:right">CV-F1</th>
+         </tr></thead><tbody>${rows}</tbody></table>`
+    : '<div class="muted">No persona table available for this iteration.</div>';
+  $('#checkpoint-feedback').value = '';
+  $('#checkpoint-modal').classList.remove('hidden');
+
+  if (_checkpointTimeoutTimer) clearInterval(_checkpointTimeoutTimer);
+  const deadline = Date.now() + (Number(e.timeout_s || 600) * 1000);
+  const tickLabel = () => {
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    $('#checkpoint-timeout-label').textContent = remaining > 0
+      ? `Auto-applies "Approve" in ${m}:${String(s).padStart(2, '0')}.`
+      : 'Auto-applying approve…';
+  };
+  tickLabel();
+  _checkpointTimeoutTimer = setInterval(tickLabel, 1000);
+}
+
+function closeCheckpointModal() {
+  _pendingCheckpoint = null;
+  if (_checkpointTimeoutTimer) { clearInterval(_checkpointTimeoutTimer); _checkpointTimeoutTimer = null; }
+  $('#checkpoint-modal').classList.add('hidden');
+}
+
+async function submitCheckpoint(action) {
+  if (!_pendingCheckpoint) return;
+  const feedback = ($('#checkpoint-feedback')?.value || '').trim();
+  try {
+    await api('POST', '/api/human-checkpoint', {action, feedback});
+    closeCheckpointModal();
+    toast(`Checkpoint: ${action} — pipeline resuming`, 'success', 3000);
+  } catch (e) {
+    toast(`Could not submit decision: ${e.message}`, 'error', 4000);
+  }
+}
+
+function wireCheckpointModal() {
+  $('#chk-approve').onclick   = () => submitCheckpoint('approve');
+  $('#chk-recluster').onclick = () => submitCheckpoint('recluster');
+  $('#chk-reselect').onclick  = () => submitCheckpoint('reselect_features');
+  $('#chk-quit').onclick      = () => submitCheckpoint('quit');
+  // Background click closes — the orchestrator's terminal fallback will still
+  // unblock the run if the user wants to handle it that way.
+  $('#checkpoint-modal').addEventListener('click', (ev) => {
+    if (ev.target.id === 'checkpoint-modal') closeCheckpointModal();
+  });
+}
+
 // Bypass-mode auto-applied threshold decisions. Each event is appended to this
 // list and surfaced as a persistent banner in the Evidence tab so the user
 // can review what was relaxed during an unattended run.
@@ -3359,6 +3442,16 @@ function handleEvent(e) {
     appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — threshold decision (${e.decision_id})`);
     return;
   }
+  if (ev === 'awaiting_human_checkpoint') {
+    openCheckpointModal(e);
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — human checkpoint (algo=${e.algorithm}, F1=${e.cv_f1_macro})`);
+    return;
+  }
+  if (ev === 'human_checkpoint_resolved') {
+    if (_pendingCheckpoint) closeCheckpointModal();
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] RESUMED — checkpoint ${e.action} (${e.source})`);
+    return;
+  }
   if (ev === 'threshold_decision_resolved') {
     // Defensive: the modal usually closes itself when the user POSTs,
     // but timeout / cross-window submissions land here.
@@ -3809,6 +3902,7 @@ async function boot() {
   wireDecisionModal();
   wireRelaxModal();
   wireThresholdModal();
+  wireCheckpointModal();
   wireRecallModal();
   wireModeToggle();
   wireTabs();

@@ -393,6 +393,35 @@
   </div>
 </div>
 
+<!-- Human checkpoint modal: shown at the end of every passing iteration so
+     the user can Approve / Re-cluster / Re-select features / Quit. The
+     orchestrator (agents/orchestrator.py::_collect_human_decision) emits an
+     `awaiting_human_checkpoint` SSE event with persona + classifier stats; the
+     UI fills this modal and waits for the user's click. Falls back to the
+     terminal if no click within 10 min. -->
+<div id="checkpoint-modal" class="modal hidden">
+  <div class="modal-card" style="max-width:780px">
+    <h2 id="checkpoint-title">⏸ Human checkpoint — review and decide</h2>
+    <p class="muted">The pipeline finished an iteration. Pick how to proceed —
+       or just close this modal and the terminal still works as a fallback.</p>
+    <div id="checkpoint-stats" class="warn-context"></div>
+    <div id="checkpoint-personas" style="margin-top:10px;max-height:200px;overflow-y:auto"></div>
+    <details style="margin-top:8px">
+      <summary class="muted" style="cursor:pointer;font-size:12px">Optional reason / feedback (sent only for Re-cluster / Re-select)</summary>
+      <textarea id="checkpoint-feedback" rows="2"
+        style="width:100%;margin-top:4px"
+        placeholder="e.g. 'k=4 looked cleaner — narrow k_range to [3,4,5]'"></textarea>
+    </details>
+    <div class="modal-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+      <span class="muted" id="checkpoint-timeout-label" style="font-size:12px;flex:1"></span>
+      <button id="chk-quit" class="ghost">Quit without saving</button>
+      <button id="chk-reselect" class="ghost">Re-select features</button>
+      <button id="chk-recluster" class="ghost">Re-cluster</button>
+      <button id="chk-approve" class="primary">Approve & save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Threshold decision modal: a pipeline threshold was hit and the user
      gets to pick how to handle it (relax / reselect / abort / ...). Built
      dynamically per decision_id; options come from the SSE event payload. -->

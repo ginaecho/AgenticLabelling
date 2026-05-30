@@ -784,6 +784,30 @@ def submit_decision():
     return jsonify({'ok': True})
 
 
+@app.post('/api/human-checkpoint')
+def submit_human_checkpoint():
+    """Save the user's Approve / Re-cluster / Reselect / Quit decision so the
+    paused orchestrator can resume.
+
+    Body: {"action": "approve" | "recluster" | "reselect_features" | "quit",
+           "feedback": "<optional reason string>"}.
+    The orchestrator polls outputs/pending_human_checkpoint.json (see
+    agents/orchestrator.py:_collect_human_decision) and consumes the file.
+    """
+    payload = request.get_json(force=True) or {}
+    action = str(payload.get('action') or '').strip().lower()
+    feedback = str(payload.get('feedback') or '').strip()
+    if action not in ('approve', 'recluster', 'reselect_features', 'quit'):
+        return jsonify({'error': "action must be 'approve' | 'recluster' | "
+                                 "'reselect_features' | 'quit'"}), 400
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_human_checkpoint.json').write_text(
+        json.dumps({'action': action, 'feedback': feedback}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'action': action})
+
+
 @app.post('/api/threshold-decision')
 def submit_threshold_decision():
     """Save a structured choice for a paused threshold-decision point.
