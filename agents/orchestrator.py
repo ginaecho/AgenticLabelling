@@ -902,6 +902,42 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
 
             # ── ESCALATION: re-engineer features from scratch ─────────────────
             # Triggered when we've had N consecutive low-silhouette iterations.
+            # SKIP for text modality: FeatureEngineer is a tabular RFM/aggregate
+            # builder and has nothing useful to do with raw text columns — it
+            # would hang on the heavy LLM call looking for "behavioral features"
+            # in title/body strings. For text, the escalation path is instead
+            # handled by _ask_parameter_tuning: it picks a different algorithm
+            # (kmeans ↔ hierarchical ↔ nmf ↔ lda) or a different text_vectorizer
+            # (tfidf_svd ↔ transformer). We just clear the flag and let the
+            # main loop continue.
+            _is_text = getattr(state, 'modality', 'tabular') == 'text'
+            if state.needs_feature_engineering and _is_text:
+                print(
+                    f'\n[Orchestrator] ESCALATION (text mode) — '
+                    f'{state.consecutive_silhouette_failures} silhouette failures. '
+                    f'Skipping FeatureEngineer re-run (tabular-only); the Decision '
+                    f'Maker will pick a different algorithm / text_vectorizer on '
+                    f'this iteration instead.'
+                )
+                self.bus.emit(
+                    'feature_re_engineering',
+                    consecutive_failures=state.consecutive_silhouette_failures,
+                    silhouette_target=_current_silhouette_target(),
+                    modality='text',
+                    skipped='FeatureEngineer is tabular-only; tuning algorithm instead',
+                )
+                # Force a fresh algorithm pick on this iteration by clearing
+                # the cached one — _ask_parameter_tuning will be invoked later
+                # in the loop via the silhouette-miss branch.
+                state.tuning_params['algorithm'] = None
+                state.tuning_params['feature_focus'] = (
+                    f"Previous text clustering gave silhouette < target across "
+                    f"{state.consecutive_silhouette_failures} iterations — try a "
+                    f"fundamentally different algorithm (kmeans/hierarchical/nmf/lda) "
+                    f"or text_vectorizer (tfidf_svd↔transformer)."
+                )
+                state.needs_feature_engineering = False
+                state.consecutive_silhouette_failures = 0
             if state.needs_feature_engineering and full_raw_df is not None:
                 print(f'\n[Orchestrator] ESCALATION — {state.consecutive_silhouette_failures} '
                       f'failures in a row. Re-running FeatureEngineer from raw data + '
