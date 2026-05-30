@@ -27,13 +27,14 @@ The pipeline is driven by **`run_pipeline.py`**. Seven specialised agents plus a
 
 | # | Agent | Role |
 |---|-------|------|
-| ⓪ | **UserInputAgent** | Prompts for clustering intent (target entity, business purpose, dataset path). |
-| ① | **DatasetExaminerAgent** | Profiles the raw data — schema, missingness, distribution shape, cardinality — and asks the Decision Maker to suggest feature engineering groups aligned with the business purpose. Also emits an algorithm hint based on skewness. |
-| ② | **FeatureEngineerAgent** | Builds an entity-level feature matrix from raw event-level data. The Decision Maker reads the actual column names from the dataset schema and plans which of 8 generic statistical operations to apply (group aggregation, trends, streaks, diversity, temporal patterns, etc.). No domain vocabulary is hard-coded — the LLM reasons from the data. Saves to `data/processed/`. Skipped when a pre-built parquet is provided. |
-| ③ | **FeatureSelectionAgent** | Scores all features with PCA importance and autoencoder reconstruction error, runs a VIF collinearity gate, then asks the Decision Maker to pick the best subset (typically 25–55 features). The VIF threshold and a feature-focus hint are set dynamically by the Decision Maker each iteration. |
-| ④ | **ClusteringAgent** | Auto-selects the best algorithm from five options (`kmeans`, `hierarchical`, `dbscan`, `gmm`, `fuzzy_cmeans`) via `algo_recommender`. Auto-selects k via silhouette score optimisation. Runs a deepening loop to split any oversized cluster (>40%). All numeric columns are log-transformed automatically if skewed (|skewness| > 2.0). The k range, algorithm, and minimum acceptable silhouette are tuned dynamically each iteration. |
-| ⑤ | **PersonaNamingAgent** | Sends cluster profiles to the Decision Maker as tables of feature deviations from the global mean. The Decision Maker writes name, tagline, description, and five traits per cluster. A **Clarity Gate** (avg confidence ≥ 6.0, all names unique) must pass or the pipeline re-clusters. |
-| ⑥ | **ClassifierAgent** | Asks the Decision Maker to select the best classifier (`random_forest`, `xgboost`, `gradient_boosting`, `logistic_regression`) for the data. Trains with stratified 5-fold CV. If macro-F1 < 0.70, the Decision Maker diagnoses the root cause and routes back to ③ or ④. |
+| ⓪ | **UserInputAgent** | Prompts for clustering intent (target entity, business purpose, dataset path, optional `modality` / `text_column`). |
+| ① | **DatasetExaminerAgent** | Profiles the raw data — schema, missingness, distribution shape, cardinality — and asks the Decision Maker to suggest feature engineering groups aligned with the business purpose. Also emits an algorithm hint based on skewness. **Detects text-dominant datasets** (object/string column with high mean token count + high uniqueness) and routes the pipeline through the text branch. |
+| ② | **FeatureEngineerAgent** *(tabular)* | Builds an entity-level feature matrix from raw event-level data. The Decision Maker reads the actual column names from the dataset schema and plans which of 8 generic statistical operations to apply (group aggregation, trends, streaks, diversity, temporal patterns, etc.). No domain vocabulary is hard-coded — the LLM reasons from the data. Saves to `data/processed/`. Skipped when a pre-built parquet is provided. |
+| ② | **TextPreparerAgent** *(text)* | Replaces FeatureEngineer when the dataset is text-dominant. Recommends an embedding method via `text_vectorizer` (TF-IDF + TruncatedSVD for short text, sentence-transformers for long prose), vectorizes the documents, and saves an embedding parquet. Stashes the raw docs + TF-IDF vocab so the downstream Clusterer can build per-cluster c-TF-IDF distinctive terms and representative documents. |
+| ③ | **FeatureSelectionAgent** | Scores all features with PCA importance and autoencoder reconstruction error, runs a VIF collinearity gate, then asks the Decision Maker to pick the best subset (typically 25–55 features). The VIF threshold and a feature-focus hint are set dynamically by the Decision Maker each iteration. **Short-circuits in text mode** — embedding dims are already compact and decorrelated, so PCA/AE/VIF are skipped and every dim is kept. |
+| ④ | **ClusteringAgent** | Auto-selects the best algorithm from five options (`kmeans`, `hierarchical`, `dbscan`, `gmm`, `fuzzy_cmeans`) via `algo_recommender`. Auto-selects k via silhouette score optimisation. Runs a deepening loop to split any oversized cluster (>40%). All numeric columns are log-transformed automatically if skewed (|skewness| > 2.0). **In text mode** the matrix is L2-normalized (spherical-k-means semantics), silhouette is computed with cosine distance, and per-cluster profiles are built from **c-TF-IDF distinctive terms + centroid-nearest representative documents** instead of numeric means. |
+| ⑤ | **PersonaNamingAgent** | Sends cluster profiles to the Decision Maker as tables of feature deviations from the global mean. The Decision Maker writes name, tagline, description, and five traits per cluster. A **Clarity Gate** (avg confidence ≥ 6.0, all names unique) must pass or the pipeline re-clusters. **In text mode** the prompt block shows `DISTINCTIVE TERMS` + `REPRESENTATIVE DOCUMENTS` instead of numeric mean deviations — same output schema, so the UI is unchanged. |
+| ⑥ | **ClassifierAgent** | Asks the Decision Maker to select the best classifier (`random_forest`, `xgboost`, `gradient_boosting`, `logistic_regression`) for the data. Trains with stratified 5-fold CV. If macro-F1 < 0.70 (0.60 in text mode), the Decision Maker diagnoses the root cause and routes back to ③ or ④. |
 
 ### How each agent calls the Decision Maker
 
@@ -90,9 +91,70 @@ The console prints a `⚠ BEST-EFFORT RESULT` banner so the output is clearly fl
 
 ---
 
+## Text Modality (document / article clustering)
+
+The same pipeline clusters **text** (articles, reviews, support tickets, posts) by routing it through the `TextPreparerAgent` instead of `FeatureEngineerAgent`. Every other stage (FeatureSelector, Clusterer, PersonaNamer, Classifier) stays the same — they just see embedding columns instead of numeric features.
+
+### How routing works
+
+`DatasetExaminerAgent` auto-detects text-dominant datasets (an object/string column whose mean token count is high and values are mostly unique). You can also force the routing:
+
+```bash
+# Auto-detect (recommended)
+python run_pipeline.py --data data/raw/twenty_newsgroups/twenty_newsgroups.csv
+
+# Force text modality + name the column explicitly
+python run_pipeline.py \
+  --data data/raw/twenty_newsgroups/twenty_newsgroups.csv \
+  --modality text \
+  --text-column text
+
+# Equivalent via config.yaml:
+#   modality: text
+#   text_column: text
+#   text_vectorizer: auto         # or tfidf_svd / transformer
+```
+
+### What changes when modality is `text`
+
+| Stage | Behaviour |
+|-------|-----------|
+| `DatasetExaminerAgent` | Skips the "no numeric columns" hard-block; profiles the text column instead. |
+| `TextPreparerAgent` | New. Picks an embedding method (`tfidf_svd` default; `transformer` if `sentence-transformers` is installed). Saves embeddings to `data/processed/text_embeddings.parquet`. |
+| `FeatureSelectionAgent` | Short-circuits — PCA/AE/VIF don't apply to embeddings. Keeps all dims. |
+| `ClusteringAgent` | L2-normalizes embeddings, uses **cosine silhouette**, builds **c-TF-IDF distinctive terms + representative docs** for each cluster. |
+| `PersonaNamingAgent` | Prompt shows distinctive terms + doc snippets so the LLM names the *topic*, not a numeric segment. |
+| `Orchestrator` | `min_silhouette` relaxes to **0.01** (cosine silhouettes are smaller than euclidean) and the classifier F1 gate to **0.60**. The failure-tuning LLM can swap `text_vectorizer` (tfidf_svd ↔ transformer) when iterations miss — that's the text-mode analog of "reselect features". |
+
+### Public benchmark — 20 Newsgroups
+
+A real, public, well-vetted text-clustering dataset (no Kaggle login, no scraping):
+
+```bash
+# One-time: download the corpus via scikit-learn into data/raw/twenty_newsgroups/
+python data/raw/twenty_newsgroups/download.py
+
+# Offline benchmark (no LLM calls — stubbed bus)
+python experiments/benchmark_text_clustering.py
+
+# Full pipeline via Orchestrator + stubbed LLM
+python experiments/test_text_e2e_orchestrator.py
+```
+
+Expected output on the offline benchmark (1000 posts × 5 categories, TF-IDF + SVD):
+
+```
+[3] ClusteringAgent ... 5 clusters · cosine silhouette = 0.05
+[5] Cluster purity   = 0.74  (random baseline 0.20 — 3.7× above chance)
+[6] Cluster 0 terms: car (51.7) · cars (24.4) · dealer (16.5) · engine (16.0)
+                     · speed (11.8) · tires (10.7) · ford (10.1) → rec.autos
+```
+
+---
+
 ## Data
 
-The pipeline is dataset-agnostic. Point it at any tabular CSV where rows are events and columns include an entity identifier, a timestamp, and descriptive attributes. The `UserInputAgent` will ask what is being clustered and what the clustering goal is. The Decision Maker reasons from the actual schema to plan feature engineering — no domain vocabulary needs to be pre-configured.
+The pipeline is dataset-agnostic. Point it at any tabular CSV where rows are events and columns include an entity identifier, a timestamp, and descriptive attributes, **or** at any CSV with a free-text column for document clustering. The `UserInputAgent` (and the `DatasetExaminerAgent`'s modality detection) will route into the right pipeline branch automatically.
 
 ### Demo dataset
 
@@ -191,6 +253,7 @@ After a successful (or best-effort) run:
 | `outputs/pipeline_log.json` | Full structured log of every agent's status report across all iterations. |
 | `outputs/agents_conversation.txt` | Full text log of every LLM prompt and response. |
 | `data/processed/engineered_features.parquet` | Entity-level feature matrix built by FeatureEngineerAgent (when starting from CSV). |
+| `data/processed/text_embeddings.parquet` | Document × embedding-dim matrix produced by TextPreparerAgent in text mode (one row per document, columns `emb_0…emb_n`). |
 
 ---
 
@@ -202,8 +265,9 @@ The agents do not have hard-coded logic for every decision. They call shared **s
 |-------|------|---------|
 | **OrchestratorBus** | `skills/orchestrator_bus.py` | All agents — the sole LLM gateway; logs every prompt and response |
 | **VIF checker** | `skills/vif_checker.py` | FeatureSelector — multicollinearity gate |
-| **Silhouette optimizer** | `skills/silhouette_optimizer.py` | Clusterer — auto k-selection |
+| **Silhouette optimizer** | `skills/silhouette_optimizer.py` | Clusterer — auto k-selection (supports `metric='cosine'` for text mode) |
 | **Algorithm recommender** | `skills/algo_recommender.py` | Clusterer — scores 5 algorithms and recommends the best fit |
+| **Text vectorizer** | `skills/text_vectorizer.py` | TextPreparer — recommends an embedding method (TF-IDF + SVD or sentence-transformer) and vectorizes documents, falling back to TF-IDF when `sentence-transformers` is unavailable |
 
 ---
 

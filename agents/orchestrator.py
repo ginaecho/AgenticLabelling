@@ -607,6 +607,57 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 print('\n[Orchestrator] Hard block detected — triggering human checkpoint.')
                 break
 
+            # ── (1b) Cross-modal loopback: re-vectorise text if the failure-
+            # tuning LLM picked a different embedding method last round. This is
+            # the text-mode analog of FeatureEngineer re-engineering — the LLM
+            # decided tfidf_svd was the wrong call and asked for transformer
+            # (or vice-versa).
+            if (getattr(state, 'modality', 'tabular') == 'text'
+                    and state.tuning_params.get('text_vectorizer') is not None):
+                _requested = state.tuning_params['text_vectorizer']
+                _current = (state.text_artifacts or {}).get('method')
+                if _requested != _current and _requested in ('tfidf_svd', 'transformer'):
+                    print(f'\n[Orchestrator] Text re-vectorisation — switching '
+                          f'{_current!r} → {_requested!r} (LLM-driven).')
+                    self._active_agent = 'TextPreparer'
+                    _t0 = time.perf_counter()
+                    _source_df = full_raw_df if full_raw_df is not None else features_df
+                    try:
+                        features_df, tp_result = self.text_preparer_agent.run(
+                            raw_df=_source_df,
+                            user_intent=state.user_intent,
+                            dataset_profile=dataset_profile,
+                            output_path='data/processed/text_embeddings.parquet',
+                            iteration=iteration,
+                            method=_requested,
+                            feedback=(f"Failure-tuning LLM asked to switch embedding "
+                                      f"method to {_requested!r} after the previous "
+                                      f"method produced low silhouette."),
+                        )
+                        self._timings['TextPreparer'].append(time.perf_counter() - _t0)
+                        state.text_artifacts = {
+                            'method': tp_result.method,
+                            'text_column': tp_result.text_column,
+                            'raw_docs': tp_result.raw_docs,
+                            'feature_names': tp_result.artifacts.get('feature_names', []),
+                            'tfidf': tp_result.artifacts.get('tfidf'),
+                            'tfidf_matrix': tp_result.artifacts.get('tfidf_matrix'),
+                            'doc_index': list(features_df.index),
+                        }
+                        state.text_prep = tp_result  # type: ignore[attr-defined]
+                        state.needs_feature_selection = True  # re-select on the new matrix
+                        run_history.append({
+                            'iteration': iteration,
+                            'stage': 'text_re_vectorisation',
+                            'from_method': _current,
+                            'to_method': tp_result.method,
+                            'n_dims': tp_result.n_dims,
+                            'elapsed_s': round(self._timings['TextPreparer'][-1], 1),
+                        })
+                    except RuntimeError as e:
+                        print(f'  [Orchestrator] Re-vectorisation failed ({e}); '
+                              f'keeping previous embeddings.')
+
             # ── (2) Feature Selection ──────────────────────────────────────────
             if state.needs_feature_selection:
                 _t0 = time.perf_counter()
@@ -963,19 +1014,20 @@ Current parameters:
   k_range        : {cur.get('k_range') or 'default [3,4,5,6,7,8,10,12,15]'}
   min_silhouette : {cur.get('min_silhouette', 0.05)}  (hard-block; range 0.02–0.12)
   feature_focus  : "{cur.get('feature_focus', '')}"
+  modality       : {getattr(state, 'modality', 'tabular')}
+  text_vectorizer: {cur.get('text_vectorizer') or 'auto'}   (text mode only)
 
 Best silhouette achieved so far: {best_sil_str}{k_scores_str}
 
 Pipeline history (recent):
 {chr(10).join(history_lines)}
 
-Dataset: ~983 bank customers, ~232 transaction-ratio/spend/frequency features.
-Banking features typically yield silhouette 0.08–0.20 even in good segmentations.
+Dataset shape: {self._describe_dataset_for_tuning(state)}
 
 Available clustering algorithms:
   kmeans, hierarchical, dbscan, gmm, fuzzy_cmeans, or null (auto-select)
 
-Tuning guidelines:
+Tuning guidelines (TABULAR mode):
 - If VIF gate removes >60 features or hits max_iterations: raise vif_threshold (try 12–18)
 - If silhouette consistently <0.10 with hierarchical: switch to kmeans or gmm
 - If silhouette is low across all k values: narrow k_range to [3,4,5,6] or [4,5,6,7]
@@ -984,6 +1036,16 @@ Tuning guidelines:
 - Do NOT lower min_silhouette below 0.02
 - dbscan is good when you suspect outlier-heavy data or irregular cluster shapes
 
+Tuning guidelines (TEXT mode — only applies when modality=text):
+- If silhouette stays low AND current text_vectorizer is "tfidf_svd": switch to
+  "transformer" — semantic embeddings often separate topics that share vocabulary.
+- If switching to "transformer" failed (it's unavailable / no improvement) and
+  the corpus is short/keyword-heavy: stay on "tfidf_svd" and instead narrow
+  k_range to [3,4,5,6] or change algorithm to kmeans/hierarchical.
+- VIF / feature_focus do NOT apply for text — leave them as-is.
+- min_silhouette default for text is 0.01 (cosine silhouettes are smaller than
+  euclidean tabular ones); don't raise it without a clear reason.
+
 Return ONLY a valid JSON object — no markdown fences, no extra text:
 {{
   "vif_threshold": <float 5–25>,
@@ -991,6 +1053,7 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
   "algorithm": "kmeans" | "hierarchical" | "dbscan" | "gmm" | "fuzzy_cmeans" | null,
   "min_silhouette": <float 0.02–0.12>,
   "feature_focus": "<short hint for FeatureSelector, or empty string>",
+  "text_vectorizer": "tfidf_svd" | "transformer" | null,
   "reasoning": "<1-2 sentences explaining the change>"
 }}"""
 
@@ -1030,17 +1093,44 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
             result['min_silhouette'] = float(max(0.02, min(0.12, params['min_silhouette'])))
         if 'feature_focus' in params:
             result['feature_focus'] = str(params.get('feature_focus', ''))
+        if 'text_vectorizer' in params and params['text_vectorizer'] in (
+                'tfidf_svd', 'transformer', None):
+            result['text_vectorizer'] = params['text_vectorizer']
 
         reasoning = params.get('reasoning', '')
         print(
             f'  [Orchestrator] Tuned → vif={result.get("vif_threshold","—")}, '
             f'algo={result.get("algorithm","—")}, '
             f'k_range={result.get("k_range","—")}, '
-            f'min_sil={result.get("min_silhouette","—")}'
+            f'min_sil={result.get("min_silhouette","—")}, '
+            f'text_vec={result.get("text_vectorizer","—")}'
         )
         if reasoning:
             print(f'  [Orchestrator] Reasoning: {reasoning}')
         return result
+
+    def _describe_dataset_for_tuning(self, state) -> str:
+        """One-line dataset summary for the failure-tuning LLM prompt.
+
+        Was previously hardcoded to a banking-dataset description, which
+        confused the LLM on every other domain. Now derived from state.
+        """
+        modality = getattr(state, 'modality', 'tabular')
+        prof = getattr(state, 'dataset_profile', None)
+        n_rows = getattr(prof, 'n_rows', None)
+        n_cols = getattr(prof, 'n_cols', None)
+        if modality == 'text':
+            tp = getattr(state, 'text_prep', None)
+            method = state.text_artifacts.get('method', 'tfidf_svd') if state.text_artifacts else 'tfidf_svd'
+            return (
+                f"TEXT corpus, ~{n_rows or '?'} docs, vectorised as "
+                f"{tp.n_dims if tp else '?'} dims via {method}. "
+                "Cosine silhouettes on text are typically 0.03–0.12 even on clean topical clusters."
+            )
+        return (
+            f"TABULAR data, ~{n_rows or '?'} rows × {n_cols or '?'} columns. "
+            "Tabular silhouettes typically land 0.08–0.30 even in good segmentations."
+        )
 
     # ── Catalog helpers ────────────────────────────────────────────────────────
 
