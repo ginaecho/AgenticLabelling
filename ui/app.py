@@ -718,6 +718,26 @@ def set_mode():
     return jsonify({'mode': mode})
 
 
+@app.post('/api/case-recall-decision')
+def submit_case_recall_decision():
+    """Save the user's Reuse / Modify / Ignore decision for a case-memory recall.
+
+    The paused orchestrator polls outputs/pending_case_recall.json (see
+    Orchestrator._wait_for_case_recall_decision) and applies the decision
+    before starting iteration 1.
+    """
+    payload = request.get_json(force=True) or {}
+    decision = str(payload.get('decision') or '').strip().lower()
+    if decision not in ('reuse', 'modify', 'ignore'):
+        return jsonify({'error': "decision must be 'reuse' | 'modify' | 'ignore'"}), 400
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_case_recall.json').write_text(
+        json.dumps({'decision': decision}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'decision': decision})
+
+
 @app.post('/api/silhouette-target')
 def submit_silhouette_target():
     """Save the user's new silhouette_target so the paused orchestrator picks it up."""
@@ -850,6 +870,12 @@ def get_evidence():
     if upload:
         out['upload_preview'] = upload
 
+    # Dataset preview AFTER FeatureEngineer / FeatureSelector (pre-modelling).
+    # Written by the orchestrator each time those agents run.
+    pre_modelling = _load_json(OUT / 'pre_modelling_preview.json', None)
+    if pre_modelling:
+        out['pre_modelling_preview'] = pre_modelling
+
     # Per-iteration PCA projections (data points + cluster labels)
     pca = _load_json(OUT / 'pca_iterations.json', None)
     if pca:
@@ -890,15 +916,40 @@ def cluster_chat():
     below_lines = [f"  {f}: {round(r, 2)}x avg (mean={round(feat_means.get(f, 0), 4)})"
                    for f, r in list(top_below.items())[:10]]
 
+    # Build the cross-cluster roster FIRST (before the focus block) so the LLM
+    # cannot miss it. Prior versions buried it under FOCUS and the model would
+    # claim "I only have data for cluster X" even though every cluster was in
+    # the prompt. Putting it up top + restating in the rules section fixes that.
+    other_lines = _clusters_overview_lines(personas)
+    cluster_ids = _sorted_cluster_ids(personas)
+    n_clusters = len(personas)
+    ids_csv = ", ".join(cluster_ids)
+
     sys_lines = [
-        f"You are a data analyst helping a user understand cluster {cid} from a",
-        f"customer-segmentation pipeline. Cluster {cid} is the user's CURRENT FOCUS,",
-        f"but you can also reason ACROSS clusters — compare and contrast {cid} with",
-        f"any other cluster the user mentions (a full roster is provided below).",
-        f"Answer concretely, cite specific feature names + values when asked WHY a",
-        f"label was chosen or WHY two clusters differ. If a trait was inferred from",
-        f"indirect signals, say so — don't invent evidence.",
+        f"You are a data analyst for a customer-segmentation pipeline. The run",
+        f"produced {n_clusters} clusters: {ids_csv}. You have the full profile",
+        f"(name, size, top features above/below average) for EVERY cluster — see",
+        f"the roster below. The user's current focus is cluster {cid}, but you",
+        f"can and must reason across clusters when asked.",
         f"",
+        f"RULES",
+        f"  1. NEVER say 'I don't have data for cluster N' or 'cluster N's profile",
+        f"     hasn't been shared' for any cluster id in the roster below. All",
+        f"     {n_clusters} cluster profiles are in this prompt.",
+        f"  2. When asked WHY a label was chosen, cite specific feature names +",
+        f"     values from the cluster's STRONGER/WEAKER lists.",
+        f"  3. When asked to compare/contrast two clusters, look up BOTH in the",
+        f"     roster and quote the specific features and ratios that diverge.",
+        f"  4. If a trait was inferred indirectly (proxy feature), say so — don't",
+        f"     fabricate evidence.",
+        f"",
+        f"─" * 48,
+        f"ALL {n_clusters} CLUSTERS IN THIS RUN — full reference data",
+        f"(use these numbers verbatim; do not guess any value)",
+        f"",
+        *other_lines,
+        f"",
+        f"─" * 48,
         f"FOCUS — Cluster {cid} — \"{persona.get('name', '?')}\"",
         f"  Tagline: {persona.get('tagline', '')}",
         f"  Description: {persona.get('description', '')}",
@@ -906,30 +957,12 @@ def cluster_chat():
         f"  Confidence: {persona.get('confidence', '?')}/10",
         f"  Size: {stats.get('n_entities', '?')} entities ({stats.get('pct_total', 0):.1f}% of total)",
         f"",
-        f"FEATURES THIS CLUSTER IS STRONGER IN (vs overall):",
+        f"Cluster {cid} features STRONGER than overall average (extended):",
         *above_lines,
         f"",
-        f"FEATURES THIS CLUSTER IS WEAKER IN:",
+        f"Cluster {cid} features WEAKER than overall average (extended):",
         *below_lines,
     ]
-
-    # Roster of EVERY cluster so the user can ask cross-cluster questions such as
-    # "why are clusters 0 and 3 both high-spend, but 0 skews X while 3 skews Y?".
-    # Without this the model only sees the focus cluster and cannot contrast.
-    other_lines = _clusters_overview_lines(personas)
-    if len(personas) > 1:
-        sys_lines += [
-            "",
-            "─" * 48,
-            "ALL CLUSTERS IN THIS RUN (use these numbers for cross-cluster",
-            "comparison & contrast — do not guess another cluster's values):",
-            "",
-            *other_lines,
-            "",
-            "When asked to contrast two clusters, point to the SPECIFIC features +",
-            "ratios that diverge, and explain what differs even when they share a",
-            "high-level trait (e.g. both 'high X' but one leans A and the other B).",
-        ]
 
     if mode == 'conclude':
         sys_lines += [

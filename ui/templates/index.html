@@ -308,6 +308,26 @@
   </div>
 </div>
 
+<!-- Case-memory recall modal: pipeline matched a prior successful run -->
+<div id="recall-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="recall-title">🧠 Memory match — reuse the prior winning recipe?</h2>
+    <p class="muted">
+      The Decision Maker found a prior successful run whose dataset + goal
+      look like this one. You can <b>Reuse</b> the prior recipe verbatim
+      (seeds iteration 1 with the winning params), <b>Modify</b> (keep the
+      defaults but let the LLM see the prior recipe as a hint if iterations
+      fail), or <b>Ignore</b> (start fresh with no memory).
+    </p>
+    <div class="warn-context" id="recall-context"></div>
+    <div class="modal-actions">
+      <button id="recall-ignore" class="ghost">Ignore</button>
+      <button id="recall-modify" class="ghost">Modify (hint only)</button>
+      <button id="recall-reuse" class="primary">Reuse prior recipe</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mid-pipeline decision modal (interactive mode): pipeline is paused -->
 <div id="decision-modal" class="modal hidden">
   <div class="modal-card">

@@ -622,11 +622,81 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     'case_memory_recall',
                     match_type=recall.match_type,
                     notes=recall.notes,
+                    prior_dataset=recall.case.get('dataset', {}).get('name'),
+                    prior_purpose=recall.case.get('intent', {}).get('business_purpose'),
                     prior_silhouette=recall.case.get('outcome', {}).get('silhouette'),
                     prior_cv_f1_macro=recall.case.get('outcome', {}).get('cv_f1_macro'),
                     prior_algorithm=strat.get('algorithm'),
                     prior_k=strat.get('k'),
+                    prior_vif_threshold=strat.get('vif_threshold'),
+                    prior_min_silhouette=strat.get('min_silhouette'),
+                    prior_n_features_kept=strat.get('n_features_kept'),
                 )
+
+                # Ask the user how to use the recall (interactive only).
+                # Three options:
+                #   reuse  — seed iteration 1's tuning_params with the prior
+                #            recipe AND drop the LLM hint block so it doesn't
+                #            second-guess the user's chosen recipe.
+                #   modify — keep defaults but inject the recall as a HINT in
+                #            the failure-tuning prompt (the historical behaviour).
+                #   ignore — clear the recall entirely; pretend we never matched.
+                #
+                # Bypass mode auto-picks 'modify' so headless runs behave as
+                # they did before this gate existed.
+                from skills.orchestrator_bus import read_pipeline_mode
+                _mode = read_pipeline_mode()
+                if _mode == 'interactive':
+                    _decision = self._wait_for_case_recall_decision(recall, state)
+                else:
+                    _decision = 'modify'
+                    print(f'  [Orchestrator] BYPASS — auto-applying case recall as a hint (decision=modify).')
+
+                self.bus.emit('case_memory_decision', decision=_decision,
+                              match_type=recall.match_type)
+
+                if _decision == 'reuse':
+                    # Seed iteration 1's tuning params with the prior recipe.
+                    # Each value is only applied when present in the case so we
+                    # don't clobber defaults with None.
+                    seeded: dict = {}
+                    if strat.get('algorithm'):
+                        state.tuning_params['algorithm'] = strat.get('algorithm')
+                        seeded['algorithm'] = strat.get('algorithm')
+                    if strat.get('k') is not None:
+                        try:
+                            _k = int(strat.get('k'))
+                            state.tuning_params['k_range'] = [_k]
+                            seeded['k_range'] = [_k]
+                        except (TypeError, ValueError):
+                            pass
+                    if strat.get('vif_threshold') is not None:
+                        try:
+                            state.tuning_params['vif_threshold'] = float(strat.get('vif_threshold'))
+                            seeded['vif_threshold'] = float(strat.get('vif_threshold'))
+                        except (TypeError, ValueError):
+                            pass
+                    if strat.get('min_silhouette') is not None:
+                        try:
+                            state.tuning_params['min_silhouette'] = float(strat.get('min_silhouette'))
+                            seeded['min_silhouette'] = float(strat.get('min_silhouette'))
+                        except (TypeError, ValueError):
+                            pass
+                    if strat.get('feature_focus'):
+                        state.tuning_params['feature_focus'] = strat.get('feature_focus')
+                        seeded['feature_focus'] = strat.get('feature_focus')
+                    # Drop the recall so the failure-tuning LLM doesn't get a
+                    # contradictory hint block AND so case_recall isn't
+                    # re-applied later.
+                    state.case_recall = None
+                    print(f'  [Orchestrator] 🧠 REUSE — seeded iteration 1 with prior recipe: {seeded}')
+                elif _decision == 'ignore':
+                    state.case_recall = None
+                    print('  [Orchestrator] 🧠 IGNORE — discarding recall; fresh run.')
+                else:
+                    # modify — keep recall on state so the failure-tuning prompt
+                    # gets the hint block. No tuning_params seeded.
+                    print('  [Orchestrator] 🧠 MODIFY — recall stays as a hint for failure-tuning only.')
             else:
                 print('\n[Orchestrator] 🧠 Case-memory: no matching prior case found.')
         except Exception as _exc:  # noqa: BLE001
@@ -664,6 +734,10 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 print(
                     f'  [Orchestrator] Feature engineering done: '
                     f'{fe_result.n_features} features × {fe_result.n_entities} entities'
+                )
+                self._save_pre_modelling_preview(
+                    features_df, list(features_df.columns),
+                    stage='feature_engineering', iteration=0,
                 )
             except RuntimeError as e:
                 print(f'\n[Orchestrator] FeatureEngineer BLOCKED: {e}')
@@ -765,6 +839,10 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     state.needs_feature_engineering = False
                     state.consecutive_silhouette_failures = 0
                     state.needs_feature_selection = True   # force fresh selection
+                    self._save_pre_modelling_preview(
+                        features_df, list(features_df.columns),
+                        stage='feature_engineering', iteration=iteration,
+                    )
                 except RuntimeError as e:
                     print(f'[Orchestrator] FeatureEngineer escalation failed: {e}')
                     state.needs_feature_engineering = False  # don't loop forever
@@ -795,6 +873,10 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 )
                 self._timings['FeatureSelector'].append(time.perf_counter() - _t0)
                 state.update_features(fs)
+                self._save_pre_modelling_preview(
+                    features_df, list(state.selected_features or []),
+                    stage='feature_selection', iteration=iteration,
+                )
                 run_history.append({
                     'iteration': iteration,
                     'stage': 'feature_selection',
@@ -1241,6 +1323,99 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             'llm_usage': self._llm_usage_dict(),
         }
 
+    # ── Pre-modelling preview (Evidence tab: dataset after transformations) ───
+
+    def _save_pre_modelling_preview(self, features_df, selected_cols,
+                                     stage: str, iteration: int) -> None:
+        """Snapshot the dataset state after FeatureEngineer / FeatureSelector.
+
+        Writes outputs/pre_modelling_preview.json with head rows, basic column
+        stats, and a stage label. The UI's "Pre-modelling dataset" card reads
+        this file so the user can see what the dataset looks like AFTER each
+        transformation step, without having to load the full parquet.
+        """
+        import numpy as np
+        if features_df is None or len(features_df) == 0:
+            return
+        if selected_cols:
+            cols = [c for c in selected_cols if c in features_df.columns]
+        else:
+            cols = list(features_df.columns)
+        if not cols:
+            return
+        df = features_df[cols]
+        n_rows, n_cols = df.shape
+
+        head = df.head(8)
+        rows = [[('' if v is None or (isinstance(v, float) and np.isnan(v))
+                  else (round(float(v), 4) if isinstance(v, (int, float, np.floating, np.integer))
+                        else str(v)))
+                 for v in row] for row in head.itertuples(index=False, name=None)]
+
+        col_stats = []
+        for c in cols[:200]:
+            s = df[c]
+            try:
+                is_numeric = bool(np.issubdtype(s.dtype, np.number))
+            except TypeError:
+                is_numeric = False
+            entry = {
+                'name': str(c),
+                'numeric': is_numeric,
+                'missing_pct': round(float(s.isna().mean() * 100.0), 2),
+            }
+            if is_numeric:
+                try:
+                    sk = float(s.dropna().skew())
+                    if not np.isnan(sk):
+                        entry['skew'] = round(sk, 3)
+                except Exception:
+                    pass
+            col_stats.append(entry)
+
+        from datetime import datetime, timezone
+        snapshot = {
+            'stage': stage,
+            'iteration': iteration,
+            'ts': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+            'n_rows': int(n_rows),
+            'n_cols': int(n_cols),
+            'columns': [str(c) for c in cols],
+            'rows': rows,
+            'col_stats': col_stats,
+        }
+
+        # Append to a list of snapshots so the user can browse every
+        # FeatureEngineer / FeatureSelector run in the Data & Evidence tab.
+        # Replace any existing entry with the same (stage, iteration) key so
+        # re-runs of the same step don't accumulate duplicates. Cap to the
+        # most recent MAX_SNAPSHOTS entries to keep the file small.
+        MAX_SNAPSHOTS = 20
+        out_path = pathlib.Path('outputs/pre_modelling_preview.json')
+        try:
+            existing = json.loads(out_path.read_text(encoding='utf-8')) if out_path.exists() else []
+        except (OSError, json.JSONDecodeError):
+            existing = []
+        # Back-compat: file previously held a single dict, not a list.
+        if isinstance(existing, dict):
+            existing = [existing]
+        elif not isinstance(existing, list):
+            existing = []
+        existing = [s for s in existing
+                    if not (s.get('stage') == stage and s.get('iteration') == iteration)]
+        existing.append(snapshot)
+        if len(existing) > MAX_SNAPSHOTS:
+            existing = existing[-MAX_SNAPSHOTS:]
+        payload = existing
+        try:
+            out_path.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding='utf-8'
+            )
+            print(f'  [Orchestrator] Pre-modelling preview saved '
+                  f'(stage={stage}, iter {iteration}, {n_rows}×{n_cols})')
+        except OSError as e:
+            print(f'  [Orchestrator] Pre-modelling preview save failed: {e}')
+
     # ── Per-iteration PCA projection (Evidence tab visual) ────────────────────
 
     def _save_pca_projection(self, features_df, selected_features, cluster_labels,
@@ -1359,6 +1534,66 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             ))
         except Exception:  # noqa: BLE001
             pass
+
+    def _wait_for_case_recall_decision(self, recall, state) -> str:
+        """Block until the user decides what to do with a case-memory recall.
+
+        Reads outputs/pending_case_recall.json (written by POST
+        /api/case-recall-decision). Valid decisions: 'reuse' | 'modify' |
+        'ignore'. Defaults to 'modify' if the user doesn't respond in time —
+        same behaviour the system had before this gate existed, so a missed
+        click never blocks a run forever.
+        """
+        import pathlib, time as _time
+        pending = pathlib.Path('outputs/pending_case_recall.json')
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        strat = recall.case.get('winning_strategy', {}) or {}
+        outcome = recall.case.get('outcome', {}) or {}
+        ds = recall.case.get('dataset', {}) or {}
+        intent = recall.case.get('intent', {}) or {}
+
+        self.bus.emit(
+            'awaiting_case_recall_decision',
+            match_type=recall.match_type,
+            notes=recall.notes,
+            prior_dataset=ds.get('name'),
+            prior_purpose=intent.get('business_purpose'),
+            prior_algorithm=strat.get('algorithm'),
+            prior_k=strat.get('k'),
+            prior_vif_threshold=strat.get('vif_threshold'),
+            prior_min_silhouette=strat.get('min_silhouette'),
+            prior_n_features_kept=strat.get('n_features_kept'),
+            prior_silhouette=outcome.get('silhouette'),
+            prior_cv_f1_macro=outcome.get('cv_f1_macro'),
+            timeout_s=300,
+        )
+        print(f'\n  [INTERACTIVE MODE] Case memory matched a prior run '
+              f'({recall.match_type}). Pipeline paused — waiting for you to '
+              f'pick Reuse / Modify / Ignore in the UI banner.')
+
+        valid = {'reuse', 'modify', 'ignore'}
+        deadline = _time.time() + 300
+        try:
+            while _time.time() < deadline:
+                if pending.exists():
+                    try:
+                        payload = json.loads(pending.read_text(encoding='utf-8'))
+                        d = str(payload.get('decision') or '').strip().lower()
+                        if d in valid:
+                            try: pending.unlink(missing_ok=True)
+                            except OSError: pass
+                            return d
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                        pass
+                _time.sleep(0.6)
+        except KeyboardInterrupt:
+            pass
+        print('  [INTERACTIVE MODE] Case-recall decision timed out — defaulting to MODIFY.')
+        return 'modify'
 
     def _wait_for_target_change(self, current_target: float, suggested: float, state) -> float:
         """Block until the user submits a new silhouette_target via /api/silhouette-target."""

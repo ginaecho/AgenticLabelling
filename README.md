@@ -42,6 +42,18 @@ The UI streams every agent step, LLM call, gate decision, and escalation over Se
 
 ![Data & Evidence tab — per-iteration PCA projection with adaptive-escalation warnings](docs/screenshots/02_data_evidence.gif)
 
+**Case Memory — recall a prior winning recipe** — every successful run is fingerprinted (column set, row count, business purpose) and saved to `outputs/case_memory.json` along with the winning recipe (algorithm, k, vif_threshold, feature focus, min_silhouette) and the outcome (silhouette, CV-F1). On the next run the Decision Maker looks for a match — `exact` (same column-set + row count within ±10%) or `similar` (looser column overlap or strong purpose match) — and, in interactive mode, pauses the pipeline to ask how to use it:
+
+  1. DatasetExaminer finishes profiling.
+  2. Modal pops up: **"🧠 Memory match — reuse the prior winning recipe?"** with the matched case's recipe + outcome (algorithm, k, vif_threshold, min_silhouette, features kept, prior silhouette + F1).
+  3. You click one of three buttons — pipeline resumes immediately on click:
+     - **Reuse** — seeds iteration 1's tuning params with the prior recipe verbatim (algorithm, `k_range=[k]`, vif_threshold, min_silhouette, feature_focus). The LLM hint block is dropped so it doesn't second-guess your chosen recipe.
+     - **Modify (hint only)** — defaults stay; the prior recipe is injected as a hint into the failure-tuning LLM prompt if any iteration misses the silhouette target. This is the legacy behaviour from before the gate existed.
+     - **Ignore** — recall is wiped; the run starts fresh as if there were no prior cases.
+  4. The Live tab log records the decision (e.g. `case recall decision: reuse (exact)`); the chosen action is also emitted as a `case_memory_decision` event for auditability.
+
+Bypass / headless mode skips the modal and auto-picks **Modify** so existing scripts keep working unchanged. If you don't click within 5 minutes the orchestrator defaults to **Modify** and logs the timeout — a missed click never blocks a run.
+
 ---
 
 ## Configuration (`config.yaml`)
@@ -68,5 +80,6 @@ Written to `outputs/` after each run:
 - `cluster_profiles.json` · `cluster_lineage.json` · `silhouette_curve.json` — cluster stats, deepening tree, k-curve
 - `pipeline_events.jsonl` · `agents_conversation.txt` — every event + every LLM prompt/response
 - `user_feedback_log.jsonl` — rules from the UI that adapt the next run
+- `case_memory.json` — per-case archive of winning recipes (dataset fingerprint + algorithm/k/vif/min_silhouette/features + outcome). The next run's Decision Maker reads this and offers Reuse / Modify / Ignore — see the Case Memory section above.
 
 If 10 iterations finish without any result passing all gates, the pipeline falls into **best-effort mode**: it takes the highest-silhouette clustering, force-names it, runs the classifier, and saves with `status='best_effort'` so a usable result is always delivered.

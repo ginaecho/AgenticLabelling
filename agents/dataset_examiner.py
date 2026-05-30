@@ -357,6 +357,7 @@ Return ONLY a valid JSON object (no markdown, no extra text):
             issues=warnings,
             metrics={
                 "n_rows": n_rows,
+                "n_cols": n_cols,
                 "n_numeric_cols": len(numeric_cols),
                 "n_suggested_groups": len(suggested_groups),
                 "mean_skewness": round(mean_skew, 2),

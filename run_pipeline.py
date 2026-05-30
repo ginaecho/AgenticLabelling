@@ -97,6 +97,102 @@ sys.stderr = _Tee(_orig_stderr, _log_file)
 atexit.register(_close_log)
 print(f"[run_pipeline] Logging full output to {_log_path}")
 
+
+# ── Single-instance lock ──────────────────────────────────────────────────────
+# Two concurrent run_pipeline.py processes write into the same
+# outputs/pipeline_events.jsonl + personas.json + lockless state files, which
+# manifests in the UI as interleaved iterations (e.g. iter 1..10 from run A
+# crossed with iter 1..5 from run B → "more than 10 iterations"). The lock
+# refuses to start a second process while another live one owns the outputs/
+# directory. Pass --force-unlock to override (e.g. after an OS-level crash).
+_LOCK_PATH = _out_dir / 'pipeline.lock'
+
+
+def _pid_alive(pid: int) -> bool:
+    """True if a process with this PID is still running.
+
+    Uses os.kill(pid, 0) — sends no signal, just probes existence + access.
+    A stale lockfile from a killed process returns False and is overwritten.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # PID exists but isn't ours (different user). Treat as alive — safer
+        # than racing it.
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _read_lock_pid() -> int:
+    try:
+        return int(_LOCK_PATH.read_text(encoding='utf-8').strip().splitlines()[0])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def _acquire_pipeline_lock() -> None:
+    force_unlock = '--force-unlock' in sys.argv
+    if force_unlock:
+        sys.argv.remove('--force-unlock')
+
+    if _LOCK_PATH.exists():
+        prev_pid = _read_lock_pid()
+        if prev_pid and _pid_alive(prev_pid) and not force_unlock:
+            print(
+                f"[run_pipeline] ERROR: another pipeline is already running "
+                f"(pid={prev_pid}, lock={_LOCK_PATH}).",
+                file=sys.stderr,
+            )
+            print(
+                f"[run_pipeline] Refusing to start — concurrent runs corrupt the "
+                f"shared outputs/ files (events, personas, lockless state).",
+                file=sys.stderr,
+            )
+            print(
+                f"[run_pipeline] To take over: kill the old process "
+                f"(kill {prev_pid}) and re-run, or pass --force-unlock if you've "
+                f"confirmed it's dead.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Stale (dead pid) or --force-unlock — overwrite below.
+        if prev_pid and not _pid_alive(prev_pid):
+            print(
+                f"[run_pipeline] Stale lock from dead pid {prev_pid} — taking over."
+            )
+        elif force_unlock:
+            print(
+                f"[run_pipeline] --force-unlock: overriding lock held by pid "
+                f"{prev_pid or '?'}."
+            )
+
+    try:
+        _LOCK_PATH.write_text(f"{os.getpid()}\n", encoding='utf-8')
+    except OSError as exc:
+        print(f"[run_pipeline] WARNING: could not write lock file: {exc}",
+              file=sys.stderr)
+        return
+
+    def _release_lock() -> None:
+        # Only remove the lock if WE still own it. A force-unlocked successor
+        # would have overwritten it with their pid — don't delete theirs.
+        if _read_lock_pid() == os.getpid():
+            try:
+                _LOCK_PATH.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    atexit.register(_release_lock)
+
+
+_acquire_pipeline_lock()
+
 with open(_root / 'config.yaml') as f:
     config = yaml.safe_load(f)
 

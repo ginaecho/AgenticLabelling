@@ -136,6 +136,7 @@ class OrchestratorBus:
                     self._event_log_path.parent / "pending_intent.json",
                     self._event_log_path.parent / "pending_decision.json",
                     self._event_log_path.parent / "pending_target_change.json",
+                    self._event_log_path.parent / "pending_case_recall.json",
                     # Per-run cluster + evidence outputs
                     self._event_log_path.parent / "personas.json",
                     self._event_log_path.parent / "cluster_profiles.json",
@@ -147,6 +148,7 @@ class OrchestratorBus:
                     self._event_log_path.parent / "agents_conversation.txt",
                     self._event_log_path.parent / "pipeline_log.json",
                     self._event_log_path.parent / "pca_iterations.json",
+                    self._event_log_path.parent / "pre_modelling_preview.json",
                 ):
                     try:
                         stale.unlink(missing_ok=True)
@@ -177,6 +179,7 @@ class OrchestratorBus:
                     self._event_log_path.parent / "pending_intent.json",
                     self._event_log_path.parent / "pending_decision.json",
                     self._event_log_path.parent / "pending_target_change.json",
+                    self._event_log_path.parent / "pending_case_recall.json",
                     self._event_log_path.parent / "personas.json",
                     self._event_log_path.parent / "cluster_profiles.json",
                     self._event_log_path.parent / "cluster_lineage.json",
@@ -187,6 +190,7 @@ class OrchestratorBus:
                     self._event_log_path.parent / "agents_conversation.txt",
                     self._event_log_path.parent / "pipeline_log.json",
                     self._event_log_path.parent / "pca_iterations.json",
+                    self._event_log_path.parent / "pre_modelling_preview.json",
                 ):
                     try:
                         stale.unlink(missing_ok=True)

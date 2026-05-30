@@ -1181,13 +1181,18 @@ async function renderEvidence() {
   // Uploaded dataset preview (raw input, before any agent runs)
   if (agg.upload_preview) cards.push(buildUploadPreviewCard(agg.upload_preview));
 
+  // Dataset state AFTER FeatureEngineer / FeatureSelector ran.
+  // Always shown alongside the original upload so the user can compare.
+  if (agg.pre_modelling_preview) cards.push(buildPreModellingPreviewCard(agg.pre_modelling_preview));
+
   // Dataset profile — populates immediately from upload preview, then gets
   // enriched (suggested feature groups, skewness, missing) when DatasetExaminer runs.
   const dse = outputsState.DatasetExaminer?.latest;
   cards.push(buildDatasetCard(dse, agg.upload_preview));
 
   if (dse) cards.push(buildSkewCard(dse));
-  if (dse?.context?.group_details) cards.push(buildFeatureGroupsCard(dse));
+  if (outputsState.DatasetExaminer?.history?.length)
+    cards.push(buildFeatureGroupsHistoryCard(outputsState.DatasetExaminer.history));
 
   // The literal evidence behind the skewness warning: per-column skew bars
   if (agg.upload_preview && agg.upload_preview.preview && agg.upload_preview.preview.col_stats) {
@@ -1276,20 +1281,52 @@ function wireExplainButtons() {
       try {
         const r = await api('POST', '/api/explain', {agent, issue, evidence});
         out.hidden = false;
-        out.innerHTML = `
-          <div class="explain-card">
+        // Backend may return either {decision, reasoning, visual_to_check}
+        // (the structured contract) OR {explanation, visual_to_check} (the
+        // fallback when LLM output isn't valid JSON). Render whichever
+        // fields are present so the user always sees something.
+        const decision = r.decision || '';
+        const reasoning = r.reasoning || '';
+        const fallback = r.explanation || '';
+        const visual = r.visual_to_check || '';
+        const error = r.error || '';
+        const cached = r._cached ? ' <span class="muted">· cached</span>' : '';
+        if (error) {
+          out.innerHTML = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(error)}</div>`;
+        } else {
+          const sections = [];
+          if (decision) sections.push(`
             <div class="explain-section">
-              <div class="muted">Plain-English explanation</div>
-              <div>${escapeHtml(r.explanation || '(no explanation)')}</div>
-            </div>
+              <div class="muted">Agent's decision${cached}</div>
+              <div>${escapeHtml(decision)}</div>
+            </div>`);
+          if (reasoning) sections.push(`
+            <div class="explain-section">
+              <div class="muted">Why</div>
+              <div>${escapeHtml(reasoning)}</div>
+            </div>`);
+          if (!decision && !reasoning && fallback) sections.push(`
+            <div class="explain-section">
+              <div class="muted">Plain-English explanation${cached}</div>
+              <div>${escapeHtml(fallback)}</div>
+            </div>`);
+          if (visual) sections.push(`
             <div class="explain-section">
               <div class="muted">Which visual confirms it</div>
-              <div>${escapeHtml(r.visual_to_check || '(no recommendation)')}</div>
-            </div>
-            <div class="muted" style="font-size:10.5px;margin-top:6px">
-              ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
-            </div>
-          </div>`;
+              <div>${escapeHtml(visual)}</div>
+            </div>`);
+          if (!sections.length) sections.push(`
+            <div class="muted" style="color:var(--bad)">
+              LLM returned an empty response — try again or check the server log.
+            </div>`);
+          out.innerHTML = `
+            <div class="explain-card">
+              ${sections.join('')}
+              <div class="muted" style="font-size:10.5px;margin-top:6px">
+                ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
+              </div>
+            </div>`;
+        }
       } catch (e) {
         out.hidden = false;
         out.innerHTML = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(e.message)}</div>`;
@@ -1318,6 +1355,7 @@ async function loadOutputsFiles() {
     const HIDE = new Set([
       'pipeline_events.jsonl', 'pending_intent.json',
       'pending_decision.json', 'pending_target_change.json',
+      'pending_case_recall.json',
       'pipeline_mode.json',
     ]);
     visible = visible.filter(f => !HIDE.has(f.name));
@@ -1717,14 +1755,111 @@ function buildUploadPreviewCard(up) {
     '<tr>' + r.map(c => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>'
   ).join('') + '</tbody>';
   return `
-    <div class="ev-card span2">
-      <h3>Uploaded dataset
+    <div class="ev-card span2" id="ev-original-upload-card">
+      <h3>Original uploaded dataset
         <span class="iter">${escapeHtml(up.name || '')} · ${nRows} × ${cols.length} · showing first ${rows.length} rows</span>
       </h3>
-      <p class="lead">Raw data the pipeline ingested. Saved to <code>${escapeHtml(up.path || '')}</code>.</p>
+      <p class="lead">Raw data exactly as you uploaded it — pinned here so you can always compare against any later transformation. Saved to <code>${escapeHtml(up.path || '')}</code>.</p>
       <div class="dz-preview-table-wrap">
         <table class="dz-preview-table">${head}${body}</table>
       </div>
+    </div>`;
+}
+
+function _preModellingStageLabel(p) {
+  return p.stage === 'feature_selection'
+    ? `After FeatureSelector (iter ${p.iteration})`
+    : `After FeatureEngineer (iter ${p.iteration})`;
+}
+
+function _preModellingLead(p) {
+  return p.stage === 'feature_selection'
+    ? 'Dataset after feature selection trimmed the engineered table — this is what the Clusterer actually sees.'
+    : 'Dataset after FeatureEngineer turned the raw rows into entity-level features.';
+}
+
+function _preModellingTable(p) {
+  const cols = p.columns || [];
+  const rows = p.rows || [];
+  const head = '<thead><tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
+  const body = '<tbody>' + rows.map(r =>
+    '<tr>' + r.map(c => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>'
+  ).join('') + '</tbody>';
+  return `
+    <div class="dz-preview-table-wrap">
+      <table class="dz-preview-table">${head}${body}</table>
+    </div>`;
+}
+
+function _diffPreModellingCols(prev, latest) {
+  const prevCols = new Set(prev.columns || []);
+  const latestCols = new Set(latest.columns || []);
+  const added = [...latestCols].filter(c => !prevCols.has(c));
+  const dropped = [...prevCols].filter(c => !latestCols.has(c));
+  return {added, dropped};
+}
+
+function buildPreModellingPreviewCard(snapshots) {
+  // Back-compat: older runs wrote a single dict, not a list.
+  const list = Array.isArray(snapshots) ? snapshots
+             : (snapshots ? [snapshots] : []);
+  if (!list.length) return '';
+  // Show most-recent at the top.
+  const sorted = list.slice().sort((a, b) => {
+    // Order by ts when present, else by iteration.
+    const ta = a.ts || `${a.iteration}:${a.stage}`;
+    const tb = b.ts || `${b.iteration}:${b.stage}`;
+    return tb.localeCompare(ta);
+  });
+  const latest = sorted[0];
+  const prior = sorted.slice(1);
+
+  const fmt = (v) => v != null ? Number(v).toLocaleString() : '?';
+  const latestRows = (latest.rows || []);
+  const latestHeader = `${escapeHtml(_preModellingStageLabel(latest))} · ${fmt(latest.n_rows)} × ${fmt(latest.n_cols)} · showing first ${latestRows.length} rows`;
+
+  const stageCount = sorted.length;
+  const feCount = sorted.filter(s => s.stage === 'feature_engineering').length;
+  const fsCount = sorted.filter(s => s.stage === 'feature_selection').length;
+  const stageSummary = `${stageCount} snapshot${stageCount > 1 ? 's' : ''} · ${feCount} FeatureEngineer · ${fsCount} FeatureSelector`;
+
+  const priorHtml = prior.map(snap => {
+    const diff = _diffPreModellingCols(snap, latest);
+    const diffBits = [];
+    if (diff.added.length)   diffBits.push(`+${diff.added.length} new cols vs latest`);
+    if (diff.dropped.length) diffBits.push(`−${diff.dropped.length} dropped vs latest`);
+    if (!diffBits.length)    diffBits.push('column set unchanged vs latest');
+    const subTitle = `${fmt(snap.n_rows)} × ${fmt(snap.n_cols)} · ${diffBits.join(' · ')}`;
+    return `
+      <details class="iter-row" style="margin-top:6px">
+        <summary class="iter-row-head" style="cursor:pointer">
+          <span class="iter-badge">${escapeHtml(_preModellingStageLabel(snap))}</span>
+          <span class="iter-summary">${escapeHtml(subTitle)}</span>
+        </summary>
+        <div class="iter-row-body" style="padding-top:8px">
+          <div class="muted" style="margin-bottom:6px">${escapeHtml(_preModellingLead(snap))}</div>
+          ${(diff.added.length || diff.dropped.length) ? `
+            <div class="muted" style="font-size:11.5px;margin-bottom:8px">
+              ${diff.added.length   ? `<b>Added (${diff.added.length}):</b> ${escapeHtml(diff.added.slice(0,12).join(', '))}${diff.added.length > 12 ? ` …(+${diff.added.length - 12} more)` : ''}<br>` : ''}
+              ${diff.dropped.length ? `<b>Dropped (${diff.dropped.length}):</b> ${escapeHtml(diff.dropped.slice(0,12).join(', '))}${diff.dropped.length > 12 ? ` …(+${diff.dropped.length - 12} more)` : ''}` : ''}
+            </div>` : ''}
+          ${_preModellingTable(snap)}
+        </div>
+      </details>`;
+  }).join('');
+
+  return `
+    <div class="ev-card span2" id="ev-pre-modelling-card">
+      <h3>Pre-modelling dataset
+        <span class="iter">${latestHeader}</span>
+      </h3>
+      <p class="lead">${_preModellingLead(latest)} <span class="muted">· ${escapeHtml(stageSummary)}${prior.length ? ' — expand any earlier snapshot below to compare' : ''}.</span></p>
+      ${_preModellingTable(latest)}
+      ${prior.length ? `
+        <div class="muted" style="margin-top:14px;font-size:11.5px;text-transform:uppercase;letter-spacing:0.5px">
+          Earlier snapshots (newest first)
+        </div>
+        ${priorHtml}` : ''}
     </div>`;
 }
 
@@ -1734,7 +1869,7 @@ function buildDatasetCard(dse, upload) {
   const colStats = up.col_stats || [];
   // Prefer the agent's profile once it runs; otherwise use the upload directly
   const rows = (m.n_rows ?? up.n_rows);
-  const totalCols = up.n_cols;
+  const totalCols = m.n_cols ?? up.n_cols ?? (colStats.length || null);
   const numericFromUpload = colStats.filter(c => c.numeric).length || null;
   const numericCols = m.n_numeric_cols ?? numericFromUpload;
   const highMissingFromUpload = colStats.filter(c => (c.missing_pct || 0) > 30).length;
@@ -1899,31 +2034,78 @@ function renderPCAScatter(pca) {
     </div>`;
 }
 
-function buildFeatureGroupsCard(dse) {
-  const groups = dse.context?.suggested_feature_groups || [];
-  const details = dse.context?.group_details || {};
-  if (!groups.length && !Object.keys(details).length) return '';
+function _renderFeatureGroupsList(dse) {
+  const groups = dse?.context?.suggested_feature_groups || [];
+  const details = dse?.context?.group_details || {};
   const entries = groups.length ? groups : Object.keys(details);
+  if (!entries.length) return '<div class="muted">No groups recorded for this iteration.</div>';
+  return `
+    <div class="feat-groups">
+      ${entries.map(g => {
+        const d = details[g] || {};
+        const desc = d.description || '';
+        const cols = (d.source_columns || []).join(', ');
+        const why = d.rationale || '';
+        return `
+          <div class="feat-group">
+            <div class="fg-name">${escapeHtml(g)}</div>
+            ${desc ? `<div class="fg-desc">${escapeHtml(desc)}</div>` : ''}
+            ${cols ? `<div class="fg-cols"><b>Built from:</b> ${escapeHtml(cols)}</div>` : ''}
+            ${why ? `<div class="fg-why"><b>Why:</b> ${escapeHtml(why)}</div>` : ''}
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function _groupSet(dse) {
+  const groups = dse?.context?.suggested_feature_groups || [];
+  const details = dse?.context?.group_details || {};
+  const entries = groups.length ? groups : Object.keys(details);
+  return new Set(entries.map(String));
+}
+
+function buildFeatureGroupsHistoryCard(history) {
+  const sorted = history.slice().sort((a, b) =>
+    (Number(a.iteration) || 0) - (Number(b.iteration) || 0));
+  const latest = sorted[sorted.length - 1];
+  const prior = sorted.slice(0, -1);
+  const latestSet = _groupSet(latest);
+  const latestCount = latestSet.size;
+
+  const priorHtml = prior.slice().reverse().map(iter => {
+    const set = _groupSet(iter);
+    const added = [...latestSet].filter(g => !set.has(g)).length;
+    const removed = [...set].filter(g => !latestSet.has(g)).length;
+    let diff;
+    if (!set.size) diff = `${latestSet.size} groups`;
+    else if (!added && !removed) diff = `${set.size} groups · unchanged vs latest`;
+    else diff = `${set.size} groups · vs latest: +${added} new, −${removed} dropped`;
+    return `
+      <details class="iter-row" style="margin-top:6px">
+        <summary class="iter-row-head" style="cursor:pointer">
+          <span class="iter-badge">iter ${iter.iteration}</span>
+          <span class="iter-summary">${escapeHtml(diff)}</span>
+        </summary>
+        <div class="iter-row-body" style="padding-top:8px">
+          ${_renderFeatureGroupsList(iter)}
+        </div>
+      </details>`;
+  }).join('');
+
   return `
     <div class="ev-card span2">
-      <h3>Suggested feature groups <span class="iter">DatasetExaminer · ${entries.length} groups</span></h3>
+      <h3>Suggested feature groups
+        <span class="iter">DatasetExaminer · iter ${latest.iteration} (latest) · ${latestCount} groups${prior.length ? ` · ${prior.length} earlier iteration${prior.length > 1 ? 's' : ''}` : ''}</span>
+      </h3>
       <p class="lead">These are the families of features DatasetExaminer asked FeatureEngineer to build.
-        Each group is a behavioural lens on the entity (e.g. "spending_behaviour", "category_preferences").</p>
-      <div class="feat-groups">
-        ${entries.map(g => {
-          const d = details[g] || {};
-          const desc = d.description || '';
-          const cols = (d.source_columns || []).join(', ');
-          const why = d.rationale || '';
-          return `
-            <div class="feat-group">
-              <div class="fg-name">${escapeHtml(g)}</div>
-              ${desc ? `<div class="fg-desc">${escapeHtml(desc)}</div>` : ''}
-              ${cols ? `<div class="fg-cols"><b>Built from:</b> ${escapeHtml(cols)}</div>` : ''}
-              ${why ? `<div class="fg-why"><b>Why:</b> ${escapeHtml(why)}</div>` : ''}
-            </div>`;
-        }).join('')}
-      </div>
+        Each group is a behavioural lens on the entity (e.g. "spending_behaviour", "category_preferences").
+        ${prior.length ? 'Previous iterations are kept below — expand any row to compare.' : ''}</p>
+      ${_renderFeatureGroupsList(latest)}
+      ${prior.length ? `
+        <div class="muted" style="margin-top:14px;font-size:11.5px;text-transform:uppercase;letter-spacing:0.5px">
+          Earlier iterations (newest first)
+        </div>
+        ${priorHtml}` : ''}
     </div>`;
 }
 
@@ -2482,6 +2664,59 @@ function wireDecisionModal() {
   });
 }
 
+// ── Case-memory recall modal (DatasetExaminer matched a prior run) ─────────
+function openRecallModal(e) {
+  const matchType = (e.match_type || 'similar').toLowerCase();
+  const isExact = matchType === 'exact';
+  $('#recall-title').textContent = isExact
+    ? '🧠 Exact match — reuse the prior winning recipe?'
+    : '🧠 Similar prior run found — reuse, modify, or ignore?';
+  const intro = isExact
+    ? 'Same dataset fingerprint as a prior run. The recipe below converged before — strong candidate for reuse.'
+    : 'Different dataset/goal but same family. The prior recipe is inspiration only — do not assume it transfers cleanly.';
+  const fmt = (v) => (v == null || v === '') ? '<span class="muted">—</span>'
+    : (typeof v === 'number' ? Number(v).toLocaleString() : String(v));
+  const fmtFloat = (v, d = 3) => (v == null || v === '') ? '<span class="muted">—</span>'
+    : Number(v).toFixed(d);
+  $('#recall-context').innerHTML = `
+    <div class="warn-from">${escapeHtml(intro)}</div>
+    <div class="warn-from" style="margin-top:6px"><b>Match:</b> ${escapeHtml(e.notes || '')}</div>
+    <div style="margin-top:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;font-size:12.5px;">
+      <div><b>Prior dataset:</b> ${fmt(e.prior_dataset)}</div>
+      <div><b>Prior purpose:</b> ${fmt((e.prior_purpose || '').slice(0, 80))}</div>
+      <div><b>Algorithm:</b> ${fmt(e.prior_algorithm)}</div>
+      <div><b>k:</b> ${fmt(e.prior_k)}</div>
+      <div><b>vif_threshold:</b> ${fmt(e.prior_vif_threshold)}</div>
+      <div><b>min_silhouette:</b> ${fmtFloat(e.prior_min_silhouette, 2)}</div>
+      <div><b>features kept:</b> ${fmt(e.prior_n_features_kept)}</div>
+      <div><b>Prior outcome:</b> sil=${fmtFloat(e.prior_silhouette)} · F1=${fmtFloat(e.prior_cv_f1_macro)}</div>
+    </div>
+    <div class="muted" style="margin-top:10px;font-size:11.5px">
+      Pipeline is paused — pick one within 5 minutes or it defaults to <b>Modify</b>.
+    </div>`;
+  $('#recall-modal').classList.remove('hidden');
+}
+
+function closeRecallModal() { $('#recall-modal').classList.add('hidden'); }
+
+async function submitRecallDecision(decision) {
+  try {
+    await api('POST', '/api/case-recall-decision', {decision});
+    closeRecallModal();
+    const label = {reuse: 'Reusing prior recipe', modify: 'Recall kept as hint', ignore: 'Recall ignored'}[decision] || decision;
+    toast(`${label} — pipeline resuming`, 'success', 3500);
+  } catch (e) { toast(e.message, 'error', 4500); }
+}
+
+function wireRecallModal() {
+  $('#recall-reuse').onclick  = () => submitRecallDecision('reuse');
+  $('#recall-modify').onclick = () => submitRecallDecision('modify');
+  $('#recall-ignore').onclick = () => submitRecallDecision('ignore');
+  $('#recall-modal').addEventListener('click', (ev) => {
+    if (ev.target.id === 'recall-modal') closeRecallModal();
+  });
+}
+
 // ── Warning-respond modal ────────────────────────────────────────────────
 let _pendingWarn = null;
 function openWarnModal(agent, issue) {
@@ -2801,6 +3036,26 @@ function handleEvent(e) {
   if (ev === 'awaiting_silhouette_relaxation') {
     openRelaxModal(e);
     appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — 5 silhouette misses, asking you to lower the target`);
+    return;
+  }
+  if (ev === 'case_memory_recall') {
+    // Passive chip — the awaiting_case_recall_decision event drives the modal.
+    // In bypass mode we only get this event (no awaiting_*), so users still
+    // see the match was found.
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] 🧠 case memory recall (${e.match_type}) — prior algo=${e.prior_algorithm || '?'} k=${e.prior_k ?? '?'}`);
+    return;
+  }
+  if (ev === 'awaiting_case_recall_decision') {
+    openRecallModal(e);
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — case memory matched, asking Reuse/Modify/Ignore`);
+    return;
+  }
+  if (ev === 'case_memory_decision') {
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] case recall decision: ${e.decision} (${e.match_type})`);
+    return;
+  }
+  if (ev === 'case_memory_saved') {
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] 🧠 case saved to memory (case_id=${(e.case_id || '').slice(0,8)}…)`);
     return;
   }
   if (ev === 'silhouette_target_changed') {
@@ -3262,6 +3517,7 @@ async function boot() {
   wireWarnModal();
   wireDecisionModal();
   wireRelaxModal();
+  wireRecallModal();
   wireModeToggle();
   wireTabs();
   loadMode();
