@@ -784,6 +784,32 @@ def submit_decision():
     return jsonify({'ok': True})
 
 
+@app.post('/api/threshold-decision')
+def submit_threshold_decision():
+    """Save a structured choice for a paused threshold-decision point.
+
+    Body: {"decision_id": "<id>", "chosen_key": "<one of the option keys>"}.
+    The paused agent / orchestrator polls outputs/pending_threshold_decision.json
+    (see skills/user_decisions.py:ask_user_decision) and applies the chosen
+    option. Separate from /api/decision, which handles the older free-form
+    interactive-mode warning flow.
+    """
+    payload = request.get_json(force=True) or {}
+    decision_id = (payload.get('decision_id') or '').strip()
+    chosen_key = (payload.get('chosen_key') or '').strip()
+    if not decision_id:
+        return jsonify({'error': 'decision_id is required'}), 400
+    if not chosen_key:
+        return jsonify({'error': 'chosen_key is required'}), 400
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_threshold_decision.json').write_text(
+        json.dumps({'decision_id': decision_id, 'chosen_key': chosen_key},
+                   ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'decision_id': decision_id, 'chosen_key': chosen_key})
+
+
 @app.post('/api/intent')
 def submit_intent():
     """Save the UI-submitted intent so UserInputAgent can pick it up."""

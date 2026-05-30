@@ -384,6 +384,11 @@ else:
     _default_features_path = str(_raw_csv)   # orchestrator will surface the error
 
 # ── Run pipeline ──────────────────────────────────────────────────────────────
+# Surface bypass intent to the orchestrator so threshold-decision points can
+# skip the interactive modal and emit a structured warning instead. This is
+# what `--bypass` actually means at the decision-point layer: never block on
+# the UI; always apply the recommended fallback.
+config['bypass_mode'] = bool(_args.bypass)
 orchestrator = Orchestrator(config)
 
 _bypass_intent = None

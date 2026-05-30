@@ -48,6 +48,9 @@ def recommend_algorithm(
     business_purpose: str = "",
     X_sample: pd.DataFrame | None = None,
     verbose: bool = True,
+    modality: str = "tabular",
+    preferred_algorithms: list[str] | None = None,
+    discouraged_algorithms: list[str] | None = None,
 ) -> AlgoRecommendation:
     """
     Recommend a clustering algorithm based on data characteristics.
@@ -88,13 +91,18 @@ def recommend_algorithm(
     """
     reasons: list[str] = []
 
-    # Scores per algorithm — higher = more favoured
+    # Scores per algorithm — higher = more favoured. Geometric algos apply to
+    # both modalities; topic models (lda/nmf) + llm_cluster only score
+    # positively when modality='text' via Rule 7 below.
     scores: dict[str, float] = {
         'kmeans':       0,
         'hierarchical': 0,
         'dbscan':       0,
         'gmm':          0,
         'fuzzy_cmeans': 0,
+        'lda':          0,
+        'nmf':          0,
+        'llm_cluster':  0,
     }
 
     factors: dict = {
@@ -222,7 +230,10 @@ def recommend_algorithm(
             pass  # scipy optional for this check
 
     # ── Rule 6: Outlier spread check (IQR-based) ──────────────────────────────
-    if X_sample is not None:
+    # SKIP for text — embedding dimensions are dense low-magnitude floats whose
+    # range / IQR ratio always looks "outlier-like", so this rule would falsely
+    # boost DBSCAN for every text run.
+    if X_sample is not None and modality != "text":
         try:
             numeric = X_sample.select_dtypes(include=[np.number])
             iqr_vals = (numeric.quantile(0.75) - numeric.quantile(0.25))
@@ -238,6 +249,47 @@ def recommend_algorithm(
                 )
         except Exception:
             pass
+
+    # ── Rule 7: Modality-aware bias for text / unstructured embeddings ────────
+    # Text embeddings are high-dimensional and (after L2-normalisation) live on
+    # the unit sphere — KMeans on normalised vectors IS spherical k-means
+    # (cosine-friendly); hierarchical with Ward also works. GMM assumes a
+    # Gaussian distribution that text embeddings violate; DBSCAN suffers from
+    # distance saturation in high-dim spaces; fuzzy_cmeans inherits GMM's
+    # weakness. Apply explicit ±weights so the recommender doesn't default to
+    # a poorly-suited algorithm just because the tabular rules above happened
+    # to fire on the embedding matrix's incidental shape.
+    if modality == "text":
+        # Default text basket: kmeans/hierarchical first (cheap, geometric),
+        # then NMF/LDA as topic-model alternatives (slightly less preferred so
+        # the recommender doesn't reach for them on simple jobs but they're
+        # available when the user / Decision Maker wants them). llm_cluster
+        # is held in reserve — never recommended automatically.
+        prefs = list(preferred_algorithms or ['kmeans', 'hierarchical'])
+        avoid = list(discouraged_algorithms or ['gmm', 'dbscan', 'fuzzy_cmeans'])
+        for a in prefs:
+            if a in scores:
+                scores[a] += 3
+        for a in avoid:
+            if a in scores:
+                scores[a] -= 3
+        # Modest positive bias for topic models so they appear in the candidate
+        # set without dominating. NMF > LDA on small corpora (typical for our
+        # use case), LDA > NMF on larger ones.
+        if n_rows < 200:
+            scores['nmf'] += 1
+            scores['lda'] += 0.5
+        else:
+            scores['lda'] += 1
+            scores['nmf'] += 0.5
+        # llm_cluster is never auto-recommended — it's the Decision Maker's
+        # rescue card. Keep its score at 0.
+        reasons.append(
+            f"modality=text — prefer {prefs} (cosine-friendly on L2-normalised "
+            f"embeddings), discourage {avoid} (Gaussian assumption / distance "
+            f"saturation in high-dim). Topic models (nmf/lda) available as alternates."
+        )
+        factors['modality'] = 'text'
 
     # ── Decision ──────────────────────────────────────────────────────────────
     factors['scores'] = {k: round(v, 2) for k, v in scores.items()}

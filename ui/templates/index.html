@@ -172,8 +172,27 @@
           <textarea id="intent-purpose" rows="2" placeholder=""></textarea>
         </label>
         <label class="span2">
-          <span class="lbl-head">Constraints <span class="muted">(optional)</span></span>
-          <input id="intent-constraints" type="text" placeholder=""/>
+          <span class="lbl-head">Constraints <span class="muted">(optional — free text to the agents, with a few parsed directives)</span></span>
+          <input id="intent-constraints" type="text"
+                 placeholder="e.g. text_columns=title,body  |  max cluster size 30%  |  ignore fraud txns"/>
+          <details class="muted" style="font-size:12px;margin-top:4px">
+            <summary style="cursor:pointer">How to use this field</summary>
+            <div style="margin-top:6px;line-height:1.55">
+              The agents read constraints as plain-English context for their LLM calls.
+              Two patterns are also <b>structurally parsed</b> and become hard overrides:
+              <ul style="margin:6px 0 4px 18px;padding:0">
+                <li><code>max cluster size 30%</code> (or <i>"no cluster above 30%"</i>) — caps any
+                    single cluster's share; Clusterer will sub-cluster anything bigger.</li>
+                <li><code>text_columns=title,body</code> (or <i>"embed title + body"</i>) — for
+                    text data, concatenates the listed columns into the embedding. The first column
+                    is weighted 2× so <code>text_columns=title,body</code> gives title-driven clusters
+                    with body as semantic context. Single-column form <code>text_column=title</code> also works.</li>
+              </ul>
+              Anything else (e.g. <i>"ignore weekend transactions"</i>, <i>"prefer simple personas"</i>)
+              is passed verbatim to the Decision Maker and the agents — they'll honour it if it's clear,
+              but it won't override numeric thresholds.
+            </div>
+          </details>
         </label>
         <label class="span2">
           <span class="lbl-head">Must-have cluster types <span class="muted">(comma-separated, optional)</span></span>
@@ -370,6 +389,22 @@
       </select>
       <button id="warn-cancel" class="ghost">Cancel</button>
       <button id="warn-save" class="primary">Save &amp; apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Threshold decision modal: a pipeline threshold was hit and the user
+     gets to pick how to handle it (relax / reselect / abort / ...). Built
+     dynamically per decision_id; options come from the SSE event payload. -->
+<div id="threshold-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="threshold-title">⏸ Threshold reached — your call</h2>
+    <p class="muted" id="threshold-summary">Pipeline paused. Pick an option below.</p>
+    <div class="warn-context" id="threshold-context"></div>
+    <div id="threshold-options" class="row" style="flex-direction:column;gap:8px;margin-top:8px"></div>
+    <div class="modal-actions" style="justify-content:space-between;margin-top:10px">
+      <span class="muted" id="threshold-timeout-label" style="font-size:12px"></span>
+      <button id="threshold-use-recommended" class="primary">Use recommended</button>
     </div>
   </div>
 </div>

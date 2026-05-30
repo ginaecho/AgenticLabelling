@@ -119,22 +119,53 @@ class TextPreparerAgent:
         if feedback:
             print(f"  Feedback: {feedback}")
 
-        # ── 1. Locate the text column ──────────────────────────────────────────
-        hint = getattr(user_intent, "text_column", None) or (
-            getattr(dataset_profile, "text_column", None) if dataset_profile else None
-        )
-        text_col = self.detect_text_column(raw_df, hint=hint)
-        if not text_col:
-            self._report_blocked(
-                iteration,
-                "No free-text column detected — cannot build text embeddings.",
-                "Inspected column types for text content",
-            )
-            raise RuntimeError(
-                "TextPreparer: no text column found. Set text_column in config/intent."
-            )
+        # ── 1. Locate the text column(s) ───────────────────────────────────────
+        # Multi-column path: when the user specifies `text_columns=col_a,col_b`
+        # in the constraints field (parsed in agents/user_input.py), concatenate
+        # the columns row-wise into a single document so the embedding captures
+        # all the listed signal. The FIRST column is repeated 2× so it dominates
+        # — this is how `text_columns=title,body` produces title-driven clusters
+        # that still use body as semantic context.
+        text_columns: list[str] = []
+        for c in (getattr(user_intent, "text_columns", []) or []):
+            if c in raw_df.columns and c not in text_columns:
+                text_columns.append(c)
+            elif c not in raw_df.columns:
+                print(f"  [TextPreparer] Requested text column {c!r} not in dataframe — skipping.")
 
-        docs_series = raw_df[text_col].fillna("").astype(str)
+        if text_columns:
+            text_col = "+".join(text_columns)  # display label for logs / lineage
+            primary = text_columns[0]
+            others = text_columns[1:]
+            # Per-row doc = primary repeated 2× + each other column once. Using
+            # ". " between fields gives the tokeniser a sentence break so terms
+            # from different columns don't fuse into spurious bigrams.
+            def _join_row(row):
+                primary_text = str(row[primary] or '').strip()
+                parts = [primary_text, primary_text] if primary_text else []
+                for c in others:
+                    val = str(row[c] or '').strip()
+                    if val:
+                        parts.append(val)
+                return '. '.join(parts)
+            docs_series = raw_df[text_columns].fillna('').astype(str).apply(_join_row, axis=1)
+            print(f"  Text columns: {text_columns} (primary={primary!r} repeated 2× for weighting)")
+        else:
+            hint = getattr(user_intent, "text_column", None) or (
+                getattr(dataset_profile, "text_column", None) if dataset_profile else None
+            )
+            text_col = self.detect_text_column(raw_df, hint=hint)
+            if not text_col:
+                self._report_blocked(
+                    iteration,
+                    "No free-text column detected — cannot build text embeddings.",
+                    "Inspected column types for text content",
+                )
+                raise RuntimeError(
+                    "TextPreparer: no text column found. Set text_column in config/intent."
+                )
+            docs_series = raw_df[text_col].fillna("").astype(str)
+
         mask = docs_series.str.strip().str.len() >= _MIN_DOC_CHARS
         docs_series = docs_series[mask]
         docs = docs_series.tolist()

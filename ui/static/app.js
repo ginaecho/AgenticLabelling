@@ -1181,6 +1181,11 @@ async function renderEvidence() {
   const completion = state.events.slice().reverse().find(e => e.event === 'pipeline_complete');
   if (completion) cards.push(buildFinalSummaryCard(completion));
 
+  // Threshold decisions that were auto-applied in bypass mode — pinned high
+  // so the user sees what was relaxed before scrolling through the rest.
+  const autoCard = buildAutoAppliedDecisionsCard();
+  if (autoCard) cards.push(autoCard);
+
   // Uploaded dataset preview (raw input, before any agent runs)
   if (agg.upload_preview) cards.push(buildUploadPreviewCard(agg.upload_preview));
 
@@ -1273,19 +1278,45 @@ async function renderEvidence() {
   autoScrollForDemo();
 }
 
+// In-flight state for explain calls, keyed by `agent::issue`. Same rationale
+// as _comparisonState: renderEvidence rebuilds the panel on every agent_report,
+// so closure-captured DOM refs go stale mid-call.
+const _explainState = new Map();  // key -> {resultHTML, inFlight, outId}
+
 function wireExplainButtons() {
   document.querySelectorAll('.explain-btn[data-explain-issue]').forEach((btn) => {
+    const agent = btn.dataset.explainAgent || 'unknown';
+    const issue = btn.dataset.explainIssue || '';
+    const key = `${agent}::${issue}`;
+    const outId = btn.nextElementSibling && btn.nextElementSibling.id;
+
+    // Re-attach to any prior call after a panel rebuild.
+    const prior = _explainState.get(key);
+    if (prior && outId) {
+      const freshOut = document.getElementById(outId);
+      if (prior.resultHTML && freshOut) {
+        freshOut.hidden = false;
+        freshOut.innerHTML = prior.resultHTML;
+        btn.textContent = 'Explain again';
+      }
+      if (prior.inFlight) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner"></span>Asking LLM (evidence ledger)…`;
+      }
+    }
+
     btn.onclick = async () => {
-      const agent = btn.dataset.explainAgent || 'unknown';
-      const issue = btn.dataset.explainIssue || '';
+      if (_explainState.get(key)?.inFlight) return;  // guard double-fires after rebuild
       let evidence = {};
       try { evidence = JSON.parse(btn.dataset.explainEvidence || '{}'); } catch (_) {}
       const out = btn.nextElementSibling;
+      _explainState.set(key, {inFlight: true, resultHTML: null, outId});
       btn.disabled = true;
       btn.innerHTML = `<span class="spinner"></span>Asking LLM (evidence ledger)…`;
+      let html;
+      let isError = false;
       try {
         const r = await api('POST', '/api/explain', {agent, issue, evidence});
-        out.hidden = false;
         // Backend may return either {decision, reasoning, visual_to_check}
         // (the structured contract) OR {explanation, visual_to_check} (the
         // fallback when LLM output isn't valid JSON). Render whichever
@@ -1297,7 +1328,8 @@ function wireExplainButtons() {
         const error = r.error || '';
         const cached = r._cached ? ' <span class="muted">· cached</span>' : '';
         if (error) {
-          out.innerHTML = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(error)}</div>`;
+          html = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(error)}</div>`;
+          isError = true;
         } else {
           const sections = [];
           if (decision) sections.push(`
@@ -1324,7 +1356,7 @@ function wireExplainButtons() {
             <div class="muted" style="color:var(--bad)">
               LLM returned an empty response — try again or check the server log.
             </div>`);
-          out.innerHTML = `
+          html = `
             <div class="explain-card">
               ${sections.join('')}
               <div class="muted" style="font-size:10.5px;margin-top:6px">
@@ -1333,11 +1365,31 @@ function wireExplainButtons() {
             </div>`;
         }
       } catch (e) {
-        out.hidden = false;
-        out.innerHTML = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(e.message)}</div>`;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Explain again';
+        html = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(e.message)}</div>`;
+        isError = true;
+      }
+      // Cache successful results so a panel rebuild can repaint them; clear
+      // the in-flight flag either way.
+      _explainState.set(key, {
+        inFlight: false,
+        resultHTML: isError ? null : html,
+        outId,
+      });
+      // Re-look-up by id: renderEvidence may have rebuilt the panel while we
+      // awaited, leaving our closure-captured `out` / `btn` refs detached.
+      // The out div has a stable id; the button is its previous sibling.
+      const freshOut = outId ? document.getElementById(outId) : out;
+      const freshBtn = (freshOut && freshOut.previousElementSibling
+                       && freshOut.previousElementSibling.classList.contains('explain-btn'))
+        ? freshOut.previousElementSibling
+        : btn;
+      if (freshOut) {
+        freshOut.hidden = false;
+        freshOut.innerHTML = html;
+      }
+      if (freshBtn) {
+        freshBtn.disabled = false;
+        freshBtn.textContent = 'Explain again';
       }
     };
   });
@@ -2273,41 +2325,93 @@ function buildClusterComparisonCard() {
     </div>`;
 }
 
+// In-flight state for the cross-cluster comparison call. Held at module level
+// so a panel rebuild (renderEvidence fires on every agent_report SSE event)
+// can re-attach to the same logical call instead of orphaning its result.
+// Without this, the result would be written to a detached <div id="ev-compare-out">
+// and the user would see the spinner vanish with no answer ("page refreshed").
+const _comparisonState = {inFlight: false, focus: '', resultHTML: null};
+
+function _renderComparisonResult(r) {
+  return `
+    <div class="explain-card">
+      <div class="explain-section">
+        <div class="muted">Contrasting analysis across ${r.n_clusters} clusters${r._cached ? ' · cached' : ''}</div>
+        <div style="white-space:pre-wrap;word-break:break-word;line-height:1.5">${escapeHtml(r.comparison || '(no analysis)')}</div>
+      </div>
+      <div class="muted" style="font-size:10.5px;margin-top:6px">
+        ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
+      </div>
+    </div>`;
+}
+
+function _renderComparisonError(e) {
+  const msg = String(e.message || 'unknown error');
+  const staleUi = /not found/i.test(msg);
+  return staleUi
+    ? `<div class="muted" style="color:var(--bad)">
+        Comparison failed: the UI server is outdated (missing <code>/api/cluster-comparison</code>).
+        Stop the old process on this port and restart <code>python run_pipeline.py</code>,
+        or open the URL printed in the terminal if it moved to a new port (e.g. 5058).
+      </div>`
+    : `<div class="muted" style="color:var(--bad)">Comparison failed: ${escapeHtml(msg)}</div>`;
+}
+
 function wireComparisonButton() {
   const btn = document.getElementById('ev-compare-btn');
   if (!btn) return;
-  btn.onclick = async () => {
-    const focus = (document.getElementById('ev-compare-focus')?.value || '').trim();
-    const out = document.getElementById('ev-compare-out');
+
+  // If a previous call finished while the panel was being rebuilt, the result
+  // HTML was stashed on _comparisonState. Paint it into the fresh DOM.
+  if (_comparisonState.resultHTML) {
+    const freshOut = document.getElementById('ev-compare-out');
+    if (freshOut) {
+      freshOut.hidden = false;
+      freshOut.innerHTML = _comparisonState.resultHTML;
+    }
+    btn.textContent = 'Compare again';
+  }
+
+  // If a call is still in flight when the panel rebuilds, restore the in-progress
+  // UI on the new button + restore the focus input value the user typed.
+  if (_comparisonState.inFlight) {
     btn.disabled = true;
     btn.innerHTML = `<span class="spinner"></span>Comparing (evidence ledger)…`;
+    const focusInput = document.getElementById('ev-compare-focus');
+    if (focusInput && _comparisonState.focus) focusInput.value = _comparisonState.focus;
+  }
+
+  btn.onclick = async () => {
+    if (_comparisonState.inFlight) return;  // guard double-fires after rebuild
+    const focus = (document.getElementById('ev-compare-focus')?.value || '').trim();
+    _comparisonState.inFlight = true;
+    _comparisonState.focus = focus;
+    _comparisonState.resultHTML = null;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span>Comparing (evidence ledger)…`;
+    let html;
+    let isError = false;
     try {
       const r = await api('POST', '/api/cluster-comparison', {focus});
-      out.hidden = false;
-      out.innerHTML = `
-        <div class="explain-card">
-          <div class="explain-section">
-            <div class="muted">Contrasting analysis across ${r.n_clusters} clusters${r._cached ? ' · cached' : ''}</div>
-            <div style="white-space:pre-wrap;word-break:break-word;line-height:1.5">${escapeHtml(r.comparison || '(no analysis)')}</div>
-          </div>
-          <div class="muted" style="font-size:10.5px;margin-top:6px">
-            ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
-          </div>
-        </div>`;
+      html = _renderComparisonResult(r);
     } catch (e) {
-      out.hidden = false;
-      const msg = String(e.message || 'unknown error');
-      const staleUi = /not found/i.test(msg);
-      out.innerHTML = staleUi
-        ? `<div class="muted" style="color:var(--bad)">
-            Comparison failed: the UI server is outdated (missing <code>/api/cluster-comparison</code>).
-            Stop the old process on this port and restart <code>python run_pipeline.py</code>,
-            or open the URL printed in the terminal if it moved to a new port (e.g. 5058).
-          </div>`
-        : `<div class="muted" style="color:var(--bad)">Comparison failed: ${escapeHtml(msg)}</div>`;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Compare again';
+      html = _renderComparisonError(e);
+      isError = true;
+    }
+    _comparisonState.inFlight = false;
+    // Only cache successful results — errors shouldn't survive a panel rebuild.
+    _comparisonState.resultHTML = isError ? null : html;
+    // Re-look-up by id: the original `btn` / `out` closure refs may now point
+    // to detached DOM nodes if renderEvidence rebuilt the panel while we awaited.
+    const freshOut = document.getElementById('ev-compare-out');
+    const freshBtn = document.getElementById('ev-compare-btn');
+    if (freshOut) {
+      freshOut.hidden = false;
+      freshOut.innerHTML = html;
+    }
+    if (freshBtn) {
+      freshBtn.disabled = false;
+      freshBtn.textContent = 'Compare again';
     }
   };
 }
@@ -2717,6 +2821,140 @@ function wireDecisionModal() {
   });
 }
 
+// ── Threshold-decision modal (clusterer / orchestrator gates) ─────────────
+// Triggered by `awaiting_threshold_decision` SSE events from
+// skills/user_decisions.py. The event payload carries an option list +
+// recommended key; we render one button per option and POST the chosen key
+// back to /api/threshold-decision which unblocks the polling agent.
+let _pendingThreshold = null;
+let _thresholdTimeoutTimer = null;
+
+function openThresholdModal(e) {
+  _pendingThreshold = e;
+  $('#threshold-title').textContent = `⏸ ${e.title || 'Threshold reached'}`;
+  $('#threshold-summary').textContent = e.summary || '';
+  const extra = e.extra || {};
+  const fromLine = `<div class="warn-from">From ${escapeHtml(e.agent || '?')} · decision id <code>${escapeHtml(e.decision_id || '')}</code></div>`;
+  // Render every non-empty extra field as a metric row so the user has
+  // concrete evidence beside the prompt (silhouette value, cluster count, ...).
+  const extraRows = Object.entries(extra)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `<div><b>${escapeHtml(k)}:</b> ${escapeHtml(String(v))}</div>`)
+    .join('');
+  $('#threshold-context').innerHTML = fromLine + extraRows;
+  const optsHost = $('#threshold-options');
+  optsHost.innerHTML = '';
+  const options = Array.isArray(e.options) ? e.options : [];
+  const recommended = e.recommended;
+  options.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.className = opt.key === recommended ? 'primary' : 'ghost';
+    btn.style.cssText = 'text-align:left;padding:10px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:2px';
+    btn.innerHTML = `
+      <span><b>${escapeHtml(opt.label || opt.key)}</b>${opt.key === recommended ? ' <span class="muted" style="font-weight:normal">(recommended)</span>' : ''}</span>
+      ${opt.description ? `<span class="muted" style="font-size:12px">${escapeHtml(opt.description)}</span>` : ''}`;
+    btn.onclick = () => submitThresholdDecision(opt.key);
+    optsHost.appendChild(btn);
+  });
+  $('#threshold-use-recommended').onclick = () => submitThresholdDecision(recommended);
+  $('#threshold-modal').classList.remove('hidden');
+  // Countdown until the backend auto-applies the recommended option.
+  if (_thresholdTimeoutTimer) clearInterval(_thresholdTimeoutTimer);
+  const deadline = Date.now() + (Number(e.timeout_s || 300) * 1000);
+  const tickLabel = () => {
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    $('#threshold-timeout-label').textContent =
+      remaining > 0
+        ? `Auto-applies "${recommended}" in ${m}:${String(s).padStart(2, '0')} if no choice.`
+        : 'Auto-applying recommended…';
+  };
+  tickLabel();
+  _thresholdTimeoutTimer = setInterval(tickLabel, 1000);
+}
+
+function closeThresholdModal() {
+  _pendingThreshold = null;
+  if (_thresholdTimeoutTimer) { clearInterval(_thresholdTimeoutTimer); _thresholdTimeoutTimer = null; }
+  $('#threshold-modal').classList.add('hidden');
+}
+
+async function submitThresholdDecision(chosenKey) {
+  const decision = _pendingThreshold;
+  if (!decision || !chosenKey) return;
+  try {
+    await api('POST', '/api/threshold-decision', {
+      decision_id: decision.decision_id,
+      chosen_key: chosenKey,
+    });
+    closeThresholdModal();
+    toast(`Decision sent: ${chosenKey} — pipeline resuming`, 'success', 3000);
+  } catch (e) {
+    toast(`Could not submit decision: ${e.message}`, 'error', 4000);
+  }
+}
+
+function wireThresholdModal() {
+  $('#threshold-modal').addEventListener('click', (ev) => {
+    // Don't close on background click — these are critical decisions.
+    // The user must pick an option (or wait for the timeout).
+    ev.stopPropagation();
+  });
+}
+
+// Bypass-mode auto-applied threshold decisions. Each event is appended to this
+// list and surfaced as a persistent banner in the Evidence tab so the user
+// can review what was relaxed during an unattended run.
+const _autoAppliedDecisions = [];
+function recordAutoAppliedDecision(e) {
+  // De-duplicate by decision_id — the same decision can't be auto-applied twice
+  // in a single run; if we see a repeat it's an SSE replay.
+  if (_autoAppliedDecisions.some(d => d.decision_id === e.decision_id)) return;
+  _autoAppliedDecisions.push({
+    decision_id: e.decision_id,
+    agent: e.agent,
+    title: e.title,
+    summary: e.summary,
+    chosen: e.chosen,
+    options: e.options || [],
+    extra: e.extra || {},
+    ts: e.ts,
+  });
+  // If Evidence is visible, refresh so the banner appears immediately.
+  if (!document.getElementById('evidence-view').classList.contains('hidden')) {
+    renderEvidence();
+  }
+}
+
+function buildAutoAppliedDecisionsCard() {
+  if (!_autoAppliedDecisions.length) return '';
+  const rows = _autoAppliedDecisions.map((d) => {
+    const chosenOpt = (d.options || []).find(o => o.key === d.chosen) || {};
+    const extraBits = Object.entries(d.extra || {})
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${escapeHtml(k)}=${escapeHtml(String(v))}`)
+      .join(' · ');
+    return `
+      <div class="explain-section" style="border-left:3px solid var(--warn);padding-left:10px;margin-bottom:8px">
+        <div><b>${escapeHtml(d.title || d.decision_id)}</b>
+          <span class="muted" style="font-size:11px">· ${escapeHtml(d.agent || '?')}</span></div>
+        <div class="muted" style="font-size:12px;margin:2px 0 4px">${escapeHtml(d.summary || '')}</div>
+        <div>Applied: <b>${escapeHtml(chosenOpt.label || d.chosen)}</b>
+          <span class="muted">— ${escapeHtml(chosenOpt.description || '(recommended fallback)')}</span></div>
+        ${extraBits ? `<div class="muted" style="font-size:11px;margin-top:2px">${extraBits}</div>` : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div class="ev-card span2">
+      <h3>⚠ Auto-applied threshold decisions <span class="iter">${_autoAppliedDecisions.length} in bypass mode</span></h3>
+      <p class="lead">The pipeline ran in <b>bypass mode</b>, so these decision
+        points did not pause to ask. Each one was resolved by applying the
+        recommended fallback. Review and re-run interactively if any choice
+        was wrong for your use case.</p>
+      ${rows}
+    </div>`;
+}
+
 // ── Case-memory recall modal (DatasetExaminer matched a prior run) ─────────
 function openRecallModal(e) {
   const matchType = (e.match_type || 'similar').toLowerCase();
@@ -3114,6 +3352,27 @@ function handleEvent(e) {
   }
   if (ev === 'user_decision_received') {
     appendLogLine(`[${(e.ts || '').slice(11,19)}] RESUMED — ${e.action}: ${e.response || '(none)'}`);
+    return;
+  }
+  if (ev === 'awaiting_threshold_decision') {
+    openThresholdModal(e);
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — threshold decision (${e.decision_id})`);
+    return;
+  }
+  if (ev === 'threshold_decision_resolved') {
+    // Defensive: the modal usually closes itself when the user POSTs,
+    // but timeout / cross-window submissions land here.
+    if (_pendingThreshold && _pendingThreshold.decision_id === e.decision_id) {
+      closeThresholdModal();
+    }
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] RESUMED — ${e.decision_id}: ${e.chosen} (${e.source})`);
+    return;
+  }
+  if (ev === 'threshold_decision_auto_applied') {
+    // Bypass mode: pipeline never paused. Record it so the user sees what
+    // was relaxed under their feet in the Evidence tab.
+    recordAutoAppliedDecision(e);
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] BYPASS — auto-applied ${e.chosen} for ${e.decision_id}`);
     return;
   }
   if (ev === 'awaiting_intent') {
@@ -3549,6 +3808,7 @@ async function boot() {
   wireWarnModal();
   wireDecisionModal();
   wireRelaxModal();
+  wireThresholdModal();
   wireRecallModal();
   wireModeToggle();
   wireTabs();

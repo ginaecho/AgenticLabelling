@@ -764,10 +764,31 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
 
             # Relax control gates for text: topic clusters are fuzzier than
             # tabular RFM clusters, so the same thresholds would loop needlessly.
-            state.tuning_params['min_silhouette'] = 0.01
-            self.classifier_agent.F1_THRESHOLD = 0.60
-            print('  [Orchestrator] Text mode gates relaxed: '
-                  'min_silhouette=0.01, classifier F1 threshold=0.60')
+            # Values come from config.yaml:text_overrides, with hardcoded
+            # fallbacks so existing tests that don't load the YAML still pass.
+            txt_ov = dict(self.config.get('text_overrides') or {})
+            min_sil_text = float(txt_ov.get('min_silhouette') or 0.01)
+            sil_target_text = float(txt_ov.get('silhouette_target') or 0.18)
+            f1_text = float(txt_ov.get('classifier_f1_threshold') or 0.60)
+            max_pct_text = float(txt_ov.get('max_cluster_size_pct') or 0.60)
+            state.tuning_params['min_silhouette'] = min_sil_text
+            # Drive the orchestrator's dynamic silhouette target through the
+            # override mechanism so _current_silhouette_target() picks it up
+            # for *every* iteration (not just for the first relax cycle).
+            state.silhouette_target_override = sil_target_text
+            self.classifier_agent.F1_THRESHOLD = f1_text
+            # Also widen max_cluster_size_pct so Clusterer doesn't over-split
+            # natural topic groups (the tabular 0.40 cap was tuned for behavioral
+            # features; text topics commonly occupy 40-55% of a small corpus).
+            # Only widen, never tighten — respect a user-set explicit value.
+            if float(self.config.get('max_cluster_size_pct', 0.40)) < max_pct_text:
+                self.config['max_cluster_size_pct'] = max_pct_text
+            print(
+                f'  [Orchestrator] Text mode gates from config.text_overrides: '
+                f'min_silhouette={min_sil_text}, silhouette_target={sil_target_text}, '
+                f'classifier F1 threshold={f1_text}, '
+                f'max_cluster_size_pct={self.config["max_cluster_size_pct"]}'
+            )
 
             run_history.append({
                 'iteration': 0,
@@ -1025,6 +1046,17 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 _cluster_override['clustering_algorithm'] = state.tuning_params['algorithm']
             if state.tuning_params.get('k_range') is not None:
                 _cluster_override['k_search_range'] = state.tuning_params['k_range']
+            # Threshold-decision modal only pauses the pipeline when the user
+            # has explicitly toggled the UI mode to 'interactive'. Otherwise
+            # (default + CLI --bypass) the clusterer auto-applies the
+            # recommended option and emits an event the UI surfaces as a
+            # warning banner. This mirrors the existing _relax_silhouette_target
+            # flow so the two pause paths behave consistently.
+            from skills.orchestrator_bus import read_pipeline_mode
+            _bypass_for_decisions = (
+                read_pipeline_mode() != 'interactive'
+                or bool(self.config.get('bypass_mode', False))
+            )
             cr = self.cluster_agent.run(
                 features_df,
                 selected_features=state.selected_features,
@@ -1039,6 +1071,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 text_artifacts=(state.text_artifacts
                                 if getattr(state, 'modality', 'tabular') == 'text'
                                 else None),
+                bypass=_bypass_for_decisions,
             )
             self._timings['Clusterer'].append(time.perf_counter() - _t0)
             state.clustering_history.append(cr)
@@ -1624,6 +1657,33 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             new_target = suggested
             print(f'  [Orchestrator] BYPASS — auto-lowering silhouette_target '
                   f'{current_target:.2f} → {new_target:.2f}')
+            # Also surface through the new threshold-decision banner so the
+            # Evidence tab shows every bypass-applied relaxation in one place.
+            try:
+                self.bus.emit(
+                    'threshold_decision_auto_applied',
+                    mode='bypass',
+                    chosen='relax',
+                    decision_id=f'orch_relax_target_iter{state.total_iterations}',
+                    agent='Orchestrator',
+                    title='Silhouette target auto-relaxed',
+                    summary=(
+                        f"3 consecutive iterations missed silhouette target "
+                        f"{current_target:.2f}. Bypass mode auto-dropped it to "
+                        f"{new_target:.2f}."
+                    ),
+                    options=[
+                        {'key': 'relax', 'label': f'Drop to {new_target:.2f}',
+                         'description': 'Lower the bar; future iterations only need to clear the new target.'},
+                        {'key': 'keep', 'label': f'Keep at {current_target:.2f}',
+                         'description': 'Demand the original quality; may exhaust iterations.'},
+                    ],
+                    recommended='relax',
+                    extra={'previous': current_target, 'new': new_target,
+                           'iterations_failed': 3},
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
         state.silhouette_target_override = float(new_target)
         state.silhouette_fail_for_relax = 0
@@ -1860,15 +1920,23 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 print(f'  [Orchestrator] (case-memory hint render failed: {_exc})')
 
         cur = state.tuning_params
-        prompt = prefs_preamble + case_preamble + f"""You are orchestrating a customer-clustering pipeline. Iteration {iteration} just failed.
+        _modality_now = getattr(state, 'modality', 'tabular')
+        _modality_banner = (
+            "\n>>> MODALITY = TEXT / UNSTRUCTURED — read the TEXT-mode section\n"
+            ">>> below FIRST. The TABULAR thresholds (silhouette 0.5, F1 0.70,\n"
+            ">>> VIF, log-skew) DO NOT apply. Cosine silhouette of 0.10–0.30 is\n"
+            ">>> the realistic band for usable topic clusters.\n"
+            if _modality_now == 'text' else ""
+        )
+        prompt = prefs_preamble + case_preamble + _modality_banner + f"""You are orchestrating a customer-clustering pipeline. Iteration {iteration} just failed.
 
 Current parameters:
-  vif_threshold  : {cur.get('vif_threshold', 10.0)}   (higher = keep more correlated features; range 5–25)
+  vif_threshold  : {cur.get('vif_threshold', 10.0)}   (higher = keep more correlated features; range 5–25) — IGNORE for text
   algorithm      : {cur.get('algorithm') or 'auto'}
   k_range        : {cur.get('k_range') or 'default [3,4,5,6,7,8,10,12,15]'}
   min_silhouette : {cur.get('min_silhouette', 0.05)}  (hard-block; range 0.02–0.12)
-  feature_focus  : "{cur.get('feature_focus', '')}"
-  modality       : {getattr(state, 'modality', 'tabular')}
+  feature_focus  : "{cur.get('feature_focus', '')}"   — IGNORE for text
+  modality       : {_modality_now}
   text_vectorizer: {cur.get('text_vectorizer') or 'auto'}   (text mode only)
 
 Best silhouette achieved so far: {best_sil_str}{k_scores_str}
@@ -1878,8 +1946,20 @@ Pipeline history (recent):
 
 Dataset shape: {self._describe_dataset_for_tuning(state)}
 
-Available clustering algorithms:
+Available clustering algorithms (geometric — both modalities):
   kmeans, hierarchical, dbscan, gmm, fuzzy_cmeans, or null (auto-select)
+
+Text-only algorithms (only valid when modality=text — Clusterer rejects them on tabular):
+  lda          — Latent Dirichlet Allocation. Probabilistic topic model on TF-IDF.
+                 Interpretable topics, soft assignment (we take argmax for hard labels).
+                 Good when natural topics exist; needs ≥ ~30 docs for stability.
+  nmf          — Non-negative Matrix Factorization on TF-IDF. Sharper / more
+                 deterministic topics than LDA on short corpora. Try this first
+                 for short-text rescue.
+  llm_cluster  — LAST-RESORT rescue: sends every doc to Claude and asks for cluster
+                 assignment. Use ONLY when geometric methods AND topic models have
+                 BOTH failed. Capped at 200 docs by the clusterer (prompt cost grows
+                 linearly). Expensive — burns several thousand tokens per run.
 
 Tuning guidelines (TABULAR mode):
 - If VIF gate removes >60 features or hits max_iterations: raise vif_threshold (try 12–18)
@@ -1890,21 +1970,44 @@ Tuning guidelines (TABULAR mode):
 - Do NOT lower min_silhouette below 0.02
 - dbscan is good when you suspect outlier-heavy data or irregular cluster shapes
 
-Tuning guidelines (TEXT mode — only applies when modality=text):
+Tuning guidelines (TEXT / UNSTRUCTURED mode — only applies when modality=text):
+- Embedding spaces are high-dim and cosine-shaped; numeric expectations differ:
+  * silhouette 0.10–0.30 cosine = usable topic clusters (NOT a failure signal)
+  * classifier F1 ~0.55–0.70 is the realistic band, not the 0.70 tabular bar
+  * VIF / log-skew / feature_focus do NOT apply — leave them as-is
+  * max_cluster_size_pct is loosened (0.60) because text topics naturally vary in size
+- ALGORITHM PREFERENCE for text — try in this order:
+  1. GEOMETRIC FIRST: kmeans (= spherical k-means on L2-normalised embeddings,
+     cosine-friendly) or hierarchical (Ward linkage). These are cheap and
+     usually adequate.
+  2. TOPIC MODELS if geometric silhouette stays below ~0.10 after ≥2 retries
+     AND the corpus has clear lexical themes: try `nmf` (sharper topics on
+     short text, deterministic) first, then `lda` (probabilistic, interpretable).
+     Topic models can find structure that geometric clustering on SVD misses.
+  3. LLM-AS-CLUSTERER as LAST RESORT: pick `llm_cluster` ONLY after both
+     geometric AND topic-model algos have failed, and only when the corpus is
+     small (clusterer caps it at 200 docs). It is expensive; do not pick it
+     before iteration 4+.
+  * AVOID: gmm (Gaussian assumption fails for text embeddings), dbscan
+    (distance saturation in high-dim), fuzzy_cmeans (inherits GMM weakness).
+  * If the current algorithm is one of {{gmm, dbscan, fuzzy_cmeans}} and
+    silhouette is low, your first move should be to switch to kmeans or
+    hierarchical, NOT to tune k_range.
 - If silhouette stays low AND current text_vectorizer is "tfidf_svd": switch to
   "transformer" — semantic embeddings often separate topics that share vocabulary.
 - If switching to "transformer" failed (it's unavailable / no improvement) and
   the corpus is short/keyword-heavy: stay on "tfidf_svd" and instead narrow
-  k_range to [3,4,5,6] or change algorithm to kmeans/hierarchical.
-- VIF / feature_focus do NOT apply for text — leave them as-is.
-- min_silhouette default for text is 0.01 (cosine silhouettes are smaller than
-  euclidean tabular ones); don't raise it without a clear reason.
+  k_range to [3,4,5,6].
+- min_silhouette default for text is 0.01; don't raise it without a clear reason.
+- If the user wrote `text_columns=col_a,col_b` in their constraints, RESPECT
+  that — don't propose changing the text column. The first listed column is
+  weighted 2× in the embedding, which is intentional.
 
 Return ONLY a valid JSON object — no markdown fences, no extra text:
 {{
   "vif_threshold": <float 5–25>,
   "k_range": [<int>, ...],
-  "algorithm": "kmeans" | "hierarchical" | "dbscan" | "gmm" | "fuzzy_cmeans" | null,
+  "algorithm": "kmeans" | "hierarchical" | "dbscan" | "gmm" | "fuzzy_cmeans" | "lda" | "nmf" | "llm_cluster" | null,
   "min_silhouette": <float 0.02–0.12>,
   "feature_focus": "<short hint for FeatureSelector, or empty string>",
   "text_vectorizer": "tfidf_svd" | "transformer" | null,
@@ -1941,7 +2044,10 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
             result['vif_threshold'] = float(max(5.0, min(25.0, params['vif_threshold'])))
         if 'k_range' in params and isinstance(params['k_range'], list) and len(params['k_range']) >= 2:
             result['k_range'] = [int(k) for k in params['k_range'] if isinstance(k, (int, float))]
-        if params.get('algorithm') in ('kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans', None):
+        if params.get('algorithm') in (
+            'kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans',
+            'lda', 'nmf', 'llm_cluster', None,
+        ):
             result['algorithm'] = params['algorithm']
         if 'min_silhouette' in params:
             result['min_silhouette'] = float(max(0.02, min(0.12, params['min_silhouette'])))

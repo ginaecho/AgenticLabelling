@@ -113,3 +113,56 @@ ae_max_iter: 200
 # Options: auto, random_forest, xgboost, gradient_boosting, logistic_regression
 # auto — LLM selects based on dataset characteristics (recommended)
 classifier_model: auto
+
+# ── Text / unstructured-data overrides ───────────────────────────────────────
+# The defaults above are calibrated for tabular customer-segmentation runs and
+# do NOT transfer cleanly to text clustering. Embedding spaces (TF-IDF/SVD or
+# sentence transformers) are high-dimensional, cosine-shaped, and produce
+# silhouettes that look "low" by Euclidean tabular standards but actually
+# encode meaningful topic structure. Likewise, a classifier trained to predict
+# cluster membership from short documents will never hit F1=0.70 — that bar
+# was set for behavioural feature vectors.
+#
+# When `state.modality == 'text'`, the orchestrator and agents read these
+# overrides instead of the tabular defaults. Set any value to `~` (null) to
+# fall back to the tabular default.
+text_overrides:
+  # Silhouette: cosine silhouette of 0.10–0.30 is typical for usable topic
+  # clusters; 0.50 (the tabular default) is essentially unachievable for text.
+  silhouette_target: 0.18       # accept clusters that clear ~0.18 cosine sil
+  min_silhouette: 0.01          # near-random floor — already used at orchestrator.py:767
+
+  # Classifier F1: distinguishing topic clusters from text is harder than
+  # distinguishing customer segments from engineered numeric features. 0.60
+  # is the realistic bar (already used at orchestrator.py:768); the per-class
+  # F1 floor is also softer because tiny topic clusters lower the macro avg.
+  classifier_f1_threshold: 0.60
+  per_class_f1_min: 0.30
+
+  # Cluster size: text corpora produce many small natural topics — the 40%
+  # tabular cap is too aggressive (would force a single dominant topic to
+  # sub-cluster even when it's a coherent group). Loosen to 60%.
+  max_cluster_size_pct: 0.60
+
+  # min_cluster_size for text: 2 — already baked into clusterer.py:705 because
+  # text has no per-class CV gate forcing a minimum sample size per cluster.
+  min_cluster_size: 2
+
+  # Feature-selection gates that don't apply to embeddings. The text path in
+  # FeatureSelector already short-circuits PCA/AE/VIF, but the flags below
+  # let downstream agents (and the Decision Maker) reason about why.
+  skip_vif: true
+  skip_correlation: true
+  skip_skewness_check: true
+
+  # Algorithm guidance for the Decision Maker. KMeans on L2-normalised
+  # embeddings is effectively spherical k-means (cosine-friendly); hierarchical
+  # with cosine linkage also works. GMM / DBSCAN / fuzzy_cmeans tend to
+  # underperform in high-dim text spaces (Gaussian assumption, distance
+  # saturation). algo_recommender.recommend_algorithm reads these to bias
+  # its scores when modality='text'.
+  preferred_algorithms: [kmeans, hierarchical, nmf, lda]
+  discouraged_algorithms: [gmm, dbscan, fuzzy_cmeans]
+  # `llm_cluster` is intentionally NOT in preferred_algorithms — it's a
+  # rescue path the Decision Maker invokes after other algos exhaust, not a
+  # default. Gated at 200 docs in agents/clusterer.py to control cost.
