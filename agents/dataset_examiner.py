@@ -426,7 +426,9 @@ Return ONLY a valid JSON object (no markdown, no extra text):
         sample = df.head(min(len(df), 2000))
         for col in sample.columns:
             s = sample[col]
-            if s.dtype != object and str(s.dtype) not in ("string", "category"):
+            # Accept any string-ish dtype across pandas versions: classic
+            # `object` (pre-2.x), `string` (2.x), or `str` (3.x StringDtype).
+            if s.dtype != object and str(s.dtype) not in ("string", "str", "category"):
                 continue
             vals = s.dropna().astype(str)
             if vals.empty:

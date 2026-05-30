@@ -523,7 +523,20 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 print(f'\n[Orchestrator] TextPreparer BLOCKED: {e}')
                 return {'status': 'blocked', 'personas': None, 'run_history': run_history}
             self._timings['TextPreparer'].append(time.perf_counter() - _t0)
-            # Stash text artifacts (tfidf vocab, raw docs) for text-aware labelling.
+            # Stash text artifacts so Clusterer/PersonaNamer/FeatureSelector can
+            # access raw docs + TF-IDF vocab for c-TF-IDF distinctive terms +
+            # representative documents per cluster. `modality` mirrors the
+            # detected profile so each downstream agent can take the text branch.
+            state.modality = 'text'
+            state.text_artifacts = {
+                'method': tp_result.method,
+                'text_column': tp_result.text_column,
+                'raw_docs': tp_result.raw_docs,
+                'feature_names': tp_result.artifacts.get('feature_names', []),
+                'tfidf': tp_result.artifacts.get('tfidf'),
+                'tfidf_matrix': tp_result.artifacts.get('tfidf_matrix'),
+                'doc_index': list(features_df.index),
+            }
             state.text_prep = tp_result  # type: ignore[attr-defined]
             need_feature_engineering = False
 
@@ -612,6 +625,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     iteration=iteration,
                     vif_threshold=state.tuning_params.get('vif_threshold'),
                     feature_focus=state.tuning_params.get('feature_focus', ''),
+                    modality=getattr(state, 'modality', 'tabular'),
                 )
                 self._timings['FeatureSelector'].append(time.perf_counter() - _t0)
                 state.update_features(fs)
@@ -644,6 +658,9 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 iteration=iteration,
                 config_override=_cluster_override or None,
                 min_silhouette=state.tuning_params.get('min_silhouette'),
+                text_artifacts=(state.text_artifacts
+                                if getattr(state, 'modality', 'tabular') == 'text'
+                                else None),
             )
             self._timings['Clusterer'].append(time.perf_counter() - _t0)
             state.clustering_history.append(cr)

@@ -81,7 +81,7 @@ class TextPreparerAgent:
         sample = df.head(n)
         for col in df.columns:
             s = sample[col]
-            if s.dtype != object and str(s.dtype) not in ("string", "category"):
+            if s.dtype != object and str(s.dtype) not in ("string", "str", "category"):
                 continue
             vals = s.dropna().astype(str)
             if vals.empty:

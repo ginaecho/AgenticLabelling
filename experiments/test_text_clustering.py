@@ -115,6 +115,66 @@ def main() -> None:
     _check(len(set(labels)) == 3, "formed 3 clusters")
     _check(sil > 0, f"silhouette={sil:.3f} > 0 (themes separate)")
 
+    # ── 7. FeatureSelector text short-circuit keeps every dim ──────────────────
+    print("\n[7] FeatureSelector text short-circuit")
+    from agents.feature_selector import FeatureSelectionAgent
+    fs_agent = FeatureSelectionAgent(bus=bus)
+    fs = fs_agent.run(
+        emb_df, user_intent=intent, feedback="", iteration=1, modality="text"
+    )
+    _check(fs.n_features == emb_df.shape[1],
+           f"kept all {fs.n_features} embedding dims (no PCA/AE/VIF)")
+    _check(fs.removed_by_vif == [], "no VIF removals in text mode")
+    _check(fs.pca_scores == {}, "PCA scores empty (skipped)")
+
+    # ── 8. Clusterer runs cosine + emits text profiles ─────────────────────────
+    print("\n[8] Clusterer text mode (cosine + c-TF-IDF profiles)")
+    from agents.clusterer import ClusteringAgent
+    cluster_agent = ClusteringAgent(
+        config={"max_cluster_size_pct": 0.95, "sub_n_clusters": 3, "max_depth": 0,
+                "clustering_algorithm": "kmeans", "n_clusters": 3},
+        bus=bus,
+    )
+    text_artifacts = {
+        "method": result.method,
+        "text_column": result.text_column,
+        "raw_docs": result.raw_docs,
+        "feature_names": result.artifacts.get("feature_names", []),
+        "tfidf": result.artifacts.get("tfidf"),
+        "tfidf_matrix": result.artifacts.get("tfidf_matrix"),
+        "doc_index": list(emb_df.index),
+    }
+    cr = cluster_agent.run(
+        features_df=emb_df,
+        selected_features=fs.selected_features,
+        user_intent=intent,
+        history=[],
+        iteration=1,
+        text_artifacts=text_artifacts,
+    )
+    _check(cr.action == "proceed", f"clusterer action=proceed (got {cr.action!r})")
+    _check(cr.profiles is not None and len(cr.profiles) >= 2,
+           f"produced {len(cr.profiles or {})} profiles")
+    _check(cr.silhouette is not None and cr.silhouette > -1.0,
+           f"cosine silhouette={cr.silhouette}")
+
+    sample_cid = next(iter(cr.profiles))
+    sample = cr.profiles[sample_cid]
+    _check(sample.get("modality") == "text", "profile is flagged modality=text")
+    _check(bool(sample.get("top_terms")), f"top_terms present ({sample.get('top_terms', [])[:5]})")
+    _check(bool(sample.get("representative_docs")),
+           f"representative_docs present ({len(sample.get('representative_docs', []))} docs)")
+    _check(bool(sample.get("top_above_average")),
+           "top_above_average mirrors c-TF-IDF terms for UI compatibility")
+
+    # ── 9. PersonaNamer block uses text branch ─────────────────────────────────
+    print("\n[9] PersonaNamer _format_cluster_block (text branch)")
+    from agents.persona_namer import _format_cluster_block
+    block = _format_cluster_block(sample_cid, sample)
+    _check("DISTINCTIVE TERMS" in block, "block has DISTINCTIVE TERMS section")
+    _check("REPRESENTATIVE DOCUMENTS" in block, "block has REPRESENTATIVE DOCUMENTS section")
+    _check("ABOVE AVERAGE" not in block, "block does NOT use tabular ABOVE-AVERAGE wording")
+
     print("\n[test_text_clustering] ALL CHECKS PASSED ✓\n")
 
 
