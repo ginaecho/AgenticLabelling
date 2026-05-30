@@ -83,29 +83,36 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
     if cluster_result.k_scores:
         top3 = sorted(cluster_result.k_scores.items(), key=lambda x: -x[1])[:3]
         print(f'Top-3 k values     : ' + ', '.join(f'k={k}({s:.3f})' for k, s in top3))
-    print(f'CV accuracy        : {classifier_result.cv_accuracy:.4f}')
-    print(f'CV F1 (macro)      : {classifier_result.cv_f1_macro:.4f}')
-    print(f'CV F1 (weighted)   : {classifier_result.cv_f1_weighted:.4f}')
+    # Classifier can be None when it crashed (e.g. sklearn version mismatch on
+    # logistic_regression). Surface that clearly instead of attribute-erroring.
+    if classifier_result is not None:
+        print(f'CV accuracy        : {classifier_result.cv_accuracy:.4f}')
+        print(f'CV F1 (macro)      : {classifier_result.cv_f1_macro:.4f}')
+        print(f'CV F1 (weighted)   : {classifier_result.cv_f1_weighted:.4f}')
+    else:
+        print('CV metrics         : (classifier failed this iteration — no F1 available)')
     print()
 
     # Persona table
     print(f'{"Cluster":<10} {"Conf":>4}  {"CV-F1":>6}  {"Persona Name":<45}  Tagline')
     print('-' * 115)
+    _per_class = (classifier_result.per_class_f1 if classifier_result is not None else {}) or {}
     for cid, p in personas.items():
         name    = p.get('name', '?')
         conf    = p.get('confidence', '?')
         tagline = p.get('tagline', '')
-        cv_f1   = classifier_result.per_class_f1.get(name, None)
+        cv_f1   = _per_class.get(name, None)
         cv_f1_str = f'{cv_f1:.3f}' if cv_f1 is not None else '  n/a'
         print(f'  C{cid:<7}  {conf:>4}  {cv_f1_str:>6}  {name:<45}  {tagline}')
 
     # Highlight worst-performing personas
-    worst = sorted(classifier_result.per_class_f1.items(), key=lambda x: x[1])[:3]
-    print()
-    print('Hardest-to-predict personas (CV F1):')
-    for name, score in worst:
-        bar = '█' * int(score * 20)
-        print(f'  {name:<45}  {score:.3f}  {bar}')
+    if _per_class:
+        worst = sorted(_per_class.items(), key=lambda x: x[1])[:3]
+        print()
+        print('Hardest-to-predict personas (CV F1):')
+        for name, score in worst:
+            bar = '█' * int(score * 20)
+            print(f'  {name:<45}  {score:.3f}  {bar}')
 
     # Pipeline log summary
     print()

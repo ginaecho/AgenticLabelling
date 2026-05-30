@@ -84,13 +84,17 @@ def _build_model(model_name: str):
     elif model_name == 'gradient_boosting':
         return GradientBoostingClassifier(n_estimators=100, random_state=42)
     elif model_name == 'logistic_regression':
-        return LogisticRegression(
-            max_iter=1000,
-            random_state=42,
-            multi_class='auto',
-            solver='lbfgs',
-            C=1.0,
-        )
+        # sklearn >=1.5 removed `multi_class` (lbfgs handles multinomial
+        # automatically when n_classes > 2). Older versions tolerated it.
+        # Build kwargs dynamically so this works on both old and new sklearn.
+        _kwargs = dict(max_iter=1000, random_state=42, solver='lbfgs', C=1.0)
+        try:
+            import inspect as _inspect
+            if 'multi_class' in _inspect.signature(LogisticRegression).parameters:
+                _kwargs['multi_class'] = 'auto'
+        except Exception:  # noqa: BLE001
+            pass
+        return LogisticRegression(**_kwargs)
     else:
         # Default: random_forest
         return RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
