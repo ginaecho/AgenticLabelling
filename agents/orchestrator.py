@@ -1420,7 +1420,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 state.consecutive_silhouette_failures += 1
                 state.silhouette_fail_for_relax += 1
                 # Pull candidate info from the clustering report if available
-                _cand = cr.metrics.get("candidate_search", {}) if cr and cr.metrics else {}
+                _cand = cr.candidate_evidence if cr else {}
                 _cand_best = _cand.get("best") if isinstance(_cand, dict) else None
                 _cand_all = _cand.get("candidates", []) if isinstance(_cand, dict) else []
                 _algos = sorted(set(c["algorithm"] for c in _cand_all))
