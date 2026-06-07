@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 # Configure your environment variables
 export LLM_API_KEY="sk-ant-..."        # or add to .env
-
+```
 ---
 
 ## Interactive UI + Adaptive Learning
