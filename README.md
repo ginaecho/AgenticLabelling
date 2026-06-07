@@ -76,7 +76,7 @@ kaggle datasets download -d kartik2112/fraud-detection -p data/raw --unzip
 ```
 ---
 
-## 🖥️ Interactive UI + Adaptive Learning (Human-in-the-Loop AI)
+## 📊 Interactive UI + Adaptive Learning (Human-in-the-Loop AI)
 
 The real-time web interface streams every autonomous agent execution state, LLM payload call, quality-gate assessment, and loop escalation directly over **Server-Sent Events (SSE)**. This architectural integration transitions the platform from a passive monitoring view into an active **Human-in-the-Loop (HITL)** optimization framework through two main views:
 
