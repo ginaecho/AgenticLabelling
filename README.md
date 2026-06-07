@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-Seven specialised agents + an LLM Decision Maker run a feedback-driven clustering pipeline that ends with **named, validated personas** and a full reasoning trace. Every quality gate (silhouette, Clarity, classifier F1, VIF) can push the pipeline backward; the Decision Maker tunes parameters and routes each retry. A live web UI lets you watch, edit, chat with the agents per cluster, and feed corrections back into the next run (adaptive learning). One run typically completes in under an hour and costs under one dollar of API.
+Seven specialised agents + an LLM Decision Maker run a feedback-driven clustering pipeline that ends with **named, validated clusters** and a full reasoning trace. Every quality gate (silhouette, Clarity, classifier F1, VIF) can push the pipeline backward; the Decision Maker tunes parameters and routes each retry. A live web UI lets you watch, edit, chat with the agents per cluster, and feed corrections back into the next run (adaptive learning). One run typically completes in under an hour and costs under one dollar of API.
 
 ---
 
