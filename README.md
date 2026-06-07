@@ -250,5 +250,5 @@ usable.
 * **Core Machine Learning:** `scikit-learn`, `xgboost`, `numpy`, `pandas`
 * **Agentic Orchestration:** Structured Multi-Agent Framework, LLM Decision Making Router
 * **UI & Visualization:** Server-Sent Events (SSE), TailwindCSS, 2D PCA Projection Engines
-* **Target Domains:** Unsupervised Machine Learning, Automated Auto-Labeling, Cluster Exploratory Data Analysis (EDA), Human-in-the-Loop AI, Hyperparameter Optimization
+* **Target Domains:** Unsupervised Machine Learning, Automated Auto-Labeling, Agentic Workflow, Cluster Exploratory Data Analysis (EDA), Human-in-the-Loop AI, Hyperparameter Optimization
 
