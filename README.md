@@ -20,7 +20,7 @@ Seven specialized agents + an LLM Decision Maker run a feedback-driven clusterin
 
 <img src="docs/screenshots/00_architecture.png" alt="Seven agents arranged left-to-right (UserInput → DatasetExaminer → FeatureEngineer → FeatureSelector → Clusterer → PersonaNamer → Classifier) with dotted feedback arrows from each quality-gate back down to a central Orchestrator + LLM Decision Maker box" width="1100"/>
 
-Solid arrows = forward path; dotted arrows = feedback loops. The Orchestrator + LLM Decision Maker reads every status report, diagnoses failures, tunes the next iteration's parameters, and routes the pipeline back to whichever step needs to re-run. The best iteration across all 10 attempts is picked by a composite score balancing accuracy, separation, and non-redundancy: 
+Solid arrows = forward path; dotted arrows = feedback loops. The Orchestrator + LLM Decision Maker reads every status report, diagnoses failures, tunes the next iteration's parameters, and routes the pipeline back to whichever step needs to re-run. The best iteration across all 10 attempts is picked by a composite score balancing accuracy, separation, and non-redundancy as F1 ↑ · Silhouette ↑ · max-VIF ↓.: 
 
 $$\text{Composite Score} = F_1 \cdot \text{Silhouette} \cdot \frac{1}{\text{max-VIF}}$$
 
