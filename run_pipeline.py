@@ -97,6 +97,102 @@ sys.stderr = _Tee(_orig_stderr, _log_file)
 atexit.register(_close_log)
 print(f"[run_pipeline] Logging full output to {_log_path}")
 
+
+# ── Single-instance lock ──────────────────────────────────────────────────────
+# Two concurrent run_pipeline.py processes write into the same
+# outputs/pipeline_events.jsonl + personas.json + lockless state files, which
+# manifests in the UI as interleaved iterations (e.g. iter 1..10 from run A
+# crossed with iter 1..5 from run B → "more than 10 iterations"). The lock
+# refuses to start a second process while another live one owns the outputs/
+# directory. Pass --force-unlock to override (e.g. after an OS-level crash).
+_LOCK_PATH = _out_dir / 'pipeline.lock'
+
+
+def _pid_alive(pid: int) -> bool:
+    """True if a process with this PID is still running.
+
+    Uses os.kill(pid, 0) — sends no signal, just probes existence + access.
+    A stale lockfile from a killed process returns False and is overwritten.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # PID exists but isn't ours (different user). Treat as alive — safer
+        # than racing it.
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _read_lock_pid() -> int:
+    try:
+        return int(_LOCK_PATH.read_text(encoding='utf-8').strip().splitlines()[0])
+    except (OSError, ValueError, IndexError):
+        return 0
+
+
+def _acquire_pipeline_lock() -> None:
+    force_unlock = '--force-unlock' in sys.argv
+    if force_unlock:
+        sys.argv.remove('--force-unlock')
+
+    if _LOCK_PATH.exists():
+        prev_pid = _read_lock_pid()
+        if prev_pid and _pid_alive(prev_pid) and not force_unlock:
+            print(
+                f"[run_pipeline] ERROR: another pipeline is already running "
+                f"(pid={prev_pid}, lock={_LOCK_PATH}).",
+                file=sys.stderr,
+            )
+            print(
+                f"[run_pipeline] Refusing to start — concurrent runs corrupt the "
+                f"shared outputs/ files (events, personas, lockless state).",
+                file=sys.stderr,
+            )
+            print(
+                f"[run_pipeline] To take over: kill the old process "
+                f"(kill {prev_pid}) and re-run, or pass --force-unlock if you've "
+                f"confirmed it's dead.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Stale (dead pid) or --force-unlock — overwrite below.
+        if prev_pid and not _pid_alive(prev_pid):
+            print(
+                f"[run_pipeline] Stale lock from dead pid {prev_pid} — taking over."
+            )
+        elif force_unlock:
+            print(
+                f"[run_pipeline] --force-unlock: overriding lock held by pid "
+                f"{prev_pid or '?'}."
+            )
+
+    try:
+        _LOCK_PATH.write_text(f"{os.getpid()}\n", encoding='utf-8')
+    except OSError as exc:
+        print(f"[run_pipeline] WARNING: could not write lock file: {exc}",
+              file=sys.stderr)
+        return
+
+    def _release_lock() -> None:
+        # Only remove the lock if WE still own it. A force-unlocked successor
+        # would have overwritten it with their pid — don't delete theirs.
+        if _read_lock_pid() == os.getpid():
+            try:
+                _LOCK_PATH.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    atexit.register(_release_lock)
+
+
+_acquire_pipeline_lock()
+
 with open(_root / 'config.yaml') as f:
     config = yaml.safe_load(f)
 
@@ -117,9 +213,13 @@ from agents.state import HumanDecision
 _MIN_PASSING_BEFORE_APPROVE = 3
 _passing_count = {'n': 0}
 
-_orig_chk = _orch_mod.human_checkpoint
 def _auto_approve(personas, cr, clf, bus):
-    _orig_chk(personas, cr, clf, bus)
+    # Call only the display half — previously we called the full
+    # `human_checkpoint`, which BLOCKED on `input()` and stalled the pipeline
+    # forever. The display function prints the same summary + persona table to
+    # stdout (and now also emits `awaiting_human_checkpoint` so the UI can
+    # render the modal if a user wants to see it) without waiting for input.
+    _orch_mod._display_checkpoint_summary(personas, cr, clf, bus)
     _passing_count['n'] += 1
     n = _passing_count['n']
     if n < _MIN_PASSING_BEFORE_APPROVE:
@@ -156,6 +256,11 @@ _parser.add_argument('--intent-target', type=str, default='customers',
 _parser.add_argument('--intent-purpose', type=str,
                      default='discover spending personas for marketing',
                      help='Bypass: business purpose')
+_parser.add_argument('--modality', type=str, default=None,
+                     choices=['auto', 'tabular', 'text'],
+                     help='Data modality (overrides config.yaml). text → cluster documents.')
+_parser.add_argument('--text-column', type=str, default=None,
+                     help='For text modality: the column holding documents (else auto-detect).')
 _args, _ = _parser.parse_known_args()
 if _args.bypass:
     _args.no_ui = True
@@ -165,8 +270,55 @@ if _args.bypass:
 # activity over Server-Sent Events and auto-switches to the cluster grid
 # when the pipeline completes. Use --no-ui for headless runs.
 if not _args.no_ui:
+    import socket
     import threading
+    import urllib.error
+    import urllib.request
     import webbrowser
+
+    def _is_port_free(host: str, port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((host, port))
+                return True
+            except OSError:
+                return False
+
+    def _ui_has_cluster_comparison(host: str, port: int) -> bool:
+        """Return False when an old UI server is missing /api/cluster-comparison."""
+        try:
+            req = urllib.request.Request(
+                f'http://{host}:{port}/api/cluster-comparison',
+                data=b'{}',
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            urllib.request.urlopen(req, timeout=2)
+            return True
+        except urllib.error.HTTPError as exc:
+            return exc.code != 404
+        except Exception:
+            return True
+
+    def _resolve_ui_port(host: str, preferred: int) -> int | None:
+        """Pick a port for the UI. None = reuse an existing compatible server."""
+        if _is_port_free(host, preferred):
+            return preferred
+        if _ui_has_cluster_comparison(host, preferred):
+            print(
+                f'[run_pipeline] UI already running at http://{host}:{preferred}/ '
+                f'(includes cross-cluster comparison) — reusing it.'
+            )
+            return None
+        print(
+            f'[run_pipeline] WARNING: port {preferred} is in use by an outdated UI '
+            f'(missing /api/cluster-comparison). Starting a fresh UI on the next free port.'
+        )
+        for port in range(preferred + 1, preferred + 21):
+            if _is_port_free(host, port):
+                return port
+        print(f'[run_pipeline] WARNING: no free UI port near {preferred}; trying {preferred} anyway.')
+        return preferred
 
     def _launch_ui_background(host: str, port: int) -> None:
         try:
@@ -174,6 +326,13 @@ if not _args.no_ui:
         except Exception as _exc:  # noqa: BLE001
             print(f'[run_pipeline] Could not import UI ({_exc}). Continuing headless.')
             return
+
+        resolved = _resolve_ui_port(host, port)
+        if resolved is None:
+            return
+        if resolved != port:
+            print(f'[run_pipeline] UI port {port} unavailable — using {resolved} instead.')
+        port = resolved
 
         def _serve():
             try:
@@ -200,6 +359,15 @@ if not _args.no_ui:
 
     _launch_ui_background('127.0.0.1', _args.ui_port)
 
+# CLI overrides for modality routing fold straight into the config dict the
+# Orchestrator reads.
+if _args.modality:
+    config['modality'] = _args.modality
+    print(f'[run_pipeline] Modality set via CLI: {_args.modality}')
+if _args.text_column:
+    config['text_column'] = _args.text_column
+    print(f'[run_pipeline] Text column set via CLI: {_args.text_column}')
+
 _config_data_path = config.get('dataset_path')
 _raw_csv = pathlib.Path('data/raw/fraudTrain.csv')
 _parquet = pathlib.Path('data/processed/customer_features.parquet')
@@ -220,6 +388,11 @@ else:
     _default_features_path = str(_raw_csv)   # orchestrator will surface the error
 
 # ── Run pipeline ──────────────────────────────────────────────────────────────
+# Surface bypass intent to the orchestrator so threshold-decision points can
+# skip the interactive modal and emit a structured warning instead. This is
+# what `--bypass` actually means at the decision-point layer: never block on
+# the UI; always apply the recommended fallback.
+config['bypass_mode'] = bool(_args.bypass)
 orchestrator = Orchestrator(config)
 
 _bypass_intent = None

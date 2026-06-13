@@ -24,13 +24,17 @@ import pandas as pd
 
 from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, normalize
 
 from agents.state import ClusteringResult
 from agents.user_input import UserIntent
 from agents.dataset_examiner import DatasetProfile
 from skills.silhouette_optimizer import optimize_k
 from skills.algo_recommender import recommend_algorithm
+from skills.automl_candidate_search import (
+    candidate_search_to_dict,
+    search_clustering_candidates,
+)
 from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -71,7 +75,16 @@ def _discover_groups(df: pd.DataFrame, entity_col: str) -> dict[str, list[str]]:
     return groups
 
 
-def _fit_model(algorithm: str, n_clusters: int, X_scaled: np.ndarray):
+def _fit_model(algorithm: str, n_clusters: int, X_scaled: np.ndarray,
+               text_artifacts: dict | None = None, bus=None,
+               business_purpose: str = ''):
+    """Fit the chosen clustering algorithm and return (labels, name, detail).
+
+    Text-specific algorithms (`lda`, `nmf`, `llm_cluster`) need the raw TF-IDF
+    matrix / raw documents rather than the L2-normalised embeddings, so they
+    consume `text_artifacts` instead of `X_scaled`. Falling through to the
+    geometric algos uses X_scaled unchanged.
+    """
     if algorithm == 'kmeans':
         model = KMeans(n_clusters=n_clusters, random_state=42, n_init=15, max_iter=500)
         labels = model.fit_predict(X_scaled)
@@ -117,12 +130,156 @@ def _fit_model(algorithm: str, n_clusters: int, X_scaled: np.ndarray):
             labels = model.fit_predict(X_scaled)
             algo_name = 'GaussianMixture (fuzzy_cmeans fallback)'
             algo_detail = f'GMM fallback (skfuzzy not installed)  |  n_components={n_clusters}'
+    elif algorithm in ('lda', 'nmf'):
+        # Topic-model algorithms: each document is a mixture of K topics; hard
+        # cluster = argmax of the doc-topic distribution. Both need the
+        # non-negative TF-IDF matrix (not L2-normalised SVD embeddings which
+        # contain negatives).
+        from scipy.sparse import issparse
+        tfidf = (text_artifacts or {}).get('tfidf_matrix')
+        if tfidf is None:
+            raise RuntimeError(
+                f"Algorithm {algorithm!r} needs text_artifacts['tfidf_matrix']; "
+                "TextPreparer must have run and exposed it."
+            )
+            # ^ caller catches this and falls back via _fit_model retry loop.
+        # n_docs sanity check — text_artifacts['tfidf_matrix'] is built on the
+        # cleaned corpus; if rows don't line up with X_scaled the caller will
+        # have already errored upstream, but guard here just in case.
+        if tfidf.shape[0] != X_scaled.shape[0]:
+            raise RuntimeError(
+                f"tfidf rows ({tfidf.shape[0]}) != embedding rows ({X_scaled.shape[0]}); "
+                "cannot fit topic model."
+            )
+        if algorithm == 'lda':
+            from sklearn.decomposition import LatentDirichletAllocation
+            model = LatentDirichletAllocation(
+                n_components=n_clusters, random_state=42,
+                learning_method='batch', max_iter=20,
+            )
+            doc_topic = model.fit_transform(tfidf)
+            labels = np.argmax(doc_topic, axis=1)
+            algo_name = 'LatentDirichletAllocation'
+            algo_detail = (f'LDA  |  n_topics={n_clusters}  |  '
+                           f'learning=batch  |  vocab={tfidf.shape[1]}')
+        else:  # nmf
+            from sklearn.decomposition import NMF
+            # NMF is sensitive to init on TF-IDF; nndsvd gives a deterministic
+            # warm start that's better than random for sparse non-negative data.
+            model = NMF(
+                n_components=n_clusters, random_state=42,
+                init='nndsvd', max_iter=300,
+            )
+            doc_topic = model.fit_transform(tfidf if not issparse(tfidf) else tfidf)
+            labels = np.argmax(doc_topic, axis=1)
+            algo_name = 'NMF'
+            algo_detail = (f'NMF  |  n_topics={n_clusters}  |  init=nndsvd  |  '
+                           f'vocab={tfidf.shape[1]}')
+    elif algorithm == 'llm_cluster':
+        # LLM-as-clusterer: rescue path when geometric methods + topic models
+        # all fail. Sends representative docs to Claude and asks for cluster
+        # assignment. ONLY safe for small corpora (the prompt grows linearly
+        # with n_docs) — the caller gates this on len(docs) ≤ 200.
+        labels, algo_name, algo_detail = _fit_llm_cluster(
+            n_clusters=n_clusters,
+            text_artifacts=text_artifacts or {},
+            bus=bus,
+            business_purpose=business_purpose,
+        )
     else:
         raise ValueError(
             f'Unknown clustering_algorithm: {algorithm!r}. '
-            'Valid options: "kmeans", "hierarchical", "dbscan", "gmm", "fuzzy_cmeans".'
+            'Valid options: "kmeans", "hierarchical", "dbscan", "gmm", '
+            '"fuzzy_cmeans", "lda", "nmf", "llm_cluster".'
         )
     return labels, algo_name, algo_detail
+
+
+def _fit_llm_cluster(n_clusters: int, text_artifacts: dict, bus,
+                     business_purpose: str = '') -> tuple[np.ndarray, str, str]:
+    """Ask the LLM to group documents into n_clusters categories.
+
+    Returns hard cluster labels, the algorithm name, and a short detail string.
+    The prompt includes every document numbered; the LLM returns a JSON list
+    of cluster ids (0..k-1) one per document. This is the most expensive
+    clustering path — gate it on small corpora (< ~200 docs) at the call site.
+    """
+    raw_docs = list(text_artifacts.get('raw_docs') or [])
+    n_docs = len(raw_docs)
+    if n_docs == 0:
+        raise RuntimeError("llm_cluster: text_artifacts['raw_docs'] is empty.")
+    if bus is None:
+        raise RuntimeError("llm_cluster needs an LLM bus to make Claude calls.")
+
+    # Truncate per-doc so the total prompt stays manageable for very long bodies.
+    _MAX_CHARS = 600
+    numbered = '\n'.join(
+        f"[{i}] {d.strip()[:_MAX_CHARS]}" for i, d in enumerate(raw_docs)
+    )
+    purpose_line = (
+        f"\nThe user's business purpose: {business_purpose}\n" if business_purpose else ''
+    )
+    prompt = f"""You are clustering {n_docs} short documents into EXACTLY {n_clusters} groups.
+{purpose_line}
+Documents (numbered):
+{numbered}
+
+Return ONLY a JSON object with this exact shape, no markdown fences, no prose:
+{{
+  "labels": [<integer cluster id from 0 to {n_clusters - 1}>, ... one per document, in order],
+  "reasoning": "<1-2 sentence summary of what distinguishes the groups>"
+}}
+
+Constraints:
+- The labels array MUST have exactly {n_docs} integers.
+- Each label MUST be between 0 and {n_clusters - 1} inclusive.
+- Aim to balance the groups (no single group with > 60% of docs) unless the
+  natural grouping really is that lopsided.
+"""
+    import json as _json
+    import re as _re
+    raw = bus.ask(
+        agent='Clusterer',
+        purpose='LLM-as-clusterer (geometric methods failed; semantic grouping fallback)',
+        prompt=prompt,
+        max_tokens=2000,
+        category='pipeline',
+    )
+    # Strip optional markdown fences before parsing.
+    if '```' in raw:
+        for chunk in raw.split('```'):
+            c = chunk.strip()
+            if c.startswith('json'):
+                c = c[4:].strip()
+            if c.startswith('{'):
+                raw = c
+                break
+    try:
+        parsed = _json.loads(raw)
+    except _json.JSONDecodeError:
+        # Last-ditch: pull the first [...] of ints we can find.
+        m = _re.search(r'\[\s*\d+(?:\s*,\s*\d+)*\s*\]', raw)
+        if not m:
+            raise RuntimeError(
+                f"llm_cluster: LLM did not return parseable JSON. Got: {raw[:300]!r}"
+            )
+        parsed = {'labels': _json.loads(m.group(0)), 'reasoning': ''}
+
+    label_list = parsed.get('labels') or []
+    if len(label_list) != n_docs:
+        raise RuntimeError(
+            f"llm_cluster: LLM returned {len(label_list)} labels but corpus has "
+            f"{n_docs} docs. Aborting (caller will retry with a geometric algo)."
+        )
+    labels = np.array([int(x) for x in label_list], dtype=int)
+    # Clamp to the valid range — the LLM occasionally returns k itself.
+    labels = np.clip(labels, 0, n_clusters - 1)
+    reasoning = str(parsed.get('reasoning', '')).strip()[:200]
+    return labels, 'LLMCluster', (
+        f'LLM-as-clusterer  |  k={n_clusters}  |  docs={n_docs}  |  '
+        f'reasoning="{reasoning}"' if reasoning
+        else f'LLM-as-clusterer  |  k={n_clusters}  |  docs={n_docs}'
+    )
 
 
 def _extract_profiles(features_df: pd.DataFrame, cluster_labels: pd.Series,
@@ -182,6 +339,171 @@ def _extract_profiles(features_df: pd.DataFrame, cluster_labels: pd.Series,
     return profiles
 
 
+def _extract_text_profiles(
+    features_df: pd.DataFrame,
+    cluster_labels: pd.Series,
+    cluster_lineage: dict,
+    X_emb: np.ndarray,
+    text_artifacts: dict,
+    algo_name: str,
+    algo_detail: str,
+    top_terms_k: int = 12,
+    rep_docs_k: int = 3,
+) -> dict:
+    """Text-mode profiles: c-TF-IDF distinctive terms + representative docs.
+
+    Returns profiles in the SAME schema as `_extract_profiles` so the rest of
+    the pipeline (PersonaNamer, UI, cross-cluster comparison) works unchanged:
+
+      - top_above_average ← {term: c_tfidf_score}    (distinctive terms)
+      - feature_means     ← {term: c_tfidf_score}    (same dict, for chips)
+      - top_terms         ← ordered list of distinctive terms
+      - representative_docs ← list of doc strings nearest the cluster centroid
+      - top_below_average ← terms that are notably ABSENT from this cluster
+                            (always present in other clusters but not here)
+
+    c-TF-IDF (class-based TF-IDF, Grootendorst 2020) per term t in cluster c:
+        score(t, c) = tf(t, c) * log(1 + A / sum_c tf(t, c))
+    where tf(t, c) is the summed TF-IDF weight of t across docs in c, and A is
+    the average per-cluster document count. This pulls out terms that are
+    common in cluster c but rare in the rest.
+    """
+    leaf_ids = sorted([c for c, v in cluster_lineage.items() if 'split_into' not in v])
+    n_total = len(features_df)
+    profiles: dict = {}
+
+    tfidf_matrix = text_artifacts.get('tfidf_matrix')
+    feature_names = list(text_artifacts.get('feature_names') or [])
+    raw_docs = list(text_artifacts.get('raw_docs') or [])
+    doc_index = list(text_artifacts.get('doc_index') or [])
+
+    have_tfidf = tfidf_matrix is not None and len(feature_names) > 0
+    have_docs  = len(raw_docs) == len(doc_index) > 0
+
+    # Per-cluster summed TF-IDF (a sparse matrix → dense array per cluster) +
+    # the doc-row index inside the original tfidf_matrix.
+    cluster_sums = {}
+    cluster_doc_rows: dict[int, list[int]] = {}
+    if have_tfidf:
+        # Map cluster_labels.index → tfidf_matrix row position.
+        # tfidf_matrix rows match the order docs were passed to vectorize_text
+        # (i.e. the cleaned subset). text_artifacts['doc_index'] holds the
+        # original DataFrame index for each tfidf row.
+        if doc_index:
+            idx_to_row = {ix: r for r, ix in enumerate(doc_index)}
+        else:
+            idx_to_row = {ix: r for r, ix in enumerate(cluster_labels.index)}
+        for c in leaf_ids:
+            mask = cluster_labels == c
+            rows = [idx_to_row[ix] for ix in cluster_labels.index[mask] if ix in idx_to_row]
+            cluster_doc_rows[c] = rows
+            if rows:
+                cluster_sums[c] = np.asarray(tfidf_matrix[rows].sum(axis=0)).ravel()
+            else:
+                cluster_sums[c] = np.zeros(len(feature_names), dtype=float)
+
+    # Per-cluster centroid in the embedding space (for representative docs).
+    centroids: dict[int, np.ndarray] = {}
+    for c in leaf_ids:
+        mask = cluster_labels == c
+        rows = mask.to_numpy()
+        if rows.any():
+            centroids[c] = X_emb[rows].mean(axis=0)
+        else:
+            centroids[c] = np.zeros(X_emb.shape[1] if X_emb.size else 1, dtype=float)
+
+    avg_docs_per_cluster = max(1.0, n_total / max(len(leaf_ids), 1))
+
+    for c in leaf_ids:
+        mask = cluster_labels == c
+        n_cluster = int(mask.sum())
+        lin = cluster_lineage[c]
+
+        top_above: dict[str, float] = {}
+        top_below: dict[str, float] = {}
+        feature_means: dict[str, float] = {}
+        top_terms: list[str] = []
+
+        if have_tfidf:
+            # c-TF-IDF: penalise terms that appear in many other clusters too.
+            this_sum = cluster_sums[c]
+            other_sum = np.zeros_like(this_sum)
+            for cc in leaf_ids:
+                if cc != c:
+                    other_sum += cluster_sums[cc]
+            # Smooth so terms absent elsewhere don't blow up.
+            denom = other_sum + 1.0
+            scores = this_sum * np.log1p(avg_docs_per_cluster / denom)
+            if scores.size:
+                # Distinctive (present here, rare elsewhere)
+                top_idx = np.argsort(-scores)[:top_terms_k]
+                top_above = {
+                    str(feature_names[i]): round(float(scores[i]), 4)
+                    for i in top_idx if scores[i] > 0
+                }
+                top_terms = list(top_above.keys())
+                # Notably absent: terms that score high in OTHERS but ~0 here.
+                # Use a normalised ratio so we don't pick rare-everywhere terms.
+                other_strength = other_sum / max(other_sum.max(), 1e-9)
+                here_strength  = this_sum / max(this_sum.max(), 1e-9)
+                gap = other_strength - here_strength   # positive → absent here
+                gap_idx = np.argsort(-gap)[:top_terms_k]
+                top_below = {
+                    str(feature_names[i]): round(float(gap[i]), 4)
+                    for i in gap_idx if gap[i] > 0.1
+                }
+                feature_means = top_above   # one dict for both UI chips & prompts
+
+        representative_docs: list[str] = []
+        if have_docs and n_cluster > 0:
+            # Pick the rep_docs_k docs closest to the centroid in cosine space.
+            # X_emb is already L2-normalised in the text branch so dot product
+            # IS cosine similarity.
+            rows = mask.to_numpy()
+            in_cluster_rows = np.where(rows)[0]
+            if in_cluster_rows.size:
+                centroid = centroids[c]
+                norm = np.linalg.norm(centroid)
+                if norm > 0:
+                    centroid = centroid / norm
+                sims = X_emb[in_cluster_rows] @ centroid
+                # Sort descending; take top rep_docs_k. Map back to raw_docs.
+                top_local = in_cluster_rows[np.argsort(-sims)[:rep_docs_k]]
+                # raw_docs is aligned to doc_index. If they match, use that;
+                # otherwise positional indexing.
+                if doc_index and len(raw_docs) == len(doc_index):
+                    for row in top_local:
+                        if 0 <= row < len(raw_docs):
+                            representative_docs.append(raw_docs[row])
+                else:
+                    for row in top_local:
+                        if 0 <= row < len(raw_docs):
+                            representative_docs.append(raw_docs[row])
+
+        profiles[str(c)] = {
+            "n_entities": n_cluster,
+            "pct_total": round(n_cluster / max(n_total, 1) * 100, 1),
+            "top_above_average": top_above,
+            "top_below_average": top_below,
+            "feature_means": feature_means,
+            "feature_relative": {k: 1.0 for k in top_above},  # placeholder for UI
+            "top_terms": top_terms,
+            "representative_docs": [d[:400] for d in representative_docs],
+            "modality": "text",
+            "lineage": {
+                "depth":         lin.get("depth", 0),
+                "parent":        lin.get("parent"),
+                "siblings":      lin.get("siblings", []),
+                "pct_of_parent": lin.get("pct_of_parent", 100.0),
+                "is_sub_cluster": lin.get("is_sub_cluster", False),
+            },
+            "algorithm": algo_name,
+            "algo_detail": algo_detail,
+        }
+
+    return profiles
+
+
 class ClusteringAgent:
     """
     Clusters entities on the selected features and runs the deepening loop.
@@ -214,6 +536,8 @@ class ClusteringAgent:
         config_override: dict | None = None,
         min_silhouette: float | None = None,
         silhouette_target: float | None = None,
+        text_artifacts: dict | None = None,
+        bypass: bool = False,
     ) -> ClusteringResult:
         """
         Parameters
@@ -256,45 +580,128 @@ class ClusteringAgent:
 
         X = features_df[sel].copy()
         X = X.loc[:, ~X.columns.duplicated()]  # guard against duplicate column names
-        log_cols = _detect_log_cols(X)
-        for col in log_cols:
-            X[col] = np.log1p(X[col])
 
-        X = X.select_dtypes(include=[np.number])
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
+        # Text modality: embeddings are already a clean numeric matrix produced
+        # by TextPreparer. Skip log + StandardScaler (would distort the geometry
+        # the embeddings were trained for) and L2-normalise so Euclidean
+        # distance becomes cosine — silhouette computed with metric='cosine'.
+        text_mode = bool(text_artifacts)
+        sil_metric = 'cosine' if text_mode else 'euclidean'
+
+        if text_mode:
+            X = X.select_dtypes(include=[np.number])
+            X_scaled = normalize(X.to_numpy(dtype=float))
+            print(f'  Text mode: skipped log/StandardScaler; L2-normalised '
+                  f'{X_scaled.shape[0]}×{X_scaled.shape[1]} embedding matrix. '
+                  f'Silhouette metric=cosine.')
+        else:
+            log_cols = _detect_log_cols(X)
+            for col in log_cols:
+                X[col] = np.log1p(X[col])
+            X = X.select_dtypes(include=[np.number])
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
 
         # ── Step 2: Algorithm selection ───────────────────────────────────────
-        valid_algos = ('kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans')
+        # Geometric algos work for any modality; topic models (lda, nmf) and
+        # the LLM-as-clusterer require text artifacts and are silently filtered
+        # out of the valid set when running on tabular data.
+        valid_algos: tuple[str, ...] = (
+            'kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans',
+        )
+        if text_mode:
+            valid_algos = valid_algos + ('lda', 'nmf', 'llm_cluster')
         algo_override = str(cfg.get('clustering_algorithm', '')).lower()
         algo_reasoning = ""
+        candidate_evidence: dict = {}
+        candidate_best = None
 
         if algo_override in valid_algos:
             algorithm = algo_override
             algo_reasoning = f"Algorithm fixed by config: {algorithm}"
             print(f'  Algorithm: {algorithm} (from config)')
         else:
-            # Auto-select based on data shape
-            skewness_map = {col: float(X[col].skew()) for col in X.columns}
+            # Auto-select based on data shape. In text mode the skewness map
+            # on raw embedding dims is meaningless (and the +Hierarchical bias
+            # it would trigger isn't appropriate), so we skip it and instead
+            # pass the modality hint so the recommender applies its text-aware
+            # rule (preferred=kmeans/hierarchical, discouraged=gmm/dbscan/fuzzy).
+            _text_ov = dict(cfg.get('text_overrides') or {})
+            if text_mode:
+                skewness_map = None
+                preferred = _text_ov.get('preferred_algorithms') or ['kmeans', 'hierarchical']
+                discouraged = _text_ov.get('discouraged_algorithms') or ['gmm', 'dbscan', 'fuzzy_cmeans']
+            else:
+                skewness_map = {col: float(X[col].skew()) for col in X.columns}
+                preferred = None
+                discouraged = None
             rec = recommend_algorithm(
                 n_rows=len(features_df),
                 n_features=len(sel),
                 feature_skewness=skewness_map,
                 business_purpose=user_intent.business_purpose if user_intent else "",
                 verbose=True,
+                modality='text' if text_mode else 'tabular',
+                preferred_algorithms=preferred,
+                discouraged_algorithms=discouraged,
             )
             algorithm = rec.algorithm
             algo_reasoning = rec.reasoning
             print(f'  Algorithm auto-selected: {algorithm}  (confidence={rec.confidence:.2f})')
 
-        # ── Step 3: K selection ───────────────────────────────────────────────
-        # Priority: user_intent.n_clusters_requested > config.n_clusters > silhouette auto-select
+        # ── Step 2.5: AutoML-as-skill candidate tournament ───────────────────
+        # The recommender gives a fast prior; the candidate search gives
+        # evidence. It evaluates several algorithm/k combinations with
+        # silhouette, bootstrap stability (ARI), and cluster-size balance, then
+        # seeds the normal Clusterer path with the winner.
         n_clusters_override = cfg.get('n_clusters', None)
         n_clusters_user = (
             user_intent.n_clusters_requested
             if user_intent and getattr(user_intent, 'n_clusters_requested', None)
             else None
         )
+        candidate_search_enabled = bool(cfg.get('enable_automl_candidate_search', True))
+        if (
+            candidate_search_enabled
+            and algo_override not in valid_algos
+            and not (n_clusters_user and isinstance(n_clusters_user, int))
+            and not (n_clusters_override and isinstance(n_clusters_override, int))
+        ):
+            k_range_for_search = cfg.get('k_search_range', DEFAULT_K_SEARCH_RANGE)
+            configured_algos = cfg.get('candidate_search_algorithms')
+            if configured_algos:
+                candidate_algos = list(configured_algos)
+            elif text_mode:
+                candidate_algos = ['kmeans', 'hierarchical']
+            else:
+                candidate_algos = [algorithm, 'kmeans', 'hierarchical', 'gmm']
+            try:
+                search_result = search_clustering_candidates(
+                    X_scaled,
+                    algorithms=candidate_algos,
+                    k_range=k_range_for_search,
+                    metric=sil_metric,
+                    max_cluster_size_pct=max_pct,
+                    stability_repeats=int(cfg.get('candidate_stability_repeats', 3)),
+                    stability_sample_frac=float(cfg.get('candidate_stability_sample_frac', 0.80)),
+                    top_n=int(cfg.get('candidate_search_top_n', 8)),
+                    verbose=True,
+                )
+                candidate_evidence = candidate_search_to_dict(search_result)
+                candidate_best = search_result.best
+                if candidate_best is not None:
+                    algorithm = candidate_best.algorithm
+                    algo_reasoning = f"{algo_reasoning}\n{search_result.reasoning}".strip()
+                    print(f'  AutoML candidate winner: {search_result.reasoning}')
+            except Exception as exc:
+                candidate_evidence = {
+                    "error": str(exc),
+                    "reasoning": "Candidate search failed; falling back to recommender + silhouette optimizer.",
+                }
+                print(f'  [AutoMLCandidateSearch] failed: {exc}')
+
+        # ── Step 3: K selection ───────────────────────────────────────────────
+        # Priority: user_intent.n_clusters_requested > config.n_clusters > silhouette auto-select
         k_scores: dict[int, float] = {}
 
         if n_clusters_user and isinstance(n_clusters_user, int) and n_clusters_user >= 2:
@@ -303,6 +710,18 @@ class ClusteringAgent:
         elif n_clusters_override and isinstance(n_clusters_override, int) and n_clusters_override > 0:
             n_clusters = n_clusters_override
             print(f'  k: {n_clusters} (from config)')
+        elif candidate_best is not None and candidate_best.k is not None:
+            n_clusters = int(candidate_best.k)
+            k_scores = {
+                int(c["k"]): float(c["silhouette"])
+                for c in candidate_evidence.get("candidates", [])
+                if c.get("algorithm") == algorithm and c.get("k") is not None
+            }
+            print(
+                f'  k: {n_clusters} (from AutoML candidate search; '
+                f'silhouette={candidate_best.silhouette:.4f}, '
+                f'stability_ari={candidate_best.stability_ari:.4f})'
+            )
         else:
             k_range = cfg.get('k_search_range', DEFAULT_K_SEARCH_RANGE)
             # DBSCAN doesn't use k; use a default for silhouette evaluation
@@ -315,10 +734,16 @@ class ClusteringAgent:
                     algorithm=algorithm if algorithm in ('kmeans', 'hierarchical') else 'kmeans',
                     k_range=k_range,
                     verbose=True,
+                    metric=sil_metric,
                 )
                 n_clusters = sil_result.best_k
                 k_scores = sil_result.scores
-                print(f'  k auto-selected: {n_clusters}  (silhouette={sil_result.best_silhouette:.4f})')
+                print(
+                    f'  k auto-selected: {n_clusters}  '
+                    f'composite={sil_result.best_composite:.3f}  '
+                    f'silhouette={sil_result.best_silhouette:.4f}  '
+                    f'DB={sil_result.best_db:.4f}  CH={sil_result.best_ch:.1f}'
+                )
 
                 if sil_result.warning:
                     print(f'  WARNING: {sil_result.warning}')
@@ -329,10 +754,24 @@ class ClusteringAgent:
         algo_name = ''
         algo_detail = ''
 
+        # Side-input bundle for text-specific algorithms (lda/nmf/llm_cluster).
+        # Geometric algorithms ignore these.
+        _bp = user_intent.business_purpose if user_intent else ''
+        # llm_cluster is gated on small corpora — it grows the LLM prompt
+        # linearly with n_docs, so anything past ~200 burns a lot of tokens.
+        _llm_cluster_ok = (
+            text_mode
+            and text_artifacts
+            and len(text_artifacts.get('raw_docs') or []) <= 200
+        )
+
         while True:
             try:
                 cluster_labels_arr, algo_name, algo_detail = _fit_model(
-                    algorithm, n_clusters, X_scaled
+                    algorithm, n_clusters, X_scaled,
+                    text_artifacts=text_artifacts if text_mode else None,
+                    bus=self.bus if algorithm == 'llm_cluster' and _llm_cluster_ok else None,
+                    business_purpose=_bp,
                 )
                 break  # success
             except Exception as exc:
@@ -347,7 +786,8 @@ class ClusteringAgent:
                     print(f'  [Clusterer] Falling back to {algorithm} (no LLM available)')
                     try:
                         cluster_labels_arr, algo_name, algo_detail = _fit_model(
-                            algorithm, n_clusters, X_scaled
+                            algorithm, n_clusters, X_scaled,
+                            text_artifacts=text_artifacts if text_mode else None,
                         )
                     except Exception as exc2:
                         raise RuntimeError(
@@ -412,7 +852,7 @@ class ClusteringAgent:
         for c in top_level:
             cluster_lineage[c]['siblings'] = [x for x in top_level if x != c]
 
-        sil = silhouette_score(X_scaled, work_df['cluster'])
+        sil = silhouette_score(X_scaled, work_df['cluster'], metric=sil_metric)
         print(f'  Initial clustering: {len(top_level)} clusters  |  silhouette={sil:.4f}')
 
         # ── Step 5: Deepening loop ─────────────────────────────────────────────
@@ -460,11 +900,11 @@ class ClusteringAgent:
                                 what_was_done=f"Clustered with k={n_clusters}, ran deepening loop",
                                 what_was_not_done=f"Could not resolve oversized cluster C{_parent}",
                                 doubts="Oversized cluster may reflect feature redundancy",
-                                issues=[f"Cluster {_parent} has {_pct:.1%} of data (>{max_pct:.0%} threshold)"],
-                                metrics={"silhouette": round(sil, 4), "n_clusters": n_clusters},
-                                recommendation="retry",
-                                context={"llm_decision": decision},
-                            ))
+                            issues=[f"Cluster {_parent} has {_pct:.1%} of data (>{max_pct:.0%} threshold)"],
+                            metrics={"silhouette": round(sil, 4), "n_clusters": n_clusters},
+                            recommendation="retry",
+                            context={"llm_decision": decision, "candidate_evidence": candidate_evidence},
+                        ))
                         return ClusteringResult(
                             action='reselect_features',
                             cluster_labels=None,
@@ -478,6 +918,7 @@ class ClusteringAgent:
                             algo_detail=algo_detail,
                             k_scores=k_scores,
                             algo_reasoning=algo_reasoning,
+                            candidate_evidence=candidate_evidence,
                         )
 
                     print(f'    LLM recommends sub-clustering C{_parent}.')
@@ -514,10 +955,27 @@ class ClusteringAgent:
         # stratified CV (per-class F1 collapses to 0; XGBoost may crash when
         # the singleton class is dropped from a fold). Merge each tiny leaf
         # into the nearest non-tiny leaf by centroid distance in X_scaled.
-        min_cluster_size = int(cfg.get('min_cluster_size', 5))
+        #
+        # Text mode uses a much smaller default (2) because text corpora often
+        # produce meaningful 2-3 document clusters (a topic = a handful of
+        # articles), and there is no per-class CV gate downstream to satisfy.
+        # The tabular default (5) is calibrated for customer-segmentation
+        # F1-validated runs and would erase real text topics.
+        _default_min_size = 2 if text_mode else 5
+        min_cluster_size = int(cfg.get('min_cluster_size', _default_min_size))
+        if text_mode:
+            print(f'  Text mode: min_cluster_size={min_cluster_size} '
+                  f'(default {_default_min_size}; smaller threshold preserves '
+                  f'topic-level groups in short corpora).')
         singleton_merges: list[dict] = []
         if min_cluster_size > 1:
             while True:
+                # Preserve ≥2-cluster structure: silhouette and the downstream
+                # classifier both require at least 2 distinct labels. If we are
+                # already at 2 leaves, stop merging — leaving a tiny leaf is
+                # strictly better than collapsing all cluster diversity into 1.
+                if int(work_df['cluster'].nunique()) <= 2:
+                    break
                 leaf_ids_now = [c for c, v in cluster_lineage.items()
                                 if 'split_into' not in v and 'merged_into' not in v]
                 sizes = {c: int((work_df['cluster'] == c).sum()) for c in leaf_ids_now}
@@ -543,6 +1001,11 @@ class ClusteringAgent:
                 for src in tiny:
                     if src not in centroids:
                         continue
+                    # Same ≥2-cluster floor inside the per-pass loop: every
+                    # merge reduces the distinct-label count by 1, so stop as
+                    # soon as we are about to drop to a single cluster.
+                    if int(work_df['cluster'].nunique()) <= 2:
+                        break
                     avail = [t for t in candidates if t != src]
                     if not avail:
                         break
@@ -578,57 +1041,291 @@ class ClusteringAgent:
         leaf_ids = sorted([c for c, v in cluster_lineage.items()
                            if 'split_into' not in v and 'merged_into' not in v])
         n_leaf = len(leaf_ids)
-        sil = silhouette_score(X_scaled, work_df['cluster'])
 
-        print(f'  Final: {n_leaf} leaf clusters  |  silhouette={sil:.4f}')
-
-        # ── Step 7: Build profiles ─────────────────────────────────────────────
-        profiles = _extract_profiles(
-            features_df=work_df.drop(columns=['cluster']),
-            cluster_labels=work_df['cluster'],
-            cluster_lineage=cluster_lineage,
-            X_scaled=X_scaled,
-            algo_name=algo_name,
-            algo_detail=algo_detail,
-        )
-
-        # ── Step 8: Report to orchestrator ─────────────────────────────────────
-        if sil < _min_sil:
+        # Guard: silhouette_score requires ≥2 distinct labels. The singleton-merge
+        # step above can collapse every leaf into one target when only a single
+        # cluster meets min_cluster_size (all the tiny ones merge into it).
+        # Surface this as a blocked run so the orchestrator reselects features
+        # rather than crashing inside sklearn.
+        n_unique_labels = int(work_df['cluster'].nunique())
+        if n_unique_labels < 2:
+            print(
+                f'  [Clusterer] Singleton-merge collapsed all leaves into '
+                f'{n_unique_labels} cluster — min_cluster_size={min_cluster_size} '
+                f'too aggressive for this dataset. Asking user how to proceed.'
+            )
+            from skills.user_decisions import ask_user_decision
+            chosen = ask_user_decision(
+                self.bus,
+                decision_id=f'clusterer_merge_collapse_iter{iteration}',
+                agent='Clusterer',
+                title='Singleton-merge collapsed all clusters into 1',
+                summary=(
+                    f"After merging tiny leaves (min_cluster_size="
+                    f"{min_cluster_size}), only 1 cluster remained — silhouette "
+                    f"can't be computed. The threshold may be too aggressive "
+                    f"for this dataset (especially text corpora with small "
+                    f"natural topics)."
+                ),
+                options=[
+                    {'key': 'reselect',
+                     'label': 'Reselect features (recommended)',
+                     'description': 'Default. Pick different features and retry.'},
+                    {'key': 'relax_min_size',
+                     'label': 'Lower min_cluster_size to 2 and retry',
+                     'description': 'Tiny clusters (2 docs) will be preserved instead '
+                                    'of merged. Useful when the dataset has many '
+                                    'small natural topics.'},
+                    {'key': 'abort',
+                     'label': 'Abort the run',
+                     'description': 'Stop now.'},
+                ],
+                recommended='reselect',
+                bypass=bypass,
+                extra={
+                    'singleton_merges': len(singleton_merges),
+                    'min_cluster_size': min_cluster_size,
+                    'algorithm': algo_name,
+                    'k': n_clusters,
+                    'n_unique_labels': n_unique_labels,
+                },
+            )
+            if chosen == 'relax_min_size':
+                # Note: reselect_features is still the orchestrator-level action
+                # here because we can't redo the merge inside this run() call
+                # without restarting. We surface the chosen tuning through the
+                # context so the orchestrator can pass min_cluster_size=2 on
+                # the next iteration.
+                print('  [Clusterer] User chose to lower min_cluster_size to 2 '
+                      '— flagging in context for next iteration.')
+                if self.bus:
+                    self.bus.report(OrchestratorMessage(
+                        agent="Clusterer",
+                        iteration=iteration,
+                        status="blocked",
+                        what_was_done=(
+                            f"User chose to relax min_cluster_size from "
+                            f"{min_cluster_size} to 2 — needs a fresh iteration."
+                        ),
+                        what_was_not_done="Did not re-run the merge in this iteration.",
+                        doubts="",
+                        issues=["Re-run needed with relaxed min_cluster_size."],
+                        metrics={"min_cluster_size_was": min_cluster_size,
+                                 "min_cluster_size_now": 2},
+                        recommendation="retry",
+                        context={"action": "reselect_features",
+                                 "tuning_overrides": {"min_cluster_size": 2}},
+                    ))
+                return ClusteringResult(
+                    action='reselect_features',
+                    cluster_labels=None, profiles=None, lineage=None,
+                    silhouette=-1.0, n_leaf=None,
+                    reasoning='User requested smaller min_cluster_size — retry.',
+                    iteration=iteration, algo_name=algo_name, algo_detail=algo_detail,
+                    k_scores=k_scores, algo_reasoning=algo_reasoning,
+                    candidate_evidence=candidate_evidence,
+                )
+            # 'abort' and 'reselect' both fall through to the existing
+            # blocked-report path below.
             if self.bus:
                 self.bus.report(OrchestratorMessage(
                     agent="Clusterer",
                     iteration=iteration,
                     status="blocked",
                     what_was_done=(
-                        f"Used {algo_name}, k={n_clusters}; "
-                        f"silhouette={sil:.4f} (near-random — no useful structure)."
+                        f"Used {algo_name}, k={n_clusters}; singleton-merge "
+                        f"({len(singleton_merges)} merges, "
+                        f"min_cluster_size={min_cluster_size}) collapsed every "
+                        f"leaf into 1 cluster."
                     ),
-                    what_was_not_done="Clusters do not separate well — recommend reselecting features.",
+                    what_was_not_done=(
+                        "Did not compute silhouette (needs ≥2 distinct labels)."
+                    ),
                     doubts="",
-                    issues=[f"Silhouette={sil:.3f} < {_min_sil} — near-random cluster structure."],
+                    issues=[
+                        f"All clusters merged into 1 — only one leaf met "
+                        f"min_cluster_size={min_cluster_size}, so every tiny "
+                        f"leaf rolled into it. Features lack separable structure "
+                        f"at this granularity."
+                    ],
                     metrics={
                         "algorithm": algo_name,
                         "k_selected": n_clusters,
-                        "silhouette": round(sil, 4),
+                        "n_unique_labels": n_unique_labels,
+                        "singleton_merges": len(singleton_merges),
+                        "min_cluster_size": min_cluster_size,
                         "k_scores": {str(k): v for k, v in k_scores.items()},
+                        "candidate_search": candidate_evidence.get("best"),
                     },
                     recommendation="retry",
-                    context={"action": "reselect_features", "algo_reasoning": algo_reasoning, "k_scores": k_scores},
+                    context={
+                        "action": "reselect_features",
+                        "algo_reasoning": algo_reasoning,
+                        "k_scores": k_scores,
+                        "singleton_merges": singleton_merges,
+                        "candidate_evidence": candidate_evidence,
+                    },
                 ))
             return ClusteringResult(
                 action='reselect_features',
                 cluster_labels=None,
                 profiles=None,
                 lineage=None,
-                silhouette=sil,
+                silhouette=-1.0,
                 n_leaf=None,
-                reasoning=f"Silhouette < {_min_sil} — near-random structure. See docs/agents/clusterer.md.",
+                reasoning=(
+                    f"Singleton-merge collapsed all leaves into 1 cluster "
+                    f"(min_cluster_size={min_cluster_size}). Need different "
+                    f"features or a smaller min_cluster_size."
+                ),
                 iteration=iteration,
                 algo_name=algo_name,
                 algo_detail=algo_detail,
                 k_scores=k_scores,
                 algo_reasoning=algo_reasoning,
+                candidate_evidence=candidate_evidence,
             )
+
+        sil = silhouette_score(X_scaled, work_df['cluster'], metric=sil_metric)
+
+        print(f'  Final: {n_leaf} leaf clusters  |  silhouette={sil:.4f}')
+
+        # ── Step 7: Build profiles ─────────────────────────────────────────────
+        if text_mode:
+            profiles = _extract_text_profiles(
+                features_df=work_df.drop(columns=['cluster']),
+                cluster_labels=work_df['cluster'],
+                cluster_lineage=cluster_lineage,
+                X_emb=X_scaled,
+                text_artifacts=text_artifacts or {},
+                algo_name=algo_name,
+                algo_detail=algo_detail,
+            )
+        else:
+            profiles = _extract_profiles(
+                features_df=work_df.drop(columns=['cluster']),
+                cluster_labels=work_df['cluster'],
+                cluster_lineage=cluster_lineage,
+                X_scaled=X_scaled,
+                algo_name=algo_name,
+                algo_detail=algo_detail,
+            )
+
+        # ── Step 8: Report to orchestrator ─────────────────────────────────────
+        if sil < _min_sil:
+            # Critical decision point: silhouette is below the near-random floor.
+            # Default behavior is `reselect_features`, but for text corpora the
+            # floor is often too strict (TF-IDF/SVD silhouette of ~0.04 can
+            # still be a meaningful topic split). Surface the choice to the user.
+            from skills.user_decisions import ask_user_decision
+            chosen = ask_user_decision(
+                self.bus,
+                decision_id=f'clusterer_sil_floor_iter{iteration}',
+                agent='Clusterer',
+                title='Silhouette below near-random floor',
+                summary=(
+                    f"Clustering finished with silhouette={sil:.3f}, which is "
+                    f"below the floor ({_min_sil}). Default is to reselect "
+                    f"features and retry; you can relax the floor and accept "
+                    f"these clusters instead, or abort the run."
+                ),
+                options=[
+                    {'key': 'reselect',
+                     'label': 'Reselect features (recommended)',
+                     'description': 'Default. The orchestrator will pick a different '
+                                    'feature subset / algorithm and retry.'},
+                    {'key': 'relax',
+                     'label': f'Accept clusters (relax floor to {sil:.3f})',
+                     'description': 'Continue with these clusters even though the '
+                                    'silhouette is low. Useful for text corpora '
+                                    'where small but real topics exist.'},
+                    {'key': 'abort',
+                     'label': 'Abort the run',
+                     'description': 'Stop now and let me look at the data first.'},
+                ],
+                recommended='reselect',
+                bypass=bypass,
+                extra={
+                    'silhouette': round(sil, 4),
+                    'floor': _min_sil,
+                    'algorithm': algo_name,
+                    'k': n_clusters,
+                    'n_leaf_clusters': n_leaf,
+                },
+            )
+            if chosen == 'abort':
+                if self.bus:
+                    self.bus.report(OrchestratorMessage(
+                        agent="Clusterer",
+                        iteration=iteration,
+                        status="blocked",
+                        what_was_done=f"Aborted at user request (silhouette={sil:.4f}).",
+                        what_was_not_done="Did not proceed past clustering.",
+                        doubts="",
+                        issues=["User aborted from threshold-decision modal."],
+                        metrics={"silhouette": round(sil, 4)},
+                        recommendation="abort",
+                        context={"action": "abort", "candidate_evidence": candidate_evidence},
+                    ))
+                return ClusteringResult(
+                    action='reselect_features',  # closest existing terminal action
+                    cluster_labels=None, profiles=None, lineage=None,
+                    silhouette=sil, n_leaf=None,
+                    reasoning='User aborted at silhouette-floor decision.',
+                    iteration=iteration, algo_name=algo_name, algo_detail=algo_detail,
+                    k_scores=k_scores, algo_reasoning=algo_reasoning,
+                    candidate_evidence=candidate_evidence,
+                )
+            if chosen == 'relax':
+                # User accepts the low silhouette — fall through to the normal
+                # success path so the run continues with these clusters.
+                print(f'  [Clusterer] User relaxed silhouette floor — accepting '
+                      f'sil={sil:.4f} and continuing.')
+                _min_sil = sil - 1e-6
+                # Continue to the normal report path below (sil >= _min_sil now).
+            else:  # chosen == 'reselect' — default behavior
+                if self.bus:
+                    self.bus.report(OrchestratorMessage(
+                        agent="Clusterer",
+                        iteration=iteration,
+                        status="blocked",
+                        what_was_done=(
+                            f"Used {algo_name}, k={n_clusters}; "
+                            f"silhouette={sil:.4f} (near-random — no useful structure)."
+                        ),
+                        what_was_not_done="Clusters do not separate well — recommend reselecting features.",
+                        doubts="",
+                        issues=[f"Silhouette={sil:.3f} < {_min_sil} — near-random cluster structure."],
+                        metrics={
+                            "algorithm": algo_name,
+                            "k_selected": n_clusters,
+                            "silhouette": round(sil, 4),
+                            "k_scores": {str(k): v for k, v in k_scores.items()},
+                            "candidate_search": candidate_evidence.get("best"),
+                        },
+                        recommendation="retry",
+                        context={
+                            "action": "reselect_features",
+                            "algo_reasoning": algo_reasoning,
+                            "k_scores": k_scores,
+                            "candidate_evidence": candidate_evidence,
+                        },
+                    ))
+                return ClusteringResult(
+                    action='reselect_features',
+                    cluster_labels=None,
+                    profiles=None,
+                    lineage=None,
+                    silhouette=sil,
+                    n_leaf=None,
+                    reasoning=f"Silhouette < {_min_sil} — near-random structure. See docs/agents/clusterer.md.",
+                    iteration=iteration,
+                    algo_name=algo_name,
+                    algo_detail=algo_detail,
+                    k_scores=k_scores,
+                    algo_reasoning=algo_reasoning,
+                    candidate_evidence=candidate_evidence,
+                )
 
         sil_quality = (
             "strong" if sil >= 0.50 else
@@ -641,20 +1338,52 @@ class ClusteringAgent:
         # pass bar the orchestrator will enforce next.
         status = "success" if sil >= _target else "warning"
         issues = []
+
+        # Build rich AutoML context for the issue text
+        _cs_best = candidate_evidence.get("best") if candidate_evidence else None
+        _cs_all = candidate_evidence.get("candidates", []) if candidate_evidence else []
+        _automl_ctx = ""
+        def _fmt(val, fmt=".3f"):
+            try:
+                return format(float(val), fmt)
+            except (TypeError, ValueError):
+                return str(val)
+
+        if _cs_best:
+            _automl_ctx = (
+                f"AutoML evaluated {len(_cs_all)} candidate(s). "
+                f"Best: {_cs_best['algorithm']} k={_cs_best['k']} "
+                f"with composite={_fmt(_cs_best.get('composite_score'), '.3f')} "
+                f"(sil={_fmt(_cs_best.get('silhouette'))}, "
+                f"DB={_fmt(_cs_best.get('davies_bouldin'), '.2f')}, "
+                f"CH={_fmt(_cs_best.get('calinski_harabasz'), '.1f')}, "
+                f"ARI={_fmt(_cs_best.get('stability_ari'))}). "
+            )
+
         if sil < _target:
             issues.append(
+                f"{_automl_ctx}"
                 f"Silhouette={sil:.3f} < target {_target:.2f} — orchestrator will "
                 "reselect features (or escalate after 3 consecutive misses)."
             )
         elif sil < 0.25:
             issues.append(
+                f"{_automl_ctx}"
                 f"Silhouette={sil:.3f} < 0.25 — meets dynamic target {_target:.2f} "
                 "but clusters may still overlap; consider different k or algorithm."
             )
 
         # Build doubt + merge diagnosis
         doubt_parts = []
-        if k_scores:
+        if _cs_all:
+            # Show top-3 candidates for transparency
+            _top3 = sorted(_cs_all, key=lambda c: c.get('composite_score', 0), reverse=True)[:3]
+            _top3_str = " | ".join(
+                f"{c['algorithm']}(k={c['k']}, comp={_fmt(c.get('composite_score'), '.3f')}, sil={_fmt(c.get('silhouette'))})"
+                for c in _top3
+            )
+            doubt_parts.append(f"AutoML top-3: {_top3_str}.")
+        elif k_scores:
             doubt_parts.append(
                 f"Silhouette improved {min(k_scores.values(), default=0):.3f}→{sil:.3f} "
                 f"across k range — marginal gain."
@@ -676,15 +1405,19 @@ class ClusteringAgent:
                 status=status,
                 what_was_done=(
                     f"Used {algo_name} with k={n_clusters} "
-                    f"(auto-selected via silhouette). "
-                    f"Ran deepening loop → {n_leaf} leaf clusters. "
-                    f"Silhouette={sil:.4f} ({sil_quality})."
+                    + (
+                        f"(AutoML-selected from {len(_cs_all)} candidates, composite={_cs_best.get('composite_score', 'N/A')}). "
+                        if _cs_best else f"(auto-selected via silhouette). "
+                    )
+                    + f"Ran deepening loop → {n_leaf} leaf clusters. "
+                    + f"Silhouette={sil:.4f} ({sil_quality})."
                     + (f" Merged {len(singleton_merges)} tiny cluster(s) "
                        f"(n<{min_cluster_size}) into nearest leaf."
                        if singleton_merges else "")
                 ),
                 what_was_not_done=(
-                    "Did not try all algorithm variants simultaneously."
+                    "Did not run exhaustive hyperparameter optimisation; candidate "
+                    "search is bounded by config."
                 ),
                 doubts=" ".join(doubt_parts),
                 issues=issues,
@@ -697,12 +1430,14 @@ class ClusteringAgent:
                     "k_scores": {str(k): v for k, v in k_scores.items()},
                     "singleton_merges": len(singleton_merges),
                     "min_cluster_size": min_cluster_size,
+                    "candidate_search": candidate_evidence,
                 },
                 recommendation="proceed" if not issues else "retry",
                 context={
                     "algo_reasoning": algo_reasoning,
                     "k_scores": k_scores,
                     "singleton_merges": singleton_merges,
+                    "candidate_evidence": candidate_evidence,
                 },
             ))
 
@@ -719,6 +1454,7 @@ class ClusteringAgent:
             algo_detail=algo_detail,
             k_scores=k_scores,
             algo_reasoning=algo_reasoning,
+            candidate_evidence=candidate_evidence,
         )
 
     # ── Helpers ────────────────────────────────────────────────────────────────

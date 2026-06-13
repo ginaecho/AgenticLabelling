@@ -5,6 +5,9 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
+/** Minimum interval between automatic full UI re-renders (watchdog + evidence). */
+const UI_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
 const state = {
   personas: {},
   profiles: {},
@@ -55,6 +58,19 @@ function toast(msg, kind = 'success', ms = 2500) {
   t.textContent = msg;
   t.className = `toast ${kind}`;
   setTimeout(() => t.classList.add('hidden'), ms);
+}
+
+// ── Browser notification for interactive-mode pauses ────────────────────────
+async function notifyUser(title, body) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '' });
+  } else if (Notification.permission !== 'denied') {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      new Notification(title, { body, icon: '' });
+    }
+  }
 }
 
 // ── State loading + rendering ───────────────────────────────────────────────
@@ -294,13 +310,15 @@ function renderDetail() {
       <label style="color:var(--good)">Discuss with agent (multi-turn · naming ledger)</label>
       <p class="muted" style="margin:4px 0 8px;font-size:11.5px">
         Ask why a trait was chosen, challenge a feature interpretation, or
-        explore alternatives. Each reply lands in the <b>Naming discussions</b>
-        ledger, separate from the pipeline cost.
+        compare this cluster with another (e.g. <i>"why are clusters 0 and 3
+        both high-spend, but 0 leans X while 3 leans Y?"</i>) — the agent can
+        see every cluster's numbers. Each reply lands in the
+        <b>Naming discussions</b> ledger, separate from the pipeline cost.
       </p>
       <div class="chat-thread" id="chat-thread"></div>
       <div class="chat-input-row">
         <textarea id="chat-input" rows="2"
-          placeholder='e.g. "where does the &quot;kids&quot; conclusion come from? which feature shows that?"'></textarea>
+          placeholder='e.g. "why do clusters 0 and 3 both look high-value but differ? which features?"'></textarea>
         <button class="primary" id="chat-send">Send</button>
       </div>
       <div class="chat-actions">
@@ -1042,6 +1060,12 @@ function gatesForAgent(agentKey, status, metrics, issues) {
       push(`silhouette ${sil.toFixed(3)}`,
            sil >= 0.25 ? 'pass' : sil >= 0.15 ? 'warn' : 'fail');
     }
+    // AutoML composite score chip
+    const candBest = m.candidate_search?.best;
+    if (candBest?.composite_score != null) {
+      const comp = Number(candBest.composite_score);
+      push(`AutoML comp ${comp.toFixed(3)}`, comp >= 0.6 ? 'pass' : comp >= 0.4 ? 'warn' : 'fail');
+    }
     if (m.n_leaf_clusters != null || m.n_clusters != null)
       push(`${m.n_leaf_clusters || m.n_clusters} clusters`, 'pass');
     // 40% guard
@@ -1176,16 +1200,28 @@ async function renderEvidence() {
   const completion = state.events.slice().reverse().find(e => e.event === 'pipeline_complete');
   if (completion) cards.push(buildFinalSummaryCard(completion));
 
+  // Threshold decisions that were auto-applied in bypass mode — pinned high
+  // so the user sees what was relaxed before scrolling through the rest.
+  const autoCard = buildAutoAppliedDecisionsCard();
+  if (autoCard) cards.push(autoCard);
+
   // Uploaded dataset preview (raw input, before any agent runs)
   if (agg.upload_preview) cards.push(buildUploadPreviewCard(agg.upload_preview));
+
+  // Dataset state AFTER FeatureEngineer / FeatureSelector ran.
+  // Always shown alongside the original upload so the user can compare.
+  if (agg.pre_modelling_preview) cards.push(buildPreModellingPreviewCard(agg.pre_modelling_preview));
 
   // Dataset profile — populates immediately from upload preview, then gets
   // enriched (suggested feature groups, skewness, missing) when DatasetExaminer runs.
   const dse = outputsState.DatasetExaminer?.latest;
   cards.push(buildDatasetCard(dse, agg.upload_preview));
+  const rowCountNote = buildDatasetRowCountNoteCard(dse, agg.upload_preview);
+  if (rowCountNote) cards.push(rowCountNote);
 
   if (dse) cards.push(buildSkewCard(dse));
-  if (dse?.context?.group_details) cards.push(buildFeatureGroupsCard(dse));
+  if (outputsState.DatasetExaminer?.history?.length)
+    cards.push(buildFeatureGroupsHistoryCard(outputsState.DatasetExaminer.history));
 
   // The literal evidence behind the skewness warning: per-column skew bars
   if (agg.upload_preview && agg.upload_preview.preview && agg.upload_preview.preview.col_stats) {
@@ -1231,6 +1267,9 @@ async function renderEvidence() {
   if (showSavedOutputs) {
     if (agg.silhouette_curve)       cards.push(buildSilhouetteCard(agg.silhouette_curve));
     if (agg.cluster_sizes)          cards.push(buildClusterSizeCard(agg.cluster_sizes));
+    // Cross-cluster comparison / contrasting analysis (LLM, evidence ledger).
+    if (Object.keys(state.personas || {}).length >= 2)
+      cards.push(buildClusterComparisonCard());
     if (agg.lineage)                cards.push(buildLineageCard(agg.lineage));
     if (agg.classifier)             cards.push(buildClassifierCard(agg.classifier));
     if (agg.classifier && agg.classifier.top20_features)
@@ -1254,42 +1293,122 @@ async function renderEvidence() {
   // Lazy-load the outputs file list (separate endpoint)
   loadOutputsFiles();
   wireExplainButtons();
+  wireComparisonButton();
   autoScrollForDemo();
 }
 
+// In-flight state for explain calls, keyed by `agent::issue`. Same rationale
+// as _comparisonState: renderEvidence rebuilds the panel on every agent_report,
+// so closure-captured DOM refs go stale mid-call.
+const _explainState = new Map();  // key -> {resultHTML, inFlight, outId}
+
 function wireExplainButtons() {
   document.querySelectorAll('.explain-btn[data-explain-issue]').forEach((btn) => {
+    const agent = btn.dataset.explainAgent || 'unknown';
+    const issue = btn.dataset.explainIssue || '';
+    const key = `${agent}::${issue}`;
+    const outId = btn.nextElementSibling && btn.nextElementSibling.id;
+
+    // Re-attach to any prior call after a panel rebuild.
+    const prior = _explainState.get(key);
+    if (prior && outId) {
+      const freshOut = document.getElementById(outId);
+      if (prior.resultHTML && freshOut) {
+        freshOut.hidden = false;
+        freshOut.innerHTML = prior.resultHTML;
+        btn.textContent = 'Explain again';
+      }
+      if (prior.inFlight) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner"></span>Asking LLM (evidence ledger)…`;
+      }
+    }
+
     btn.onclick = async () => {
-      const agent = btn.dataset.explainAgent || 'unknown';
-      const issue = btn.dataset.explainIssue || '';
+      if (_explainState.get(key)?.inFlight) return;  // guard double-fires after rebuild
       let evidence = {};
       try { evidence = JSON.parse(btn.dataset.explainEvidence || '{}'); } catch (_) {}
       const out = btn.nextElementSibling;
+      _explainState.set(key, {inFlight: true, resultHTML: null, outId});
       btn.disabled = true;
       btn.innerHTML = `<span class="spinner"></span>Asking LLM (evidence ledger)…`;
+      let html;
+      let isError = false;
       try {
         const r = await api('POST', '/api/explain', {agent, issue, evidence});
-        out.hidden = false;
-        out.innerHTML = `
-          <div class="explain-card">
+        // Backend may return either {decision, reasoning, visual_to_check}
+        // (the structured contract) OR {explanation, visual_to_check} (the
+        // fallback when LLM output isn't valid JSON). Render whichever
+        // fields are present so the user always sees something.
+        const decision = r.decision || '';
+        const reasoning = r.reasoning || '';
+        const fallback = r.explanation || '';
+        const visual = r.visual_to_check || '';
+        const error = r.error || '';
+        const cached = r._cached ? ' <span class="muted">· cached</span>' : '';
+        if (error) {
+          html = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(error)}</div>`;
+          isError = true;
+        } else {
+          const sections = [];
+          if (decision) sections.push(`
             <div class="explain-section">
-              <div class="muted">Plain-English explanation</div>
-              <div>${escapeHtml(r.explanation || '(no explanation)')}</div>
-            </div>
+              <div class="muted">Agent's decision${cached}</div>
+              <div>${escapeHtml(decision)}</div>
+            </div>`);
+          if (reasoning) sections.push(`
+            <div class="explain-section">
+              <div class="muted">Why</div>
+              <div>${escapeHtml(reasoning)}</div>
+            </div>`);
+          if (!decision && !reasoning && fallback) sections.push(`
+            <div class="explain-section">
+              <div class="muted">Plain-English explanation${cached}</div>
+              <div>${escapeHtml(fallback)}</div>
+            </div>`);
+          if (visual) sections.push(`
             <div class="explain-section">
               <div class="muted">Which visual confirms it</div>
-              <div>${escapeHtml(r.visual_to_check || '(no recommendation)')}</div>
-            </div>
-            <div class="muted" style="font-size:10.5px;margin-top:6px">
-              ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
-            </div>
-          </div>`;
+              <div>${escapeHtml(visual)}</div>
+            </div>`);
+          if (!sections.length) sections.push(`
+            <div class="muted" style="color:var(--bad)">
+              LLM returned an empty response — try again or check the server log.
+            </div>`);
+          html = `
+            <div class="explain-card">
+              ${sections.join('')}
+              <div class="muted" style="font-size:10.5px;margin-top:6px">
+                ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
+              </div>
+            </div>`;
+        }
       } catch (e) {
-        out.hidden = false;
-        out.innerHTML = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(e.message)}</div>`;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Explain again';
+        html = `<div class="muted" style="color:var(--bad)">Explain failed: ${escapeHtml(e.message)}</div>`;
+        isError = true;
+      }
+      // Cache successful results so a panel rebuild can repaint them; clear
+      // the in-flight flag either way.
+      _explainState.set(key, {
+        inFlight: false,
+        resultHTML: isError ? null : html,
+        outId,
+      });
+      // Re-look-up by id: renderEvidence may have rebuilt the panel while we
+      // awaited, leaving our closure-captured `out` / `btn` refs detached.
+      // The out div has a stable id; the button is its previous sibling.
+      const freshOut = outId ? document.getElementById(outId) : out;
+      const freshBtn = (freshOut && freshOut.previousElementSibling
+                       && freshOut.previousElementSibling.classList.contains('explain-btn'))
+        ? freshOut.previousElementSibling
+        : btn;
+      if (freshOut) {
+        freshOut.hidden = false;
+        freshOut.innerHTML = html;
+      }
+      if (freshBtn) {
+        freshBtn.disabled = false;
+        freshBtn.textContent = 'Explain again';
       }
     };
   });
@@ -1312,6 +1431,7 @@ async function loadOutputsFiles() {
     const HIDE = new Set([
       'pipeline_events.jsonl', 'pending_intent.json',
       'pending_decision.json', 'pending_target_change.json',
+      'pending_case_recall.json',
       'pipeline_mode.json',
     ]);
     visible = visible.filter(f => !HIDE.has(f.name));
@@ -1711,13 +1831,150 @@ function buildUploadPreviewCard(up) {
     '<tr>' + r.map(c => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>'
   ).join('') + '</tbody>';
   return `
-    <div class="ev-card span2">
-      <h3>Uploaded dataset
+    <div class="ev-card span2" id="ev-original-upload-card">
+      <h3>Original uploaded dataset
         <span class="iter">${escapeHtml(up.name || '')} · ${nRows} × ${cols.length} · showing first ${rows.length} rows</span>
       </h3>
-      <p class="lead">Raw data the pipeline ingested. Saved to <code>${escapeHtml(up.path || '')}</code>.</p>
+      <p class="lead">Raw data exactly as you uploaded it — pinned here so you can always compare against any later transformation. Saved to <code>${escapeHtml(up.path || '')}</code>.</p>
       <div class="dz-preview-table-wrap">
         <table class="dz-preview-table">${head}${body}</table>
+      </div>
+    </div>`;
+}
+
+function _preModellingStageLabel(p) {
+  return p.stage === 'feature_selection'
+    ? `After FeatureSelector (iter ${p.iteration})`
+    : `After FeatureEngineer (iter ${p.iteration})`;
+}
+
+function _preModellingLead(p) {
+  return p.stage === 'feature_selection'
+    ? 'Dataset after feature selection trimmed the engineered table — this is what the Clusterer actually sees.'
+    : 'Dataset after FeatureEngineer turned the raw rows into entity-level features.';
+}
+
+function _preModellingTable(p) {
+  const cols = p.columns || [];
+  const rows = p.rows || [];
+  const head = '<thead><tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
+  const body = '<tbody>' + rows.map(r =>
+    '<tr>' + r.map(c => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>'
+  ).join('') + '</tbody>';
+  return `
+    <div class="dz-preview-table-wrap">
+      <table class="dz-preview-table">${head}${body}</table>
+    </div>`;
+}
+
+function _diffPreModellingCols(prev, latest) {
+  const prevCols = new Set(prev.columns || []);
+  const latestCols = new Set(latest.columns || []);
+  const added = [...latestCols].filter(c => !prevCols.has(c));
+  const dropped = [...prevCols].filter(c => !latestCols.has(c));
+  return {added, dropped};
+}
+
+function buildPreModellingPreviewCard(snapshots) {
+  // Back-compat: older runs wrote a single dict, not a list.
+  const list = Array.isArray(snapshots) ? snapshots
+             : (snapshots ? [snapshots] : []);
+  if (!list.length) return '';
+  // Show most-recent at the top.
+  const sorted = list.slice().sort((a, b) => {
+    // Order by ts when present, else by iteration.
+    const ta = a.ts || `${a.iteration}:${a.stage}`;
+    const tb = b.ts || `${b.iteration}:${b.stage}`;
+    return tb.localeCompare(ta);
+  });
+  const latest = sorted[0];
+  const prior = sorted.slice(1);
+
+  const fmt = (v) => v != null ? Number(v).toLocaleString() : '?';
+  const latestRows = (latest.rows || []);
+  const latestHeader = `${escapeHtml(_preModellingStageLabel(latest))} · ${fmt(latest.n_rows)} × ${fmt(latest.n_cols)} · showing first ${latestRows.length} rows`;
+
+  const stageCount = sorted.length;
+  const feCount = sorted.filter(s => s.stage === 'feature_engineering').length;
+  const fsCount = sorted.filter(s => s.stage === 'feature_selection').length;
+  const stageSummary = `${stageCount} snapshot${stageCount > 1 ? 's' : ''} · ${feCount} FeatureEngineer · ${fsCount} FeatureSelector`;
+
+  const priorHtml = prior.map(snap => {
+    const diff = _diffPreModellingCols(snap, latest);
+    const diffBits = [];
+    if (diff.added.length)   diffBits.push(`+${diff.added.length} new cols vs latest`);
+    if (diff.dropped.length) diffBits.push(`−${diff.dropped.length} dropped vs latest`);
+    if (!diffBits.length)    diffBits.push('column set unchanged vs latest');
+    const subTitle = `${fmt(snap.n_rows)} × ${fmt(snap.n_cols)} · ${diffBits.join(' · ')}`;
+    return `
+      <details class="iter-row" style="margin-top:6px">
+        <summary class="iter-row-head" style="cursor:pointer">
+          <span class="iter-badge">${escapeHtml(_preModellingStageLabel(snap))}</span>
+          <span class="iter-summary">${escapeHtml(subTitle)}</span>
+        </summary>
+        <div class="iter-row-body" style="padding-top:8px">
+          <div class="muted" style="margin-bottom:6px">${escapeHtml(_preModellingLead(snap))}</div>
+          ${(diff.added.length || diff.dropped.length) ? `
+            <div class="muted" style="font-size:11.5px;margin-bottom:8px">
+              ${diff.added.length   ? `<b>Added (${diff.added.length}):</b> ${escapeHtml(diff.added.slice(0,12).join(', '))}${diff.added.length > 12 ? ` …(+${diff.added.length - 12} more)` : ''}<br>` : ''}
+              ${diff.dropped.length ? `<b>Dropped (${diff.dropped.length}):</b> ${escapeHtml(diff.dropped.slice(0,12).join(', '))}${diff.dropped.length > 12 ? ` …(+${diff.dropped.length - 12} more)` : ''}` : ''}
+            </div>` : ''}
+          ${_preModellingTable(snap)}
+        </div>
+      </details>`;
+  }).join('');
+
+  return `
+    <div class="ev-card span2" id="ev-pre-modelling-card">
+      <h3>Pre-modelling dataset
+        <span class="iter">${latestHeader}</span>
+      </h3>
+      <p class="lead">${_preModellingLead(latest)} <span class="muted">· ${escapeHtml(stageSummary)}${prior.length ? ' — expand any earlier snapshot below to compare' : ''}.</span></p>
+      ${_preModellingTable(latest)}
+      ${prior.length ? `
+        <div class="muted" style="margin-top:14px;font-size:11.5px;text-transform:uppercase;letter-spacing:0.5px">
+          Earlier snapshots (newest first)
+        </div>
+        ${priorHtml}` : ''}
+    </div>`;
+}
+
+function buildDatasetRowCountNoteCard(dse, upload) {
+  const m = dse?.metrics || {};
+  const up = upload?.preview || {};
+  const profileRows = m.n_rows ?? up.stats_sample_size ?? null;
+  const fullRows = m.n_rows_source ?? up.n_rows ?? null;
+  const subsampled = fullRows != null && profileRows != null && fullRows > profileRows;
+  if (!subsampled) return '';
+
+  const fmt = (v) => (typeof v === 'number' ? Number(v).toLocaleString() : String(v));
+  const fullLabel = fmt(fullRows);
+  const profileLabel = fmt(profileRows);
+
+  return `
+    <div class="ev-card span2 ev-note">
+      <h3>Why is the row count lower than my file?</h3>
+      <p class="lead">
+        When a raw CSV has more than 50,000 rows, <b>DatasetExaminer</b> profiles a random
+        ${profileLabel}-row sample for speed — it only needs schema, column types, missing rates,
+        and feature-group suggestions. The <b>Dataset profile</b> figure above (${profileLabel} rows)
+        is that sample size, not your full file.
+      </p>
+      <p class="lead">
+        Your full dataset (<b>${fullLabel} rows</b>) is still loaded and passed to
+        <b>FeatureEngineer</b>, which uses every row. After that step, row count reflects
+        <b>entities</b> (e.g. customers or cards), not raw transaction rows — so it will
+        differ again from the source file.
+      </p>
+      <div class="ev-note-table-wrap">
+        <table class="ev-note-table">
+          <thead><tr><th>Step</th><th>Rows used</th></tr></thead>
+          <tbody>
+            <tr><td>DatasetExaminer (profile above)</td><td>${profileLabel} (sample)</td></tr>
+            <tr><td>FeatureEngineer</td><td>${fullLabel} (full file)</td></tr>
+            <tr><td>Clustering</td><td>Engineered entity matrix</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>`;
 }
@@ -1728,7 +1985,7 @@ function buildDatasetCard(dse, upload) {
   const colStats = up.col_stats || [];
   // Prefer the agent's profile once it runs; otherwise use the upload directly
   const rows = (m.n_rows ?? up.n_rows);
-  const totalCols = up.n_cols;
+  const totalCols = m.n_cols ?? up.n_cols ?? (colStats.length || null);
   const numericFromUpload = colStats.filter(c => c.numeric).length || null;
   const numericCols = m.n_numeric_cols ?? numericFromUpload;
   const highMissingFromUpload = colStats.filter(c => (c.missing_pct || 0) > 30).length;
@@ -1893,31 +2150,78 @@ function renderPCAScatter(pca) {
     </div>`;
 }
 
-function buildFeatureGroupsCard(dse) {
-  const groups = dse.context?.suggested_feature_groups || [];
-  const details = dse.context?.group_details || {};
-  if (!groups.length && !Object.keys(details).length) return '';
+function _renderFeatureGroupsList(dse) {
+  const groups = dse?.context?.suggested_feature_groups || [];
+  const details = dse?.context?.group_details || {};
   const entries = groups.length ? groups : Object.keys(details);
+  if (!entries.length) return '<div class="muted">No groups recorded for this iteration.</div>';
+  return `
+    <div class="feat-groups">
+      ${entries.map(g => {
+        const d = details[g] || {};
+        const desc = d.description || '';
+        const cols = (d.source_columns || []).join(', ');
+        const why = d.rationale || '';
+        return `
+          <div class="feat-group">
+            <div class="fg-name">${escapeHtml(g)}</div>
+            ${desc ? `<div class="fg-desc">${escapeHtml(desc)}</div>` : ''}
+            ${cols ? `<div class="fg-cols"><b>Built from:</b> ${escapeHtml(cols)}</div>` : ''}
+            ${why ? `<div class="fg-why"><b>Why:</b> ${escapeHtml(why)}</div>` : ''}
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function _groupSet(dse) {
+  const groups = dse?.context?.suggested_feature_groups || [];
+  const details = dse?.context?.group_details || {};
+  const entries = groups.length ? groups : Object.keys(details);
+  return new Set(entries.map(String));
+}
+
+function buildFeatureGroupsHistoryCard(history) {
+  const sorted = history.slice().sort((a, b) =>
+    (Number(a.iteration) || 0) - (Number(b.iteration) || 0));
+  const latest = sorted[sorted.length - 1];
+  const prior = sorted.slice(0, -1);
+  const latestSet = _groupSet(latest);
+  const latestCount = latestSet.size;
+
+  const priorHtml = prior.slice().reverse().map(iter => {
+    const set = _groupSet(iter);
+    const added = [...latestSet].filter(g => !set.has(g)).length;
+    const removed = [...set].filter(g => !latestSet.has(g)).length;
+    let diff;
+    if (!set.size) diff = `${latestSet.size} groups`;
+    else if (!added && !removed) diff = `${set.size} groups · unchanged vs latest`;
+    else diff = `${set.size} groups · vs latest: +${added} new, −${removed} dropped`;
+    return `
+      <details class="iter-row" style="margin-top:6px">
+        <summary class="iter-row-head" style="cursor:pointer">
+          <span class="iter-badge">iter ${iter.iteration}</span>
+          <span class="iter-summary">${escapeHtml(diff)}</span>
+        </summary>
+        <div class="iter-row-body" style="padding-top:8px">
+          ${_renderFeatureGroupsList(iter)}
+        </div>
+      </details>`;
+  }).join('');
+
   return `
     <div class="ev-card span2">
-      <h3>Suggested feature groups <span class="iter">DatasetExaminer · ${entries.length} groups</span></h3>
+      <h3>Suggested feature groups
+        <span class="iter">DatasetExaminer · iter ${latest.iteration} (latest) · ${latestCount} groups${prior.length ? ` · ${prior.length} earlier iteration${prior.length > 1 ? 's' : ''}` : ''}</span>
+      </h3>
       <p class="lead">These are the families of features DatasetExaminer asked FeatureEngineer to build.
-        Each group is a behavioural lens on the entity (e.g. "spending_behaviour", "category_preferences").</p>
-      <div class="feat-groups">
-        ${entries.map(g => {
-          const d = details[g] || {};
-          const desc = d.description || '';
-          const cols = (d.source_columns || []).join(', ');
-          const why = d.rationale || '';
-          return `
-            <div class="feat-group">
-              <div class="fg-name">${escapeHtml(g)}</div>
-              ${desc ? `<div class="fg-desc">${escapeHtml(desc)}</div>` : ''}
-              ${cols ? `<div class="fg-cols"><b>Built from:</b> ${escapeHtml(cols)}</div>` : ''}
-              ${why ? `<div class="fg-why"><b>Why:</b> ${escapeHtml(why)}</div>` : ''}
-            </div>`;
-        }).join('')}
-      </div>
+        Each group is a behavioural lens on the entity (e.g. "spending_behaviour", "category_preferences").
+        ${prior.length ? 'Previous iterations are kept below — expand any row to compare.' : ''}</p>
+      ${_renderFeatureGroupsList(latest)}
+      ${prior.length ? `
+        <div class="muted" style="margin-top:14px;font-size:11.5px;text-transform:uppercase;letter-spacing:0.5px">
+          Earlier iterations (newest first)
+        </div>
+        ${priorHtml}` : ''}
     </div>`;
 }
 
@@ -2018,6 +2322,119 @@ function buildClusterSizeCard(sizes) {
     </div>`;
 }
 
+// Cross-cluster comparison card — an LLM contrasting analysis across ALL
+// clusters at once (the per-cluster chat handles single-cluster questions).
+// The call is lazy (button-triggered) so it only bills the evidence ledger
+// when the user actually asks for it.
+function buildClusterComparisonCard() {
+  const n = Object.keys(state.personas || {}).length;
+  return `
+    <div class="ev-card span2" id="ev-cluster-comparison">
+      <h3>Cross-cluster comparison <span class="iter">${n} clusters · LLM · evidence ledger</span></h3>
+      <p class="lead">A contrasting analysis across every cluster at once — which
+        axes separate them, which pairs look alike on one trait but diverge on
+        another, and which clusters overlap. Runs on demand.</p>
+      <div class="row" style="gap:8px;align-items:flex-start;margin-bottom:8px">
+        <input id="ev-compare-focus" type="text"
+          placeholder="Optional focus, e.g. 'why C0 vs C3 both high-spend differ'"
+          style="flex:1;min-width:220px" />
+        <button class="primary" id="ev-compare-btn">Compare clusters</button>
+      </div>
+      <div id="ev-compare-out" class="explain-out" hidden></div>
+    </div>`;
+}
+
+// In-flight state for the cross-cluster comparison call. Held at module level
+// so a panel rebuild (renderEvidence fires on every agent_report SSE event)
+// can re-attach to the same logical call instead of orphaning its result.
+// Without this, the result would be written to a detached <div id="ev-compare-out">
+// and the user would see the spinner vanish with no answer ("page refreshed").
+const _comparisonState = {inFlight: false, focus: '', resultHTML: null};
+
+function _renderComparisonResult(r) {
+  return `
+    <div class="explain-card">
+      <div class="explain-section">
+        <div class="muted">Contrasting analysis across ${r.n_clusters} clusters${r._cached ? ' · cached' : ''}</div>
+        <div style="white-space:pre-wrap;word-break:break-word;line-height:1.5">${escapeHtml(r.comparison || '(no analysis)')}</div>
+      </div>
+      <div class="muted" style="font-size:10.5px;margin-top:6px">
+        ✓ This cost was added to the <b>Evidence</b> ledger (not the Pipeline ledger).
+      </div>
+    </div>`;
+}
+
+function _renderComparisonError(e) {
+  const msg = String(e.message || 'unknown error');
+  const staleUi = /not found/i.test(msg);
+  return staleUi
+    ? `<div class="muted" style="color:var(--bad)">
+        Comparison failed: the UI server is outdated (missing <code>/api/cluster-comparison</code>).
+        Stop the old process on this port and restart <code>python run_pipeline.py</code>,
+        or open the URL printed in the terminal if it moved to a new port (e.g. 5058).
+      </div>`
+    : `<div class="muted" style="color:var(--bad)">Comparison failed: ${escapeHtml(msg)}</div>`;
+}
+
+function wireComparisonButton() {
+  const btn = document.getElementById('ev-compare-btn');
+  if (!btn) return;
+
+  // If a previous call finished while the panel was being rebuilt, the result
+  // HTML was stashed on _comparisonState. Paint it into the fresh DOM.
+  if (_comparisonState.resultHTML) {
+    const freshOut = document.getElementById('ev-compare-out');
+    if (freshOut) {
+      freshOut.hidden = false;
+      freshOut.innerHTML = _comparisonState.resultHTML;
+    }
+    btn.textContent = 'Compare again';
+  }
+
+  // If a call is still in flight when the panel rebuilds, restore the in-progress
+  // UI on the new button + restore the focus input value the user typed.
+  if (_comparisonState.inFlight) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span>Comparing (evidence ledger)…`;
+    const focusInput = document.getElementById('ev-compare-focus');
+    if (focusInput && _comparisonState.focus) focusInput.value = _comparisonState.focus;
+  }
+
+  btn.onclick = async () => {
+    if (_comparisonState.inFlight) return;  // guard double-fires after rebuild
+    const focus = (document.getElementById('ev-compare-focus')?.value || '').trim();
+    _comparisonState.inFlight = true;
+    _comparisonState.focus = focus;
+    _comparisonState.resultHTML = null;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span>Comparing (evidence ledger)…`;
+    let html;
+    let isError = false;
+    try {
+      const r = await api('POST', '/api/cluster-comparison', {focus});
+      html = _renderComparisonResult(r);
+    } catch (e) {
+      html = _renderComparisonError(e);
+      isError = true;
+    }
+    _comparisonState.inFlight = false;
+    // Only cache successful results — errors shouldn't survive a panel rebuild.
+    _comparisonState.resultHTML = isError ? null : html;
+    // Re-look-up by id: the original `btn` / `out` closure refs may now point
+    // to detached DOM nodes if renderEvidence rebuilt the panel while we awaited.
+    const freshOut = document.getElementById('ev-compare-out');
+    const freshBtn = document.getElementById('ev-compare-btn');
+    if (freshOut) {
+      freshOut.hidden = false;
+      freshOut.innerHTML = html;
+    }
+    if (freshBtn) {
+      freshBtn.disabled = false;
+      freshBtn.textContent = 'Compare again';
+    }
+  };
+}
+
 function buildClassifierCard(c) {
   const f1 = Number(c.cv_f1_macro || 0);
   const pcf = c.per_class_f1 || {};
@@ -2103,39 +2520,45 @@ async function triggerBypassAutoDecision(agent, issues) {
   const issueText = issues.join(' · ');
   const cur = outputsState[agent];
   if (cur?.autoDecision && cur.autoDecision._key === issueText) return;
-  // Preserve the PRIOR decision text while the new LLM call is in flight —
-  // otherwise the user sees a flash of "loading…" that wipes the visible
-  // explanation for 5-30 seconds.
   const prior = cur?.autoDecision;
+  const currentIter = cur?.latest?.iteration;
+  // Only preserve prior decision if it's from the SAME iteration.
+  // If iteration changed, old decisions are stale and must not be shown.
+  const sameIter = prior && prior.iteration != null && currentIter != null
+    ? prior.iteration === currentIter
+    : true;  // if no iteration info, preserve for backwards compat
   outputsState[agent].autoDecision = {
     _key: issueText,
+    iteration: currentIter,
     loading: true,
-    // Keep prior fields visible while we wait
-    decision: prior?.decision,
-    reasoning: prior?.reasoning,
-    visual: prior?.visual,
-    priorIssue: prior?._key,
+    // Keep prior fields visible while we wait ONLY if same iteration
+    decision: sameIter ? prior?.decision : undefined,
+    reasoning: sameIter ? prior?.reasoning : undefined,
+    visual: sameIter ? prior?.visual : undefined,
   };
   renderOutputsPanel();
   try {
     const r = await api('POST', '/api/explain', {
       agent, issue: issueText,
+      iteration: currentIter,
       evidence: cur?.latest?.metrics || {},
     });
     outputsState[agent].autoDecision = {
       _key: issueText,
+      iteration: currentIter,
       decision: r.decision || r.explanation || '',
       reasoning: r.reasoning || '',
       visual: r.visual_to_check || '',
       loading: false,
     };
   } catch (err) {
-    // On error, restore prior decision (don't wipe what was working)
+    // On error, restore prior decision only if same iteration
     outputsState[agent].autoDecision = {
       _key: prior?._key || issueText,
-      decision: prior?.decision,
-      reasoning: prior?.reasoning,
-      visual: prior?.visual,
+      iteration: sameIter ? prior?.iteration : currentIter,
+      decision: sameIter ? prior?.decision : undefined,
+      reasoning: sameIter ? prior?.reasoning : undefined,
+      visual: sameIter ? prior?.visual : undefined,
       error: err.message,
       loading: false,
     };
@@ -2262,7 +2685,7 @@ function renderOutputsPanel() {
       <div class="oc-auto">
         <div class="oc-auto-head">
           Pipeline decision
-          <span class="muted">(bypass mode · evidence ledger)</span>
+          <span class="muted">(bypass mode · evidence ledger${ad.iteration != null ? ` · iter ${ad.iteration}` : ''})</span>
           ${ad.loading ? `<span class="muted" style="color:var(--accent)"> · <span class="spinner"></span>updating…</span>` : ''}
         </div>
         ${hasDecision
@@ -2420,6 +2843,454 @@ function wireDecisionModal() {
   $('#decision-bypass').onclick = () => submitDecision('ignore');
   $('#decision-modal').addEventListener('click', (ev) => {
     if (ev.target.id === 'decision-modal') closeDecisionModal();
+  });
+}
+
+// ── Threshold-decision modal (clusterer / orchestrator gates) ─────────────
+// Triggered by `awaiting_threshold_decision` SSE events from
+// skills/user_decisions.py. The event payload carries an option list +
+// recommended key; we render one button per option and POST the chosen key
+// back to /api/threshold-decision which unblocks the polling agent.
+let _pendingThreshold = null;
+let _thresholdTimeoutTimer = null;
+
+function openThresholdModal(e) {
+  _pendingThreshold = e;
+  $('#threshold-title').textContent = `⏸ ${e.title || 'Threshold reached'}`;
+  $('#threshold-summary').textContent = e.summary || '';
+  const extra = e.extra || {};
+  const fromLine = `<div class="warn-from">From ${escapeHtml(e.agent || '?')} · decision id <code>${escapeHtml(e.decision_id || '')}</code></div>`;
+  // Render every non-empty extra field as a metric row so the user has
+  // concrete evidence beside the prompt (silhouette value, cluster count, ...).
+  const extraRows = Object.entries(extra)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `<div><b>${escapeHtml(k)}:</b> ${escapeHtml(String(v))}</div>`)
+    .join('');
+  $('#threshold-context').innerHTML = fromLine + extraRows;
+  const optsHost = $('#threshold-options');
+  optsHost.innerHTML = '';
+  const options = Array.isArray(e.options) ? e.options : [];
+  const recommended = e.recommended;
+  options.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.className = opt.key === recommended ? 'primary' : 'ghost';
+    btn.style.cssText = 'text-align:left;padding:10px 12px;display:flex;flex-direction:column;align-items:flex-start;gap:2px';
+    btn.innerHTML = `
+      <span><b>${escapeHtml(opt.label || opt.key)}</b>${opt.key === recommended ? ' <span class="muted" style="font-weight:normal">(recommended)</span>' : ''}</span>
+      ${opt.description ? `<span class="muted" style="font-size:12px">${escapeHtml(opt.description)}</span>` : ''}`;
+    btn.onclick = () => submitThresholdDecision(opt.key);
+    optsHost.appendChild(btn);
+  });
+  $('#threshold-use-recommended').onclick = () => submitThresholdDecision(recommended);
+  $('#threshold-modal').classList.remove('hidden');
+  // Countdown until the backend auto-applies the recommended option.
+  if (_thresholdTimeoutTimer) clearInterval(_thresholdTimeoutTimer);
+  const deadline = Date.now() + (Number(e.timeout_s || 300) * 1000);
+  const tickLabel = () => {
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    $('#threshold-timeout-label').textContent =
+      remaining > 0
+        ? `Auto-applies "${recommended}" in ${m}:${String(s).padStart(2, '0')} if no choice.`
+        : 'Auto-applying recommended…';
+  };
+  tickLabel();
+  _thresholdTimeoutTimer = setInterval(tickLabel, 1000);
+}
+
+function closeThresholdModal() {
+  _pendingThreshold = null;
+  if (_thresholdTimeoutTimer) { clearInterval(_thresholdTimeoutTimer); _thresholdTimeoutTimer = null; }
+  $('#threshold-modal').classList.add('hidden');
+}
+
+async function submitThresholdDecision(chosenKey) {
+  const decision = _pendingThreshold;
+  if (!decision || !chosenKey) return;
+  try {
+    await api('POST', '/api/threshold-decision', {
+      decision_id: decision.decision_id,
+      chosen_key: chosenKey,
+    });
+    closeThresholdModal();
+    toast(`Decision sent: ${chosenKey} — pipeline resuming`, 'success', 3000);
+  } catch (e) {
+    toast(`Could not submit decision: ${e.message}`, 'error', 4000);
+  }
+}
+
+function wireThresholdModal() {
+  $('#threshold-modal').addEventListener('click', (ev) => {
+    // Don't close on background click — these are critical decisions.
+    // The user must pick an option (or wait for the timeout).
+    ev.stopPropagation();
+  });
+}
+
+// ── Control-gates tuning modal (after dataset examination) ─────────────────
+// Triggered by `awaiting_control_gates` SSE events. The user sets
+// max_cluster_size_pct, sub_n_clusters, and max_depth before clustering.
+let _pendingControlGates = null;
+let _controlGatesTimeoutTimer = null;
+
+function openControlGatesModal(e) {
+  _pendingControlGates = e;
+  const defaults = e.defaults || {};
+  $('#cg-max-pct').value = defaults.max_cluster_size_pct ?? 0.40;
+  $('#cg-sub-k').value = defaults.sub_n_clusters ?? 3;
+  $('#cg-max-depth').value = defaults.max_depth ?? 2;
+
+  // Build a friendly stats summary
+  const stats = e.dataset_stats || {};
+  const lines = [];
+  if (stats.n_rows) lines.push(`${Number(stats.n_rows).toLocaleString()} rows`);
+  if (stats.n_features) lines.push(`${stats.n_features} features`);
+  if (stats.modality) lines.push(`modality=${stats.modality}`);
+  if (stats.mean_abs_skewness != null) lines.push(`skew=${stats.mean_abs_skewness}`);
+  $('#control-gates-context').innerHTML =
+    lines.length ? `<b>Dataset:</b> ${lines.join(' · ')}` : '';
+
+  $('#control-gates-modal').classList.remove('hidden');
+
+  if (_controlGatesTimeoutTimer) clearInterval(_controlGatesTimeoutTimer);
+  const deadline = Date.now() + (Number(e.timeout_s || 300) * 1000);
+  const tickLabel = () => {
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    $('#control-gates-timeout-label').textContent =
+      remaining > 0
+        ? `Auto-continues with defaults in ${m}:${String(s).padStart(2, '0')}.`
+        : 'Auto-continuing with defaults…';
+  };
+  tickLabel();
+  _controlGatesTimeoutTimer = setInterval(tickLabel, 1000);
+}
+
+function closeControlGatesModal() {
+  _pendingControlGates = null;
+  if (_controlGatesTimeoutTimer) { clearInterval(_controlGatesTimeoutTimer); _controlGatesTimeoutTimer = null; }
+  $('#control-gates-modal').classList.add('hidden');
+}
+
+async function submitControlGates(useDefaults) {
+  const payload = useDefaults
+    ? {
+        max_cluster_size_pct: (_pendingControlGates?.defaults?.max_cluster_size_pct) ?? 0.40,
+        sub_n_clusters: (_pendingControlGates?.defaults?.sub_n_clusters) ?? 3,
+        max_depth: (_pendingControlGates?.defaults?.max_depth) ?? 2,
+      }
+    : {
+        max_cluster_size_pct: Number($('#cg-max-pct').value),
+        sub_n_clusters: Number($('#cg-sub-k').value),
+        max_depth: Number($('#cg-max-depth').value),
+      };
+  try {
+    await api('POST', '/api/control-gates', payload);
+    closeControlGatesModal();
+    toast(
+      `Control gates set: max=${payload.max_cluster_size_pct}% · sub=${payload.sub_n_clusters} · depth=${payload.max_depth}`,
+      'success', 3000
+    );
+  } catch (err) {
+    toast(`Could not submit control gates: ${err.message}`, 'error', 4000);
+  }
+}
+
+function wireControlGatesModal() {
+  $('#cg-apply').onclick = () => submitControlGates(false);
+  $('#cg-use-defaults').onclick = () => submitControlGates(true);
+  $('#control-gates-modal').addEventListener('click', (ev) => {
+    if (ev.target.id === 'control-gates-modal') closeControlGatesModal();
+  });
+}
+
+// ── Column-resolution modal (after dataset examination when ambiguous) ─────
+let _pendingColumnResolution = null;
+let _columnResolutionTimeoutTimer = null;
+
+function openColumnResolutionModal(e) {
+  _pendingColumnResolution = e;
+  const ambig = e.ambiguous_roles || {};
+  const heur = e.heuristics || {};
+  const allCols = (e.schema || '').split('\n').map(l => l.trim()).filter(l => l.startsWith('  '));
+  const colNames = allCols.map(l => l.split(':')[0].trim());
+
+  function _buildSelect(id, role, candidates, fallback) {
+    const sel = $(id);
+    sel.innerHTML = '';
+    const optBlank = document.createElement('option');
+    optBlank.value = '';
+    optBlank.textContent = '-- none --';
+    sel.appendChild(optBlank);
+    const cands = candidates && candidates.length ? candidates : colNames;
+    for (const c of cands) {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      if (c === fallback) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    // If no candidate matched the fallback, add it
+    if (fallback && !Array.from(sel.options).some(o => o.value === fallback)) {
+      const opt = document.createElement('option');
+      opt.value = fallback;
+      opt.textContent = fallback + ' (detected)';
+      opt.selected = true;
+      sel.insertBefore(opt, sel.options[1]);
+    }
+  }
+
+  _buildSelect('#cr-entity-id', 'entity_id', ambig.entity_id, heur.entity_id);
+  _buildSelect('#cr-timestamp', 'timestamp', ambig.timestamp, heur.timestamp);
+  _buildSelect('#cr-amount', 'amount', ambig.amount, heur.amount);
+  _buildSelect('#cr-category', 'category', ambig.category, heur.category);
+
+  const stats = e.dataset_stats || {};
+  const lines = [];
+  if (stats.n_rows) lines.push(`${Number(stats.n_rows).toLocaleString()} rows`);
+  if (stats.n_cols) lines.push(`${stats.n_cols} columns`);
+  $('#column-resolution-context').innerHTML =
+    lines.length ? `<b>Dataset:</b> ${lines.join(' · ')}` : '';
+
+  $('#column-resolution-modal').classList.remove('hidden');
+
+  if (_columnResolutionTimeoutTimer) clearInterval(_columnResolutionTimeoutTimer);
+  const deadline = Date.now() + (Number(e.timeout_s || 300) * 1000);
+  const tickLabel = () => {
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    $('#column-resolution-timeout-label').textContent =
+      remaining > 0
+        ? `Auto-continues with detected in ${m}:${String(s).padStart(2, '0')}.`
+        : 'Auto-continuing with detected…';
+  };
+  tickLabel();
+  _columnResolutionTimeoutTimer = setInterval(tickLabel, 1000);
+}
+
+function closeColumnResolutionModal() {
+  _pendingColumnResolution = null;
+  if (_columnResolutionTimeoutTimer) { clearInterval(_columnResolutionTimeoutTimer); _columnResolutionTimeoutTimer = null; }
+  $('#column-resolution-modal').classList.add('hidden');
+}
+
+async function submitColumnResolution(useHeuristics) {
+  const payload = useHeuristics
+    ? {
+        entity_id: (_pendingColumnResolution?.heuristics?.entity_id) || null,
+        timestamp: (_pendingColumnResolution?.heuristics?.timestamp) || null,
+        amount: (_pendingColumnResolution?.heuristics?.amount) || null,
+        category: (_pendingColumnResolution?.heuristics?.category) || null,
+      }
+    : {
+        entity_id: $('#cr-entity-id').value || null,
+        timestamp: $('#cr-timestamp').value || null,
+        amount: $('#cr-amount').value || null,
+        category: $('#cr-category').value || null,
+      };
+  try {
+    await api('POST', '/api/column-resolution', payload);
+    closeColumnResolutionModal();
+    toast('Column roles confirmed — pipeline continuing.', 'success', 3000);
+  } catch (err) {
+    toast(`Could not submit column resolution: ${err.message}`, 'error', 4000);
+  }
+}
+
+function wireColumnResolutionModal() {
+  $('#cr-apply').onclick = () => submitColumnResolution(false);
+  $('#cr-use-heuristics').onclick = () => submitColumnResolution(true);
+  $('#column-resolution-modal').addEventListener('click', (ev) => {
+    if (ev.target.id === 'column-resolution-modal') closeColumnResolutionModal();
+  });
+}
+
+// ── Human-checkpoint modal (end of every passing iteration) ────────────────
+// Triggered by `awaiting_human_checkpoint` SSE events emitted by
+// agents/orchestrator.py::_collect_human_decision. Shows the per-iteration
+// stats + persona table; user clicks Approve / Re-cluster / Re-select / Quit;
+// POST /api/human-checkpoint writes outputs/pending_human_checkpoint.json
+// which the paused orchestrator consumes.
+let _pendingCheckpoint = null;
+let _checkpointTimeoutTimer = null;
+
+function openCheckpointModal(e) {
+  _pendingCheckpoint = e;
+  const sil = (e.silhouette != null) ? Number(e.silhouette).toFixed(3) : 'n/a';
+  const f1 = (e.cv_f1_macro != null) ? Number(e.cv_f1_macro).toFixed(3) : 'n/a';
+  const acc = (e.cv_accuracy != null) ? Number(e.cv_accuracy).toFixed(3) : 'n/a';
+  $('#checkpoint-stats').innerHTML = `
+    <div><b>Algorithm:</b> ${escapeHtml(e.algorithm || '?')}
+         &nbsp;·&nbsp; <b>Leaf clusters:</b> ${e.n_leaf ?? '?'}</div>
+    <div><b>Silhouette:</b> ${sil}
+         &nbsp;·&nbsp; <b>CV F1 (macro):</b> ${f1}
+         &nbsp;·&nbsp; <b>CV accuracy:</b> ${acc}</div>`;
+  const rows = (e.personas || []).map(p => {
+    const f1Cell = (p.cv_f1 != null) ? Number(p.cv_f1).toFixed(3) : 'n/a';
+    return `<tr>
+      <td><b>C${escapeHtml(String(p.cid))}</b></td>
+      <td>${escapeHtml(String(p.name || ''))}</td>
+      <td class="muted">${escapeHtml(String(p.tagline || ''))}</td>
+      <td style="text-align:right">${p.confidence ?? '?'}</td>
+      <td style="text-align:right">${f1Cell}</td>
+    </tr>`;
+  }).join('');
+  $('#checkpoint-personas').innerHTML = rows
+    ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+         <thead><tr style="text-align:left;border-bottom:1px solid var(--border)">
+           <th>#</th><th>Persona</th><th>Tagline</th>
+           <th style="text-align:right">Conf</th><th style="text-align:right">CV-F1</th>
+         </tr></thead><tbody>${rows}</tbody></table>`
+    : '<div class="muted">No persona table available for this iteration.</div>';
+  $('#checkpoint-feedback').value = '';
+  $('#checkpoint-modal').classList.remove('hidden');
+
+  if (_checkpointTimeoutTimer) clearInterval(_checkpointTimeoutTimer);
+  const deadline = Date.now() + (Number(e.timeout_s || 600) * 1000);
+  const tickLabel = () => {
+    const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    $('#checkpoint-timeout-label').textContent = remaining > 0
+      ? `Auto-applies "Approve" in ${m}:${String(s).padStart(2, '0')}.`
+      : 'Auto-applying approve…';
+  };
+  tickLabel();
+  _checkpointTimeoutTimer = setInterval(tickLabel, 1000);
+}
+
+function closeCheckpointModal() {
+  _pendingCheckpoint = null;
+  if (_checkpointTimeoutTimer) { clearInterval(_checkpointTimeoutTimer); _checkpointTimeoutTimer = null; }
+  $('#checkpoint-modal').classList.add('hidden');
+}
+
+async function submitCheckpoint(action) {
+  if (!_pendingCheckpoint) return;
+  const feedback = ($('#checkpoint-feedback')?.value || '').trim();
+  try {
+    await api('POST', '/api/human-checkpoint', {action, feedback});
+    closeCheckpointModal();
+    toast(`Checkpoint: ${action} — pipeline resuming`, 'success', 3000);
+  } catch (e) {
+    toast(`Could not submit decision: ${e.message}`, 'error', 4000);
+  }
+}
+
+function wireCheckpointModal() {
+  $('#chk-approve').onclick   = () => submitCheckpoint('approve');
+  $('#chk-recluster').onclick = () => submitCheckpoint('recluster');
+  $('#chk-reselect').onclick  = () => submitCheckpoint('reselect_features');
+  $('#chk-quit').onclick      = () => submitCheckpoint('quit');
+  // Background click closes — the orchestrator's terminal fallback will still
+  // unblock the run if the user wants to handle it that way.
+  $('#checkpoint-modal').addEventListener('click', (ev) => {
+    if (ev.target.id === 'checkpoint-modal') closeCheckpointModal();
+  });
+}
+
+// Bypass-mode auto-applied threshold decisions. Each event is appended to this
+// list and surfaced as a persistent banner in the Evidence tab so the user
+// can review what was relaxed during an unattended run.
+const _autoAppliedDecisions = [];
+function recordAutoAppliedDecision(e) {
+  // De-duplicate by decision_id — the same decision can't be auto-applied twice
+  // in a single run; if we see a repeat it's an SSE replay.
+  if (_autoAppliedDecisions.some(d => d.decision_id === e.decision_id)) return;
+  _autoAppliedDecisions.push({
+    decision_id: e.decision_id,
+    agent: e.agent,
+    title: e.title,
+    summary: e.summary,
+    chosen: e.chosen,
+    options: e.options || [],
+    extra: e.extra || {},
+    ts: e.ts,
+  });
+  // If Evidence is visible, refresh so the banner appears immediately.
+  if (!document.getElementById('evidence-view').classList.contains('hidden')) {
+    renderEvidence();
+  }
+}
+
+function buildAutoAppliedDecisionsCard() {
+  if (!_autoAppliedDecisions.length) return '';
+  const rows = _autoAppliedDecisions.map((d) => {
+    const chosenOpt = (d.options || []).find(o => o.key === d.chosen) || {};
+    const extraBits = Object.entries(d.extra || {})
+      .filter(([, v]) => v !== null && v !== undefined && v !== '')
+      .map(([k, v]) => `${escapeHtml(k)}=${escapeHtml(String(v))}`)
+      .join(' · ');
+    return `
+      <div class="explain-section" style="border-left:3px solid var(--warn);padding-left:10px;margin-bottom:8px">
+        <div><b>${escapeHtml(d.title || d.decision_id)}</b>
+          <span class="muted" style="font-size:11px">· ${escapeHtml(d.agent || '?')}</span></div>
+        <div class="muted" style="font-size:12px;margin:2px 0 4px">${escapeHtml(d.summary || '')}</div>
+        <div>Applied: <b>${escapeHtml(chosenOpt.label || d.chosen)}</b>
+          <span class="muted">— ${escapeHtml(chosenOpt.description || '(recommended fallback)')}</span></div>
+        ${extraBits ? `<div class="muted" style="font-size:11px;margin-top:2px">${extraBits}</div>` : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div class="ev-card span2">
+      <h3>⚠ Auto-applied threshold decisions <span class="iter">${_autoAppliedDecisions.length} in bypass mode</span></h3>
+      <p class="lead">The pipeline ran in <b>bypass mode</b>, so these decision
+        points did not pause to ask. Each one was resolved by applying the
+        recommended fallback. Review and re-run interactively if any choice
+        was wrong for your use case.</p>
+      ${rows}
+    </div>`;
+}
+
+// ── Case-memory recall modal (DatasetExaminer matched a prior run) ─────────
+function openRecallModal(e) {
+  const matchType = (e.match_type || 'similar').toLowerCase();
+  const isExact = matchType === 'exact';
+  $('#recall-title').textContent = isExact
+    ? '🧠 Exact match — reuse the prior winning recipe?'
+    : '🧠 Similar prior run found — reuse, modify, or ignore?';
+  const intro = isExact
+    ? 'Same dataset fingerprint as a prior run. The recipe below converged before — strong candidate for reuse.'
+    : 'Different dataset/goal but same family. The prior recipe is inspiration only — do not assume it transfers cleanly.';
+  const fmt = (v) => (v == null || v === '') ? '<span class="muted">—</span>'
+    : (typeof v === 'number' ? Number(v).toLocaleString() : String(v));
+  const fmtFloat = (v, d = 3) => (v == null || v === '') ? '<span class="muted">—</span>'
+    : Number(v).toFixed(d);
+  $('#recall-context').innerHTML = `
+    <div class="warn-from">${escapeHtml(intro)}</div>
+    <div class="warn-from" style="margin-top:6px"><b>Match:</b> ${escapeHtml(e.notes || '')}</div>
+    <div style="margin-top:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;font-size:12.5px;">
+      <div><b>Prior dataset:</b> ${fmt(e.prior_dataset)}</div>
+      <div><b>Prior purpose:</b> ${fmt((e.prior_purpose || '').slice(0, 80))}</div>
+      <div><b>Algorithm:</b> ${fmt(e.prior_algorithm)}</div>
+      <div><b>k:</b> ${fmt(e.prior_k)}</div>
+      <div><b>vif_threshold:</b> ${fmt(e.prior_vif_threshold)}</div>
+      <div><b>min_silhouette:</b> ${fmtFloat(e.prior_min_silhouette, 2)}</div>
+      <div><b>features kept:</b> ${fmt(e.prior_n_features_kept)}</div>
+      <div><b>Prior outcome:</b> sil=${fmtFloat(e.prior_silhouette)} · F1=${fmtFloat(e.prior_cv_f1_macro)}</div>
+    </div>
+    <div class="muted" style="margin-top:10px;font-size:11.5px">
+      Pipeline is paused — pick one within 5 minutes or it defaults to <b>Modify</b>.
+    </div>`;
+  $('#recall-modal').classList.remove('hidden');
+}
+
+function closeRecallModal() { $('#recall-modal').classList.add('hidden'); }
+
+async function submitRecallDecision(decision) {
+  try {
+    await api('POST', '/api/case-recall-decision', {decision});
+    closeRecallModal();
+    const label = {reuse: 'Reusing prior recipe', modify: 'Recall kept as hint', ignore: 'Recall ignored'}[decision] || decision;
+    toast(`${label} — pipeline resuming`, 'success', 3500);
+  } catch (e) { toast(e.message, 'error', 4500); }
+}
+
+function wireRecallModal() {
+  $('#recall-reuse').onclick  = () => submitRecallDecision('reuse');
+  $('#recall-modify').onclick = () => submitRecallDecision('modify');
+  $('#recall-ignore').onclick = () => submitRecallDecision('ignore');
+  $('#recall-modal').addEventListener('click', (ev) => {
+    if (ev.target.id === 'recall-modal') closeRecallModal();
   });
 }
 
@@ -2692,34 +3563,28 @@ function handleEvent(e) {
   // Refresh the architecture graph on any event — agent reports AND LLM call
   // starts/finishes so the active-agent + thinking-orchestrator are live.
   setTimeout(applyArchFromEvents, 0);
-  // If the Evidence tab is currently open, refresh it as events arrive. We
-  // CANNOT use a pure debounce here: during a bursty pipeline phase (rapid
-  // llm_call_started/finished pairs) every new event clears the timer and the
-  // tab never re-renders until the burst pauses, which is why users saw the
-  // Data & Evidence cards "freeze" mid-run and only update after manual F5.
-  //
-  // The fix is a hybrid: debounce 250 ms (cheap on quiet periods) but ALSO
-  // schedule a hard-deadline render every 20 s so we always catch up even
-  // during sustained activity — matches the global refresh watchdog cadence
-  // so the page never thrashes more than 3× per minute on bursty SSE.
-  if (!document.getElementById('evidence-view').classList.contains('hidden')) {
-    clearTimeout(window._evRefreshTimer);
-    window._evRefreshTimer = setTimeout(() => {
-      renderEvidence();
-      window._evRefreshDeadline = null;
-    }, 250);
-    if (!window._evRefreshDeadline) {
-      window._evRefreshDeadline = setTimeout(() => {
-        clearTimeout(window._evRefreshTimer);
-        renderEvidence();
-        window._evRefreshDeadline = null;
-      }, 20000);
-    }
-  }
   if (ev === 'silhouette_target_missed') {
-    appendLogLine(`[${(e.ts || '').slice(11,19)}] ESCALATION CHECK — silhouette ${Number(e.silhouette || 0).toFixed(3)} < target ${Number(e.target).toFixed(2)} (re-eng ${e.consecutive_failures}/${e.max_failures} · relax ${e.relax_failures || 0}/${e.max_relax_failures || 5})`);
-    toast(`Silhouette ${Number(e.silhouette).toFixed(3)} < ${Number(e.target).toFixed(2)} · re-eng ${e.consecutive_failures}/${e.max_failures}`,
-      e.consecutive_failures >= e.max_failures ? 'error' : 'success', 4500);
+    const best = e.candidate_best || {};
+    const algoLabel = best.algorithm || 'N/A';
+    const kLabel = best.k || 'N/A';
+    const comp = best.composite_score != null ? Number(best.composite_score).toFixed(3) : 'N/A';
+    const db = best.davies_bouldin != null ? Number(best.davies_bouldin).toFixed(2) : 'N/A';
+    const ch = best.calinski_harabasz != null ? Number(best.calinski_harabasz).toFixed(1) : 'N/A';
+    const ari = best.stability_ari != null ? Number(best.stability_ari).toFixed(3) : 'N/A';
+    const algosStr = (e.algorithms || []).join(', ');
+    const logMsg = (
+      `[${(e.ts || '').slice(11,19)}] ESCALATION CHECK - ` +
+      `silhouette ${Number(e.silhouette || 0).toFixed(3)} < target ${Number(e.target || 0).toFixed(2)} ` +
+      `(re-eng ${e.consecutive_failures}/${e.max_failures} - relax ${e.relax_failures || 0}/${e.max_relax_failures || 5})` +
+      ` | AutoML: ${e.n_candidates || 0} candidates (${algosStr}), best=${algoLabel}(k=${kLabel}, comp=${comp}, sil=${(best.silhouette != null ? Number(best.silhouette).toFixed(3) : 'N/A')}, DB=${db}, CH=${ch}, ARI=${ari})`
+    );
+    appendLogLine(logMsg);
+    const toastMsg = (
+      `Silhouette ${Number(e.silhouette).toFixed(3)} < ${Number(e.target).toFixed(2)} ` +
+      `- re-eng ${e.consecutive_failures}/${e.max_failures} ` +
+      `- AutoML best: ${algoLabel} k=${kLabel} (comp=${comp})`
+    );
+    toast(toastMsg, e.consecutive_failures >= e.max_failures ? 'error' : 'success', 5000);
     return;
   }
   if (ev === 'feature_re_engineering') {
@@ -2740,8 +3605,86 @@ function handleEvent(e) {
     return;
   }
   if (ev === 'awaiting_silhouette_relaxation') {
+    const alreadyAnswered = state.events.some(
+      x => (x.event === 'silhouette_target_relaxed' || x.event === 'threshold_decision_made') && x.iteration === e.iteration
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] RELAX SKIPPED — iter ${e.iteration} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
     openRelaxModal(e);
+    toast('⏸ Pipeline paused — silhouette target needs your input', 'error', 6000);
+    notifyUser('Pipeline paused', 'Silhouette target relaxation — the pipeline needs your decision.');
     appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — 5 silhouette misses, asking you to lower the target`);
+    return;
+  }
+  if (ev === 'awaiting_control_gates') {
+    const alreadyAnswered = state.events.some(
+      x => x.event === 'control_gates_tuned' && x.iteration === e.iteration
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] GATES SKIPPED — iter ${e.iteration} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
+    openControlGatesModal(e);
+    toast('⏸ Pipeline paused — control gates need your input', 'error', 6000);
+    notifyUser('Pipeline paused', 'Control gates tuning — the pipeline needs your decision.');
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — dataset examined, asking you to tune control gates`);
+    return;
+  }
+  if (ev === 'control_gates_tuned') {
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] Control gates tuned (${e.mode} · ${e.source}): max=${(e.max_cluster_size_pct * 100).toFixed(0)}% sub=${e.sub_n_clusters} depth=${e.max_depth}`);
+    return;
+  }
+  if (ev === 'awaiting_column_resolution') {
+    const alreadyAnswered = state.events.some(
+      x => x.event === 'columns_resolved' && x.iteration === e.iteration
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] COLUMNS SKIPPED — iter ${e.iteration} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
+    openColumnResolutionModal(e);
+    toast('⏸ Pipeline paused — column roles need your input', 'error', 6000);
+    notifyUser('Pipeline paused', 'Column resolution — the pipeline needs your decision.');
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — ambiguous columns, asking you to confirm roles`);
+    return;
+  }
+  if (ev === 'columns_resolved') {
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] Columns resolved (${e.mode} · ${e.source}): entity=${e.entity_id || 'N/A'} ts=${e.timestamp || 'N/A'} amount=${e.amount || 'N/A'} category=${e.category || 'N/A'}`);
+    return;
+  }
+  if (ev === 'case_memory_recall') {
+    // Passive chip — the awaiting_case_recall_decision event drives the modal.
+    // In bypass mode we only get this event (no awaiting_*), so users still
+    // see the match was found.
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] 🧠 case memory recall (${e.match_type}) — prior algo=${e.prior_algorithm || '?'} k=${e.prior_k ?? '?'}`);
+    return;
+  }
+  if (ev === 'awaiting_case_recall_decision') {
+    const alreadyAnswered = state.events.some(
+      x => x.event === 'case_memory_decision' && x.case_id === e.case_id
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] RECALL SKIPPED — ${e.case_id?.slice(0,8) || '?'} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
+    openRecallModal(e);
+    toast('⏸ Pipeline paused — case memory recall needs your input', 'error', 6000);
+    notifyUser('Pipeline paused', 'Case memory recall — the pipeline needs your decision.');
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — case memory matched, asking Reuse/Modify/Ignore`);
+    return;
+  }
+  if (ev === 'case_memory_decision') {
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] case recall decision: ${e.decision} (${e.match_type})`);
+    return;
+  }
+  if (ev === 'case_memory_saved') {
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] 🧠 case saved to memory (case_id=${(e.case_id || '').slice(0,8)}…)`);
     return;
   }
   if (ev === 'silhouette_target_changed') {
@@ -2765,12 +3708,74 @@ function handleEvent(e) {
     return;
   }
   if (ev === 'awaiting_user_decision') {
+    // Skip stale decision events: already answered, or now in bypass mode.
+    const alreadyAnswered = state.events.some(
+      x => x.event === 'user_decision_received' && x.agent === e.agent && x.iteration === e.iteration
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] DECISION SKIPPED — ${e.agent} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
     openDecisionModal(e);
+    toast(`⏸ Pipeline paused — ${e.agent} needs your decision`, 'error', 6000);
+    notifyUser('Pipeline paused', `${e.agent} — the pipeline needs your decision.`);
     appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — awaiting your decision (${e.agent})`);
     return;
   }
   if (ev === 'user_decision_received') {
     appendLogLine(`[${(e.ts || '').slice(11,19)}] RESUMED — ${e.action}: ${e.response || '(none)'}`);
+    return;
+  }
+  if (ev === 'awaiting_threshold_decision') {
+    const alreadyAnswered = state.events.some(
+      x => x.event === 'threshold_decision_made' && x.decision_id === e.decision_id
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] THRESHOLD SKIPPED — ${e.decision_id} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
+    openThresholdModal(e);
+    toast('⏸ Pipeline paused — threshold decision needs your input', 'error', 6000);
+    notifyUser('Pipeline paused', 'Threshold decision — the pipeline needs your decision.');
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — threshold decision (${e.decision_id})`);
+    return;
+  }
+  if (ev === 'awaiting_human_checkpoint') {
+    const alreadyAnswered = state.events.some(
+      x => x.event === 'human_checkpoint_resolved' && x.iteration === e.iteration
+    );
+    if (state.currentMode === 'bypass' || alreadyAnswered) {
+      appendLogLine(`[${(e.ts || '').slice(11,19)}] CHECKPOINT SKIPPED — iter ${e.iteration} (bypass=${state.currentMode==='bypass'}, answered=${alreadyAnswered})`);
+      return;
+    }
+    showLivePanel(true);
+    openCheckpointModal(e);
+    toast('⏸ Pipeline paused — human checkpoint needs your approval', 'error', 6000);
+    notifyUser('Pipeline paused', 'Human checkpoint — the pipeline needs your approval.');
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] PAUSED — human checkpoint (algo=${e.algorithm}, F1=${e.cv_f1_macro})`);
+    return;
+  }
+  if (ev === 'human_checkpoint_resolved') {
+    if (_pendingCheckpoint) closeCheckpointModal();
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] RESUMED — checkpoint ${e.action} (${e.source})`);
+    return;
+  }
+  if (ev === 'threshold_decision_resolved') {
+    // Defensive: the modal usually closes itself when the user POSTs,
+    // but timeout / cross-window submissions land here.
+    if (_pendingThreshold && _pendingThreshold.decision_id === e.decision_id) {
+      closeThresholdModal();
+    }
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] RESUMED — ${e.decision_id}: ${e.chosen} (${e.source})`);
+    return;
+  }
+  if (ev === 'threshold_decision_auto_applied') {
+    // Bypass mode: pipeline never paused. Record it so the user sees what
+    // was relaxed under their feet in the Evidence tab.
+    recordAutoAppliedDecision(e);
+    appendLogLine(`[${(e.ts || '').slice(11,19)}] BYPASS — auto-applied ${e.chosen} for ${e.decision_id}`);
     return;
   }
   if (ev === 'awaiting_intent') {
@@ -2781,6 +3786,8 @@ function handleEvent(e) {
     // Pipeline is idle on the intent form — hide the abort button.
     const abortBtn = $('#abort-btn');
     if (abortBtn) { abortBtn.classList.add('hidden'); abortBtn.disabled = false; abortBtn.textContent = 'Abort & New Run'; }
+    toast('⏸ Pipeline paused — waiting for your intent', 'error', 6000);
+    notifyUser('Pipeline paused', 'The pipeline is waiting for your clustering intent.');
     appendLogLine(`[${(e.ts || '').slice(11,19)}] awaiting_intent — pipeline paused for UI`);
     return;
   }
@@ -2829,6 +3836,7 @@ function handleEvent(e) {
       Object.keys(costEvidenceStats).forEach((k) => delete costEvidenceStats[k]);
       Object.keys(costNamingStats).forEach((k) => delete costNamingStats[k]);
       Object.keys(outputsState).forEach((k) => delete outputsState[k]);
+      _autoAppliedDecisions.length = 0;
       state.personas = {};
       state.profiles = {};
       state.summary = {};
@@ -2875,6 +3883,9 @@ function handleEvent(e) {
       }
     }
     appendLogLine(`[${(e.ts || '').slice(11,19)}] ${e.agent} ${status.toUpperCase()} — ${(detail || '').slice(0, 120)}`);
+    if (!document.getElementById('evidence-view').classList.contains('hidden')) {
+      renderEvidence();
+    }
   } else if (ev === 'llm_call_started') {
     noteCallStart(e.agent || 'unknown', e.category || 'pipeline', e);
     renderAskBubble(e);
@@ -3100,14 +4111,25 @@ function wireIntentForm() {
       return;
     }
     const k = $('#intent-k').value.trim();
+    const maxItersRaw = $('#intent-max-iters').value.trim();
     const musthave = $('#intent-musthave').value.split(',').map(s => s.trim()).filter(Boolean);
     const datasetPath = _uploadedPath || $('#intent-dataset').value.trim();
+    let maxTotalIterations = null;
+    if (maxItersRaw && /^\d+$/.test(maxItersRaw)) {
+      const n = Number(maxItersRaw);
+      if (n >= 1 && n <= 50) maxTotalIterations = n;
+    }
+    const colHint = (id) => {
+      const v = $(id).value.trim();
+      return v || null;
+    };
     const payload = {
       target_entity: target,
       business_purpose: purpose,
       dataset_path: datasetPath,
       constraints: $('#intent-constraints').value.trim(),
       n_clusters_requested: k && /^\d+$/.test(k) ? Number(k) : null,
+      max_total_iterations: maxTotalIterations,
       must_have_clusters: musthave,
     };
     btn.disabled = true;
@@ -3203,6 +4225,11 @@ async function boot() {
   wireWarnModal();
   wireDecisionModal();
   wireRelaxModal();
+  wireThresholdModal();
+  wireControlGatesModal();
+  wireColumnResolutionModal();
+  wireCheckpointModal();
+  wireRecallModal();
   wireModeToggle();
   wireTabs();
   loadMode();
@@ -3211,13 +4238,11 @@ async function boot() {
   startGlobalRefreshWatchdog();
 }
 
-// Defensive 20-second watchdog that re-renders whichever view is currently
-// visible. Works in BOTH the bare `full` recording and the focused demo
-// recordings: even if the SSE stream goes silent for a stretch (proxy
-// timeout, browser sleeping a background tab, sustained event burst that
-// starves an upstream debounce), the user always sees fresh content because
-// this loop keeps painting. The render functions are idempotent — re-running
-// them with identical state is a no-op cost-wise.
+// Defensive watchdog that re-renders whichever view is currently visible.
+// Works in BOTH the bare `full` recording and the focused demo recordings:
+// even if the SSE stream goes silent, the user sees fresh content periodically.
+// The render functions are idempotent — re-running them with identical state
+// is a no-op cost-wise.
 function startGlobalRefreshWatchdog() {
   if (window._globalRefreshTimer) return;
   window._globalRefreshTimer = setInterval(() => {
@@ -3234,7 +4259,7 @@ function startGlobalRefreshWatchdog() {
         renderGrid();
       }
     } catch (_) { /* render fns are defensive */ }
-  }, 20000);
+  }, UI_REFRESH_INTERVAL_MS);
 }
 
 // ── Demo / recording focus mode ──────────────────────────────────────────

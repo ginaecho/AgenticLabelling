@@ -18,6 +18,18 @@ from collections import defaultdict
 from agents.state import NamingResult
 from skills.orchestrator_bus import OrchestratorBus, OrchestratorMessage
 
+# ── Clarity Gate thresholds ───────────────────────────────────────────────────
+# Both checks below are PURELY DETERMINISTIC (no LLM-as-a-judge):
+#   - DOMINANT_FEATURE_OVERLAP_MAX: max # of shared top features two personas
+#     may have before they are flagged as structurally identical. Set to 3
+#     because the LLM is asked for exactly 3 dominant features per persona,
+#     so a 3/3 match = identical behavioral signature.
+#   - PERSONA_DESCRIPTION_COSINE_MAX: max TF-IDF cosine similarity between
+#     any two persona descriptions before they are flagged as synonym
+#     personas (different words, same meaning).
+DOMINANT_FEATURE_OVERLAP_MAX = 3
+PERSONA_DESCRIPTION_COSINE_MAX = 0.85
+
 TONE_INSTRUCTIONS = {
     'easy': (
         'Use plain, everyday language. Avoid jargon. Use simple analogies a '
@@ -43,8 +55,11 @@ TONE_INSTRUCTIONS = {
 def _format_cluster_block(cid: str, profile: dict, context_note: str = '') -> str:
     """
     Format one cluster's stats as a readable block for the LLM prompt.
-    Uses the generic profile structure from ClusteringAgent:
-      n_entities, pct_total, top_above_average, top_below_average, feature_means.
+
+    Tabular mode uses the existing schema (top_above_average mapped to
+    relative-to-mean ratios). Text mode uses the SAME field names but the
+    values are c-TF-IDF distinctive-term scores, plus a representative-doc
+    snippet block so the LLM can name a topic rather than a numeric segment.
     """
     n    = profile.get('n_entities', profile.get('n_customers', '?'))
     pct  = profile.get('pct_total', profile.get('pct_of_total', 0))
@@ -62,6 +77,49 @@ def _format_cluster_block(cid: str, profile: dict, context_note: str = '') -> st
         header += f"\n{context_note}"
     header += f"\nAlgorithm: {algo}\n"
 
+    # ── Text branch: terms + representative docs ───────────────────────────
+    if profile.get('modality') == 'text' or profile.get('representative_docs'):
+        top_terms = profile.get('top_terms') or list(top_above.keys())
+        rep_docs = profile.get('representative_docs') or []
+
+        # Distinctive terms (c-TF-IDF) — the lexical signature of the cluster.
+        term_lines = []
+        for term in top_terms[:12]:
+            score = top_above.get(term, feat_means.get(term, 0.0))
+            term_lines.append(f"    · {term!s}   (c-tfidf={score:.3f})")
+        terms_section = (
+            "  DISTINCTIVE TERMS (high in this cluster, rare elsewhere):\n"
+            + "\n".join(term_lines)
+            if term_lines else ""
+        )
+
+        # Terms notably absent here that mark OTHER clusters — gives the LLM
+        # a contrastive sense of what this group is NOT.
+        absent_lines = []
+        for term, gap in list(top_below.items())[:6]:
+            absent_lines.append(f"    · {term!s}   (gap={float(gap):.2f})")
+        absent_section = (
+            "\n  ABSENT-HERE TERMS (strong elsewhere, weak here):\n"
+            + "\n".join(absent_lines)
+            if absent_lines else ""
+        )
+
+        # Representative documents — the LLM can lift wording directly.
+        doc_lines = []
+        for i, d in enumerate(rep_docs[:3], 1):
+            snippet = (str(d) or '').strip().replace('\n', ' ')
+            if len(snippet) > 280:
+                snippet = snippet[:277] + '…'
+            doc_lines.append(f"    [{i}] {snippet}")
+        docs_section = (
+            "\n  REPRESENTATIVE DOCUMENTS (closest to centroid):\n"
+            + "\n".join(doc_lines)
+            if doc_lines else ""
+        )
+
+        return header + terms_section + absent_section + docs_section
+
+    # ── Tabular branch (unchanged) ─────────────────────────────────────────
     above_lines = []
     for feat, rel in list(top_above.items())[:10]:
         mean_val = feat_means.get(feat, '?')
@@ -181,6 +239,104 @@ Return ONLY a valid JSON object (no markdown, no extra text) with this structure
   }},
   ...
 }}"""
+
+
+def _check_dominant_feature_overlap(
+    personas: dict,
+    max_overlap: int = DOMINANT_FEATURE_OVERLAP_MAX,
+) -> tuple[list[str], list[dict]]:
+    """
+    Deterministic structural check: two personas that share `max_overlap`
+    or more dominant features are essentially the same cluster regardless
+    of how creatively the LLM named them.
+
+    Returns (issue_strings, pair_records). `pair_records` is suitable for
+    logging into the OrchestratorBus metrics block.
+    """
+    # Build {cid: set(dominant_features)} for personas that actually have them.
+    feat_map: dict[str, set] = {}
+    for cid, p in personas.items():
+        feats = p.get('dominant_features') or []
+        if isinstance(feats, list) and feats:
+            feat_map[str(cid)] = {str(f).strip().lower() for f in feats if f}
+
+    issues: list[str] = []
+    pairs: list[dict] = []
+    cids = list(feat_map.keys())
+    for i, cid_a in enumerate(cids):
+        for cid_b in cids[i + 1:]:
+            shared = feat_map[cid_a] & feat_map[cid_b]
+            if len(shared) >= max_overlap:
+                pairs.append({
+                    'cluster_a': cid_a,
+                    'cluster_b': cid_b,
+                    'shared_features': sorted(shared),
+                    'overlap_count': len(shared),
+                })
+                issues.append(
+                    f'Personas C{cid_a} & C{cid_b} share {len(shared)} '
+                    f'dominant features ({sorted(shared)}) — '
+                    f'structurally identical'
+                )
+    return issues, pairs
+
+
+def _check_persona_description_similarity(
+    personas: dict,
+    max_cosine: float = PERSONA_DESCRIPTION_COSINE_MAX,
+) -> tuple[list[str], list[dict]]:
+    """
+    Deterministic semantic check: TF-IDF cosine similarity between persona
+    descriptions catches "synonym personas" where the LLM used different
+    words but described the same behavioral group.
+
+    Returns (issue_strings, pair_records). If fewer than 2 personas have a
+    usable description, the check is skipped (returns empty lists).
+    """
+    cids: list[str] = []
+    descriptions: list[str] = []
+    for cid, p in personas.items():
+        desc = (p.get('description') or '').strip()
+        if desc:
+            cids.append(str(cid))
+            descriptions.append(desc)
+
+    if len(descriptions) < 2:
+        return [], []
+
+    # Lazy import keeps the module importable even in minimal environments.
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+    except ImportError:
+        # sklearn missing — treat as a soft skip rather than a gate failure.
+        return [], []
+
+    try:
+        tfidf = TfidfVectorizer(stop_words='english').fit_transform(descriptions)
+        sim = cosine_similarity(tfidf)
+    except ValueError:
+        # Happens if every description reduces to stop words (very rare).
+        return [], []
+
+    issues: list[str] = []
+    pairs: list[dict] = []
+    n = len(cids)
+    for i in range(n):
+        for j in range(i + 1, n):
+            score = float(sim[i][j])
+            if score > max_cosine:
+                pairs.append({
+                    'cluster_a': cids[i],
+                    'cluster_b': cids[j],
+                    'cosine': round(score, 3),
+                })
+                issues.append(
+                    f'Personas C{cids[i]} & C{cids[j]} description cosine '
+                    f'similarity {score:.2f} > {max_cosine:.2f} — '
+                    f'synonym personas'
+                )
+    return issues, pairs
 
 
 class PersonaNamingAgent:
@@ -335,13 +491,22 @@ Do NOT omit any required cluster type from the output."""
         avg_conf = float(np.mean(confidences)) if confidences else 0.0
         names_unique = len(names) == len(set(names))
 
-        # Silhouette is checked in the orchestrator (we don't have X_scaled here),
-        # so the gate here checks confidence + uniqueness only.
+        # Silhouette is checked in the orchestrator (we don't have X_scaled here).
+        # In addition to confidence + uniqueness, the gate now runs two
+        # purely deterministic redundancy checks that don't rely on the LLM's
+        # self-assessment:
+        #   1. Dominant-feature overlap — catches structurally identical clusters.
+        #   2. Description TF-IDF cosine similarity — catches synonym personas.
         issues = []
         if avg_conf < 6.0:
             issues.append(f'Avg LLM confidence {avg_conf:.1f} < 6.0')
         if not names_unique:
             issues.append('Duplicate persona names detected')
+
+        overlap_issues, overlap_pairs = _check_dominant_feature_overlap(personas)
+        cosine_issues, cosine_pairs = _check_persona_description_similarity(personas)
+        issues.extend(overlap_issues)
+        issues.extend(cosine_issues)
 
         # Check that every must-have cluster type is covered
         if must_have:
@@ -379,7 +544,12 @@ Do NOT omit any required cluster type from the output."""
             print(f'  Cluster {cid}{depth_str}: "{p.get("name", "?")}"  conf={conf}/10')
 
         if passed:
-            print(f'  Clarity Gate PASSED  (avg_conf={avg_conf:.1f}, unique={names_unique})')
+            print(
+                f'  Clarity Gate PASSED  (avg_conf={avg_conf:.1f}, '
+                f'unique={names_unique}, '
+                f'dom_overlap_pairs={len(overlap_pairs)}, '
+                f'cosine_pairs={len(cosine_pairs)})'
+            )
         else:
             print(f'  Clarity Gate FAILED: {issues}')
 
@@ -414,6 +584,10 @@ Do NOT omit any required cluster type from the output."""
                     "gate_passed": passed,
                     "names_unique": names_unique,
                     "must_have_clusters": must_have,
+                    "dominant_feature_overlap_pairs": overlap_pairs,
+                    "description_cosine_pairs": cosine_pairs,
+                    "dominant_feature_overlap_threshold": DOMINANT_FEATURE_OVERLAP_MAX,
+                    "description_cosine_threshold": PERSONA_DESCRIPTION_COSINE_MAX,
                 },
                 recommendation="proceed" if passed else "retry",
                 context={

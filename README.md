@@ -76,19 +76,56 @@ kaggle datasets download -d kartik2112/fraud-detection -p data/raw --unzip
 ```
 ---
 
-## 📊 Interactive UI + Adaptive Learning
+## 📊 Interactive UI + Adaptive Learning (Human-in-the-Loop AI)
 
-The interactive web interface streams real-time agent states, LLM prompt payloads, scoring gate choices, and optimization escalations utilizing Server-Sent Events (SSE).
+The real-time web interface streams every autonomous agent execution state, LLM payload call, quality-gate assessment, and loop escalation directly over **Server-Sent Events (SSE)**. This architectural integration transitions the platform from a passive monitoring view into an active **Human-in-the-Loop (HITL)** optimization framework through two main views:
 
-Clicking Conclude → Propose Action allows you to rename, merge, or provide structural constraints for future runs. Feedback logs directly to outputs/user_feedback_log.jsonl. On subsequent runs, the LLM Decision Maker parses these rules to adaptively guide the pipeline.
-
-**Named Clusters tab + Adaptive Memory** — every cluster is an editable card. Open one and start a multi-turn conversation with the agent about why it picked those features, then **Conclude → propose action** to rename, merge, or save guidance for the next run. Every rename, merge, hint, and chat conclusion lands in the **Adaptive Memory drawer** (right side of the topbar) as a prioritised rule; the next pipeline run reads `outputs/user_feedback_log.jsonl` and the Decision Maker prompts adapt — that is the adaptive-learning loop, made literal.
+* **Named Clusters Tab & Adaptive Memory:** Every generated cohort maps to an interactive UI card. Users can initiate a multi-turn conversation with the specific agent responsible for that cohort to query its mathematical feature weighting. Clicking **Conclude → Propose Action** allows you to rename, merge cohorts, or save permanent structural constraints for future runs. These overrides are instantly written to `outputs/user_feedback_log.jsonl`. On subsequent pipeline runs, the LLM Decision Maker parses these rules as prioritized context—making the adaptive learning loop literal.
 
 ![Named Clusters tab — chat with an agent, conclude, save guidance to Adaptive Memory](docs/screenshots/01_named_clusters.gif)
 
-**Data & Evidence tab** — per-iteration 2-D PCA projection of the clustered data, with the orchestrator's adaptive-escalation warning surfaced in line: *"Silhouette=0.142 < target 0.40 — orchestrator will reselect features (or escalate after 3 consecutive misses)"*.
+* **Data & Evidence Tab & Cross-Cluster Analysis:** Displays interactive 2-D Principal Component Analysis (PCA) projections of the clustered points, collapsible feature-engineering tracking blocks, and orchestrator-driven step-back warning frames: *"Silhouette=0.142 < target 0.40 — orchestrator will reselect features (or escalate after 3 consecutive misses)"*. Once execution logs are complete, an **Explain** button unlocks an **LLM Evidence Ledger**. This engine hosts an automated **cross-cluster comparative analysis**, caching an LLM synthesis that contrasts patterns across all generated clusters concurrently rather than profiling cohorts in isolation.
 
 ![Data & Evidence tab — per-iteration PCA projection with adaptive-escalation warnings](docs/screenshots/02_data_evidence.gif)
+
+### 🧠 Case Memory: Deterministic Recipe Recall
+To accelerate cold starts, successful pipeline executions are fingerprinted by underlying data architecture (column matrices, row limits, and targeted business domains) and appended to `outputs/case_memory.json` along with the winning configuration state (`clustering_algorithm`, `k`, `vif_threshold`, `feature_focus`, `min_silhouette`) and outcome metrics (`silhouette`, `macro-F1`). 
+
+On sequential executions, the LLM Decision Maker checks for an existing `exact` or `similar` fingerprint match. In active UI mode, it pauses execution following the initial profiling step to prompt the user:
+
+1. **Dataset Examiner** finishes data schema profiling.
+2. An interactive modal surfaces: **"🧠 Memory Match Found — Reuse the prior winning recipe?"** displaying historical configurations and metrics.
+3. **Reuse:** Verbatim injection of historical hyperparameter tuning rules into the active iteration state, dropping conflicting prompt modifiers.
+4. **Modify (Hint Only):** Appends the historical recipe as baseline context solely inside failure-recovery diagnosis loops.
+5. **Ignore:** Fully resets variables for a completely fresh pipeline sweep.
+6. The interactive UI state and a `case_memory_decision` tracking block log the chosen pathway.
+
+*Note: Headless/Bypass mode or an interactive user timeout (5 minutes) automatically defaults execution to the **Modify** pathway.*
+
+---
+
+## 📄 Text Modality (Document & Article Clustering)
+
+The system seamlessly processes unstructured NLP datasets by routing tasks through a dedicated `TextPreparerAgent` instead of the standard tabular `FeatureEngineerAgent`.
+
+### Execution Commands
+```bash
+# Run unstructured clustering on the benchmark text dataset
+python run_pipeline.py --data data/raw/twenty_newsgroups/twenty_newsgroups.csv
+
+# Target explicit text parameters on custom payloads
+python run_pipeline.py --data path/to/dataset.csv --modality text --text-column text
+```
+
+| Stage | Text-mode behaviour |
+|-------|---------------------|
+| DatasetExaminer | Skips "no numeric columns" block; profiles text column. |
+| TextPreparer | Embeds docs → `data/processed/text_embeddings.parquet`. |
+| FeatureSelector | Skips PCA/AE/VIF; keeps all dims. |
+| Clusterer | Cosine silhouette; c-TF-IDF terms + representative docs per cluster. |
+| Orchestrator | `min_silhouette=0.01`, classifier F1 gate `0.60`; can swap `text_vectorizer` on retry. |
+
+**Benchmark:** `python data/raw/twenty_newsgroups/download.py` then `python experiments/benchmark_text_clustering.py`.
 
 ---
 
@@ -111,19 +148,106 @@ All of these are tuned dynamically per-iteration by the Decision Maker — confi
 
 All run logs, data metrics, and metadata models persist inside the `outputs/` directory structure:
 
-* **Interpretation Data:** `personas.json` · `persona_summary.txt` · `persona_metrics.csv` — Features distinguishing each cluster and generated semantic personas.
+* **Interpretation Data:** `personas.json` · `persona_summary.txt` · `persona_metrics.csv` — Features distinguishing each cluster and generated semantic personas. `data/processed/engineered_features.parquet` — tabular feature matrix (when starting from CSV) `data/processed/text_embeddings.parquet` — document embeddings (text mode)
 * **Validation Statistics:** `classifier_metrics.json` — Cross-validation accuracy, macro- $F_1$, and feature importance arrays.
-* **Clustering Lineage:** `cluster_profiles.json` · `cluster_lineage.json` · `silhouette_curve.json` — Historical cluster topology and evaluation curves.
+* **Clustering Lineage:** `cluster_profiles.json` · `cluster_lineage.json` · `silhouette_curve.json` — Historical cluster topology and evaluation curves. 
 * **Agent Diagnostics:** `pipeline_events.jsonl` · `agents_conversation.txt` — Full raw prompts, multi-agent conversation history, and chronological execution streams for deep auditability.
 * **Human Feedback Loops:** `user_feedback_log.jsonl` — Adaptive memory constraints and overrides curated directly from real-time UI interactions.
 
 > ⚠️ **Best-Effort Fallback Mode:** During the input of user intent, you choose the max iteration N. If N successive execution loops fail to fulfill every target quality gate, the pipeline shifts into a **Best-Effort Mode**. It surfaces the highest-scoring historical silhouette run, auto-labels it, builds the proxy validation classifier, and appends `status='best_effort'` to the final payload so the pipeline execution never leaves you empty-handed.
+---
+
+## 🛠️ Skills
+
+| Skill | File | Used by |
+|-------|------|---------|
+| OrchestratorBus | `skills/orchestrator_bus.py` | All agents — LLM gateway + event log |
+| Case memory | `skills/case_memory.py` | Orchestrator — fingerprint datasets, recall/save winning recipes |
+| VIF checker | `skills/vif_checker.py` | FeatureSelector |
+| Silhouette optimizer | `skills/silhouette_optimizer.py` | Clusterer (euclidean or cosine) |
+| Algorithm recommender | `skills/algo_recommender.py` | Clusterer |
+| AutoML candidate search | `skills/automl_candidate_search.py` | Clusterer — bounded algorithm/k tournament with stability evidence |
+| Text vectorizer | `skills/text_vectorizer.py` | TextPreparer |
 
 ---
 
-## 🛠️ Tech Stack & Indexing Keywords
+## 📑 Appendix: Agentic Workflow vs AutoML
+
+AutoML automates model selection: it searches preprocessing choices, algorithms,
+hyperparameters, and validation metrics. This workflow uses that idea, but treats
+AutoML as one skill inside a broader agentic analysis loop. The goal is not only
+to find a cluster assignment with a good score; the goal is to produce clusters
+that are stable, explainable, nameable, aligned with the user's intent, and usable
+for a business decision.
+
+### Key differences
+
+| Dimension | Typical AutoML | This agentic workflow |
+|-----------|----------------|-----------------------|
+| Starting point | Dataset + metric | User intent, target entity, business purpose, constraints, and optional must-have cluster types |
+| Search mechanism | Pipeline/model/hyperparameter search | AutoML-style candidate search plus agent routing, feature loops, naming gates, classifier validation, and human checkpoint |
+| Objective | Optimise one or a few ML metrics | Optimise usable segmentation: separation, stability, feature quality, persona clarity, size balance, business fit, and user feedback |
+| Unsupervised labelling | Usually absent or shallow | Dedicated `PersonaNamingAgent` turns cluster evidence into human-readable personas |
+| Failure handling | Try another model or report best score | Diagnose the failure and route back to feature engineering, feature selection, clustering, threshold relaxation, or human review |
+| Validation | Metric-driven, often silhouette/inertia/CV | Multi-gate: VIF/correlation, silhouette, oversized-cluster deepening, Clarity Gate, pseudo-label classifier F1, and human approval |
+| Memory | Usually starts fresh | Case Memory and Adaptive Memory reuse prior recipes and user corrections |
+| Output | Best model/pipeline | Personas, profiles, labels, lineage, metrics, evidence ledger, reasoning trace, feedback log, and reusable memory |
+
+### Where AutoML lives in this system
+
+The Clusterer now has an AutoML-as-skill candidate tournament:
+
+```plaintext
+skills/automl_candidate_search.py
+```
+
+When `clustering_algorithm: auto` and `n_clusters` is unset, the skill evaluates
+a bounded set of algorithm/k candidates and ranks them by:
+
+$$\text{Candidate Score} = \max(0, \text{Silhouette}) \cdot 70 + \text{Bootstrap Stability (ARI)} \cdot 25 - \text{Oversized Cluster Penalty}$$
+
+The agent uses the winning candidate as evidence-backed input to the normal
+clustering, profiling, naming, and validation path. This keeps brute-force search
+in deterministic code while leaving judgment, diagnosis, and interpretation to
+the agents.
+
+### Why it can do better than plain AutoML
+
+1. **It optimises the real deliverable.** For unsupervised clustering, the useful
+   deliverable is not a model alone. It is a set of meaningful groups a human can
+   understand and act on.
+
+2. **It combines quantitative and semantic gates.** A candidate can have a good
+   silhouette and still be useless if the personas are vague, duplicated, too
+   broad, or misaligned with the stated business purpose.
+
+3. **It tests repeatability, not just fit.** Candidate search includes bootstrap
+   stability via ARI, so a slightly lower-silhouette but more stable solution can
+   beat a fragile one.
+
+4. **It can recover from the right layer.** If clustering fails, the orchestrator
+   can change features, vectorizers, algorithms, k-ranges, thresholds, or route
+   to human review instead of blindly continuing the same search space.
+
+5. **It turns feedback into future performance.** Human renames, merge decisions,
+   hints, and successful recipes are saved and reused, so the system improves on
+   similar future datasets instead of starting from zero.
+
+6. **It preserves evidence.** The final output includes what was tried, what won,
+   what failed, why the agent routed backward, and which evidence supports each
+   cluster label.
+
+In short: AutoML helps find candidate models. This workflow uses AutoML as a
+skill, then adds agentic diagnosis, semantic interpretation, memory, and human
+validation so the result is not just statistically acceptable but operationally
+usable.
+
+---
+
+## 🧬 Tech Stack & Indexing Keywords
 
 * **Core Machine Learning:** `scikit-learn`, `xgboost`, `numpy`, `pandas`
 * **Agentic Orchestration:** Structured Multi-Agent Framework, LLM Decision Making Router
 * **UI & Visualization:** Server-Sent Events (SSE), TailwindCSS, 2D PCA Projection Engines
 * **Target Domains:** Unsupervised Machine Learning, Automated Auto-Labeling, Agentic Workflow, Cluster Exploratory Data Analysis (EDA), Human-in-the-Loop AI, Hyperparameter Optimization
+

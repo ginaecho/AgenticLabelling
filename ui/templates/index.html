@@ -167,18 +167,42 @@
           <span class="lbl-head">How many clusters? <span class="muted">(blank = auto)</span></span>
           <input id="intent-k" type="number" min="2" max="30" placeholder=""/>
         </label>
+        <label>
+          <span class="lbl-head">Max iterations <span class="muted">(default 10)</span></span>
+          <input id="intent-max-iters" type="number" min="1" max="50" placeholder="10"/>
+        </label>
         <label class="span2">
           <span class="lbl-head">Business purpose *</span>
           <textarea id="intent-purpose" rows="2" placeholder=""></textarea>
         </label>
         <label class="span2">
-          <span class="lbl-head">Constraints <span class="muted">(optional)</span></span>
-          <input id="intent-constraints" type="text" placeholder=""/>
+          <span class="lbl-head">Constraints <span class="muted">(optional — free text to the agents, with a few parsed directives)</span></span>
+          <input id="intent-constraints" type="text"
+                 placeholder="e.g. text_columns=title,body  |  max cluster size 30%  |  ignore fraud txns"/>
+          <details class="muted" style="font-size:12px;margin-top:4px">
+            <summary style="cursor:pointer">How to use this field</summary>
+            <div style="margin-top:6px;line-height:1.55">
+              The agents read constraints as plain-English context for their LLM calls.
+              Two patterns are also <b>structurally parsed</b> and become hard overrides:
+              <ul style="margin:6px 0 4px 18px;padding:0">
+                <li><code>max cluster size 30%</code> (or <i>"no cluster above 30%"</i>) — caps any
+                    single cluster's share; Clusterer will sub-cluster anything bigger.</li>
+                <li><code>text_columns=title,body</code> (or <i>"embed title + body"</i>) — for
+                    text data, concatenates the listed columns into the embedding. The first column
+                    is weighted 2× so <code>text_columns=title,body</code> gives title-driven clusters
+                    with body as semantic context. Single-column form <code>text_column=title</code> also works.</li>
+              </ul>
+              Anything else (e.g. <i>"ignore weekend transactions"</i>, <i>"prefer simple personas"</i>)
+              is passed verbatim to the Decision Maker and the agents — they'll honour it if it's clear,
+              but it won't override numeric thresholds.
+            </div>
+          </details>
         </label>
         <label class="span2">
           <span class="lbl-head">Must-have cluster types <span class="muted">(comma-separated, optional)</span></span>
           <input id="intent-musthave" type="text" placeholder=""/>
         </label>
+
       </div>
       <div class="intent-actions">
         <button class="primary" id="intent-submit">Start pipeline</button>
@@ -308,6 +332,26 @@
   </div>
 </div>
 
+<!-- Case-memory recall modal: pipeline matched a prior successful run -->
+<div id="recall-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="recall-title">🧠 Memory match — reuse the prior winning recipe?</h2>
+    <p class="muted">
+      The Decision Maker found a prior successful run whose dataset + goal
+      look like this one. You can <b>Reuse</b> the prior recipe verbatim
+      (seeds iteration 1 with the winning params), <b>Modify</b> (keep the
+      defaults but let the LLM see the prior recipe as a hint if iterations
+      fail), or <b>Ignore</b> (start fresh with no memory).
+    </p>
+    <div class="warn-context" id="recall-context"></div>
+    <div class="modal-actions">
+      <button id="recall-ignore" class="ghost">Ignore</button>
+      <button id="recall-modify" class="ghost">Modify (hint only)</button>
+      <button id="recall-reuse" class="primary">Reuse prior recipe</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mid-pipeline decision modal (interactive mode): pipeline is paused -->
 <div id="decision-modal" class="modal hidden">
   <div class="modal-card">
@@ -350,6 +394,117 @@
       </select>
       <button id="warn-cancel" class="ghost">Cancel</button>
       <button id="warn-save" class="primary">Save &amp; apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Human checkpoint modal: shown at the end of every passing iteration so
+     the user can Approve / Re-cluster / Re-select features / Quit. The
+     orchestrator (agents/orchestrator.py::_collect_human_decision) emits an
+     `awaiting_human_checkpoint` SSE event with persona + classifier stats; the
+     UI fills this modal and waits for the user's click. Falls back to the
+     terminal if no click within 10 min. -->
+<div id="checkpoint-modal" class="modal hidden">
+  <div class="modal-card" style="max-width:780px">
+    <h2 id="checkpoint-title">⏸ Human checkpoint — review and decide</h2>
+    <p class="muted">The pipeline finished an iteration. Pick how to proceed —
+       or just close this modal and the terminal still works as a fallback.</p>
+    <div id="checkpoint-stats" class="warn-context"></div>
+    <div id="checkpoint-personas" style="margin-top:10px;max-height:200px;overflow-y:auto"></div>
+    <details style="margin-top:8px">
+      <summary class="muted" style="cursor:pointer;font-size:12px">Optional reason / feedback (sent only for Re-cluster / Re-select)</summary>
+      <textarea id="checkpoint-feedback" rows="2"
+        style="width:100%;margin-top:4px"
+        placeholder="e.g. 'k=4 looked cleaner — narrow k_range to [3,4,5]'"></textarea>
+    </details>
+    <div class="modal-actions" style="margin-top:10px;flex-wrap:wrap;gap:8px">
+      <span class="muted" id="checkpoint-timeout-label" style="font-size:12px;flex:1"></span>
+      <button id="chk-quit" class="ghost">Quit without saving</button>
+      <button id="chk-reselect" class="ghost">Re-select features</button>
+      <button id="chk-recluster" class="ghost">Re-cluster</button>
+      <button id="chk-approve" class="primary">Approve & save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Threshold decision modal: a pipeline threshold was hit and the user
+     gets to pick how to handle it (relax / reselect / abort / ...). Built
+     dynamically per decision_id; options come from the SSE event payload. -->
+<div id="threshold-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2 id="threshold-title">⏸ Threshold reached — your call</h2>
+    <p class="muted" id="threshold-summary">Pipeline paused. Pick an option below.</p>
+    <div class="warn-context" id="threshold-context"></div>
+    <div id="threshold-options" class="row" style="flex-direction:column;gap:8px;margin-top:8px"></div>
+    <div class="modal-actions" style="justify-content:space-between;margin-top:10px">
+      <span class="muted" id="threshold-timeout-label" style="font-size:12px"></span>
+      <button id="threshold-use-recommended" class="primary">Use recommended</button>
+    </div>
+  </div>
+</div>
+
+<!-- Control-gates tuning modal: asked once after dataset examination -->
+<div id="control-gates-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2>⏸ Tune control gates</h2>
+    <p class="muted">
+      The pipeline has profiled your dataset. Adjust these three parameters
+      before clustering starts, or accept the defaults.
+    </p>
+    <div class="warn-context" id="control-gates-context"></div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+      <label>
+        <span class="lbl-head">Max cluster size % <span class="muted">(0.15 – 0.80)</span></span>
+        <input id="cg-max-pct" type="number" step="0.05" min="0.15" max="0.80" value="0.40"/>
+      </label>
+      <label>
+        <span class="lbl-head">Sub-clusters when splitting <span class="muted">(2 – 6)</span></span>
+        <input id="cg-sub-k" type="number" step="1" min="2" max="6" value="3"/>
+      </label>
+      <label>
+        <span class="lbl-head">Max deepening depth <span class="muted">(1 – 4)</span></span>
+        <input id="cg-max-depth" type="number" step="1" min="1" max="4" value="2"/>
+      </label>
+    </div>
+    <div class="modal-actions" style="margin-top:10px">
+      <span class="muted" id="control-gates-timeout-label" style="font-size:12px;flex:1"></span>
+      <button id="cg-use-defaults" class="ghost">Use defaults</button>
+      <button id="cg-apply" class="primary">Apply & continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Column-resolution modal: asked when auto-detection is ambiguous -->
+<div id="column-resolution-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2>⏸ Confirm column roles</h2>
+    <p class="muted">
+      The pipeline detected possible column roles but needs your confirmation.
+      Pick the best column for each role, or leave blank if none applies.
+    </p>
+    <div class="warn-context" id="column-resolution-context"></div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
+      <label>
+        <span class="lbl-head">Entity ID column <span class="muted">(required)</span></span>
+        <select id="cr-entity-id"></select>
+      </label>
+      <label>
+        <span class="lbl-head">Timestamp column <span class="muted">(optional)</span></span>
+        <select id="cr-timestamp"></select>
+      </label>
+      <label>
+        <span class="lbl-head">Value / amount column <span class="muted">(optional)</span></span>
+        <select id="cr-amount"></select>
+      </label>
+      <label>
+        <span class="lbl-head">Category column <span class="muted">(optional)</span></span>
+        <select id="cr-category"></select>
+      </label>
+    </div>
+    <div class="modal-actions" style="margin-top:10px">
+      <span class="muted" id="column-resolution-timeout-label" style="font-size:12px;flex:1"></span>
+      <button id="cr-use-heuristics" class="ghost">Use detected</button>
+      <button id="cr-apply" class="primary">Apply & continue</button>
     </div>
   </div>
 </div>

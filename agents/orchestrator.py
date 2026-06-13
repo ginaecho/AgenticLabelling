@@ -28,12 +28,14 @@ import time
 from collections import defaultdict
 
 import anthropic
+import numpy as np
 import pandas as pd
 
 from agents.state import HumanDecision, PipelineState
 from agents.user_input import UserInputAgent, UserIntent
 from agents.dataset_examiner import DatasetExaminerAgent
 from agents.feature_engineer import FeatureEngineerAgent, FeatureEngineeringResult
+from agents.text_preparer import TextPreparerAgent
 from agents.feature_selector import FeatureSelectionAgent
 from agents.clusterer import ClusteringAgent
 from agents.persona_namer import PersonaNamingAgent
@@ -66,12 +68,25 @@ def _load_df(path: str) -> pd.DataFrame:
     return df
 
 
-def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: OrchestratorBus) -> HumanDecision:
-    """
-    Print persona + classifier summary and ask the user what to do next.
+PENDING_HUMAN_CHECKPOINT_PATH = pathlib.Path('outputs/pending_human_checkpoint.json')
+HUMAN_CHECKPOINT_TIMEOUT_S = 600  # 10 min — UI modal gives the user plenty of time
 
-    Returns HumanDecision with action in:
-      'approve' | 'recluster' | 'reselect_features' | 'quit'
+
+def _display_checkpoint_summary(personas: dict, cluster_result, classifier_result,
+                                bus: OrchestratorBus) -> dict:
+    """Print persona + classifier summary to stdout and return a structured
+    payload the UI modal can render. Pure side-effect printing + payload —
+    no input, no blocking.
+
+    Returned dict shape (also emitted via SSE `awaiting_human_checkpoint`):
+        {
+          "silhouette": float, "n_leaf": int, "algorithm": str,
+          "cv_accuracy": float|None, "cv_f1_macro": float|None,
+          "cv_f1_weighted": float|None,
+          "personas": [{"cid", "name", "tagline", "confidence", "cv_f1"}, ...],
+          "worst_personas": [(name, f1), ...],
+          "agent_log_summary": str,
+        }
     """
     print('\n' + '=' * 65)
     print('HUMAN CHECKPOINT — Persona & Classifier Review')
@@ -82,72 +97,177 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
     if cluster_result.k_scores:
         top3 = sorted(cluster_result.k_scores.items(), key=lambda x: -x[1])[:3]
         print(f'Top-3 k values     : ' + ', '.join(f'k={k}({s:.3f})' for k, s in top3))
-    print(f'CV accuracy        : {classifier_result.cv_accuracy:.4f}')
-    print(f'CV F1 (macro)      : {classifier_result.cv_f1_macro:.4f}')
-    print(f'CV F1 (weighted)   : {classifier_result.cv_f1_weighted:.4f}')
+    # Classifier can be None when it crashed (e.g. sklearn version mismatch on
+    # logistic_regression). Surface that clearly instead of attribute-erroring.
+    if classifier_result is not None:
+        print(f'CV accuracy        : {classifier_result.cv_accuracy:.4f}')
+        print(f'CV F1 (macro)      : {classifier_result.cv_f1_macro:.4f}')
+        print(f'CV F1 (weighted)   : {classifier_result.cv_f1_weighted:.4f}')
+    else:
+        print('CV metrics         : (classifier failed this iteration — no F1 available)')
     print()
 
     # Persona table
     print(f'{"Cluster":<10} {"Conf":>4}  {"CV-F1":>6}  {"Persona Name":<45}  Tagline')
     print('-' * 115)
+    _per_class = (classifier_result.per_class_f1 if classifier_result is not None else {}) or {}
+    persona_rows = []
     for cid, p in personas.items():
         name    = p.get('name', '?')
         conf    = p.get('confidence', '?')
         tagline = p.get('tagline', '')
-        cv_f1   = classifier_result.per_class_f1.get(name, None)
+        cv_f1   = _per_class.get(name, None)
         cv_f1_str = f'{cv_f1:.3f}' if cv_f1 is not None else '  n/a'
         print(f'  C{cid:<7}  {conf:>4}  {cv_f1_str:>6}  {name:<45}  {tagline}')
+        persona_rows.append({
+            'cid': str(cid), 'name': name, 'tagline': tagline,
+            'confidence': conf,
+            'cv_f1': float(cv_f1) if isinstance(cv_f1, (int, float)) else None,
+        })
 
-    # Highlight worst-performing personas
-    worst = sorted(classifier_result.per_class_f1.items(), key=lambda x: x[1])[:3]
-    print()
-    print('Hardest-to-predict personas (CV F1):')
-    for name, score in worst:
-        bar = '█' * int(score * 20)
-        print(f'  {name:<45}  {score:.3f}  {bar}')
+    worst = []
+    if _per_class:
+        worst = sorted(_per_class.items(), key=lambda x: x[1])[:3]
+        print()
+        print('Hardest-to-predict personas (CV F1):')
+        for name, score in worst:
+            bar = '█' * int(score * 20)
+            print(f'  {name:<45}  {score:.3f}  {bar}')
 
-    # Pipeline log summary
     print()
     print('Pipeline Agent Log (recent):')
-    print(bus.summary_for_llm(last_n=10))
+    log_summary = bus.summary_for_llm(last_n=10)
+    print(log_summary)
 
-    print()
-    print('Options:')
+    return {
+        'silhouette': float(cluster_result.silhouette) if cluster_result.silhouette is not None else None,
+        'n_leaf': cluster_result.n_leaf,
+        'algorithm': cluster_result.algo_name,
+        'cv_accuracy': float(classifier_result.cv_accuracy) if classifier_result is not None else None,
+        'cv_f1_macro': float(classifier_result.cv_f1_macro) if classifier_result is not None else None,
+        'cv_f1_weighted': float(classifier_result.cv_f1_weighted) if classifier_result is not None else None,
+        'personas': persona_rows,
+        'worst_personas': [{'name': n, 'cv_f1': float(s)} for n, s in worst],
+        'agent_log_summary': log_summary[:4000],
+    }
+
+
+def _collect_human_decision(summary: dict, bus: OrchestratorBus,
+                            timeout_s: float = HUMAN_CHECKPOINT_TIMEOUT_S) -> HumanDecision:
+    """Wait for the user's decision via the UI modal, falling back to terminal.
+
+    Flow:
+      1. Emit `awaiting_human_checkpoint` SSE event carrying the summary.
+      2. Poll outputs/pending_human_checkpoint.json for up to timeout_s seconds.
+      3. If the file appears, parse {action, feedback} and return.
+      4. If polling times out OR stdin has terminal input first, fall through
+         to the existing terminal prompt so this still works headless.
+
+    The polling loop checks stdin every tick (non-blocking via select) so a
+    user typing 1/2/3/4 in the terminal also unblocks the run.
+    """
+    import select
+    import sys as _sys
+
+    # Defensive cleanup: stale file from a prior checkpoint must not auto-resolve us.
+    try:
+        if PENDING_HUMAN_CHECKPOINT_PATH.exists():
+            PENDING_HUMAN_CHECKPOINT_PATH.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    try:
+        bus.emit('awaiting_human_checkpoint', timeout_s=timeout_s, **summary)
+    except Exception:  # noqa: BLE001
+        pass  # bus problems shouldn't block the terminal fallback
+
+    print('\nOptions:')
     print('  [1] Approve — save results and finish')
     print('  [2] Re-cluster — try different clustering parameters')
     print('  [3] Re-select features — go back to feature selection')
     print('  [4] Quit without saving')
-    print()
+    print('\n  (or click an option in the browser modal — pipeline is paused)')
+    print('Your choice [1/2/3/4]: ', end='', flush=True)
 
-    while True:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        # 1) UI modal wrote a decision file?
+        if PENDING_HUMAN_CHECKPOINT_PATH.exists():
+            try:
+                payload = json.loads(PENDING_HUMAN_CHECKPOINT_PATH.read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError):
+                payload = {}
+            try:
+                PENDING_HUMAN_CHECKPOINT_PATH.unlink(missing_ok=True)
+            except OSError:
+                pass
+            action = str(payload.get('action') or 'approve').lower()
+            feedback = str(payload.get('feedback') or '').strip()
+            if action not in ('approve', 'recluster', 'reselect_features', 'quit'):
+                action = 'approve'
+            try:
+                bus.emit('human_checkpoint_resolved', source='ui',
+                         action=action, feedback=feedback)
+            except Exception:  # noqa: BLE001
+                pass
+            print(f'\n  [UI] {action!r} received from browser modal.')
+            return HumanDecision(action=action, feedback=feedback)
+        # 2) Stdin readable? (terminal fallback)
         try:
-            choice = input('Your choice [1/2/3/4]: ').strip()
+            ready, _, _ = select.select([_sys.stdin], [], [], 0.4)
+        except (ValueError, OSError):
+            ready = []
+        if ready:
+            try:
+                choice = _sys.stdin.readline().strip()
+            except (EOFError, KeyboardInterrupt):
+                print('\nNo input received — defaulting to Approve.')
+                return HumanDecision(action='approve')
+            return _handle_terminal_choice(choice)
+    # Timeout — default to approve so unattended runs still finish.
+    try:
+        bus.emit('human_checkpoint_resolved', source='timeout', action='approve')
+    except Exception:  # noqa: BLE001
+        pass
+    print(f'\n  No decision received within {int(timeout_s)}s — defaulting to Approve.')
+    return HumanDecision(action='approve')
+
+
+def _handle_terminal_choice(choice: str) -> HumanDecision:
+    """Map a typed 1/2/3/4 to a HumanDecision, prompting for a reason when needed."""
+    choice = (choice or '').strip()
+    if choice == '1':
+        return HumanDecision(action='approve')
+    if choice == '2':
+        try:
+            reason = input('  Reason / feedback for re-clustering (or Enter to skip): ').strip()
         except (EOFError, KeyboardInterrupt):
-            print('\nNo input received — defaulting to Approve.')
-            return HumanDecision(action='approve')
+            reason = ''
+        return HumanDecision(action='recluster', feedback=reason)
+    if choice == '3':
+        try:
+            reason = input('  Reason / feedback for feature re-selection (or Enter to skip): ').strip()
+        except (EOFError, KeyboardInterrupt):
+            reason = ''
+        return HumanDecision(action='reselect_features', feedback=reason)
+    if choice == '4':
+        return HumanDecision(action='quit')
+    # Anything else: treat as approve to avoid spinning further on bad input.
+    print(f'  Unrecognised choice {choice!r} — defaulting to Approve.')
+    return HumanDecision(action='approve')
 
-        if choice == '1':
-            return HumanDecision(action='approve')
 
-        elif choice == '2':
-            try:
-                reason = input('  Reason / feedback for re-clustering (or Enter to skip): ').strip()
-            except (EOFError, KeyboardInterrupt):
-                reason = ''
-            return HumanDecision(action='recluster', feedback=reason)
+def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: OrchestratorBus) -> HumanDecision:
+    """Display the checkpoint and collect the user's decision (UI or terminal).
 
-        elif choice == '3':
-            try:
-                reason = input('  Reason / feedback for feature re-selection (or Enter to skip): ').strip()
-            except (EOFError, KeyboardInterrupt):
-                reason = ''
-            return HumanDecision(action='reselect_features', feedback=reason)
+    Returns HumanDecision with action in:
+      'approve' | 'recluster' | 'reselect_features' | 'quit'
 
-        elif choice == '4':
-            return HumanDecision(action='quit')
-
-        else:
-            print('  Invalid choice. Please enter 1, 2, 3, or 4.')
+    Composed of two pure halves so run_pipeline.py's `_auto_approve` wrapper
+    can call only `_display_checkpoint_summary` and skip the wait.
+    """
+    summary = _display_checkpoint_summary(personas, cluster_result, classifier_result, bus)
+    return _collect_human_decision(summary, bus)
 
 
 def save_outputs(cluster_result, naming_result, classifier_result, bus: OrchestratorBus) -> None:
@@ -380,6 +500,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         self.input_agent            = UserInputAgent(self.bus)
         self.examiner_agent         = DatasetExaminerAgent(self.bus)
         self.feature_engineer_agent = FeatureEngineerAgent(self.bus)
+        self.text_preparer_agent    = TextPreparerAgent(self.bus)
         self.feature_agent          = FeatureSelectionAgent(
             self.bus,
             ae_bottleneck_cap=config.get('ae_bottleneck_cap', 32),
@@ -471,6 +592,23 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         elif user_intent:
             state.user_intent = user_intent
 
+        if state.user_intent and getattr(state.user_intent, 'max_total_iterations', None):
+            old_max = int(max_total_iterations)
+            new_max = int(state.user_intent.max_total_iterations)
+            if new_max > 0 and new_max != old_max:
+                max_total_iterations = new_max
+                print(
+                    f'  [Orchestrator] max_total_iterations overridden by user intent: '
+                    f'{old_max} → {new_max}.'
+                )
+                self.bus.emit(
+                    'config_override_from_intent',
+                    field='max_total_iterations',
+                    old=old_max,
+                    new=new_max,
+                    source='user_intent',
+                )
+
         # ── Apply user-intent overrides to pipeline config ──────────────────
         # max_cluster_size_pct: if the user said "max cluster <X%>" in their
         # intent text, the UserInputAgent parsed it into this field; we
@@ -516,6 +654,17 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                         f'  [Orchestrator] WARNING: neither {state.user_intent.dataset_path!r} '
                         f'nor {features_path!r} found on disk.'
                     )
+
+        # ── Inject modality from config when intent leaves it on 'auto' ────────
+        # Lets `modality: text` / `text_column:` in config.yaml (or --modality)
+        # drive routing without the interactive UserInputAgent needing to ask.
+        if state.user_intent is not None:
+            if (getattr(state.user_intent, 'modality', 'auto') or 'auto') == 'auto':
+                state.user_intent.modality = str(
+                    self.config.get('modality', 'auto') or 'auto'
+                ).lower()
+            if not getattr(state.user_intent, 'text_column', None) and self.config.get('text_column'):
+                state.user_intent.text_column = self.config.get('text_column')
 
         # ── Resolve raw data path ──────────────────────────────────────────────
         # user_intent.dataset_path may point to a raw transaction CSV (preferred)
@@ -566,6 +715,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             ),
             df=raw_df,
             iteration=0,
+            n_rows_source=len(full_raw_df) if full_raw_df is not None else None,
         )
         self._timings['DatasetExaminer'].append(time.perf_counter() - _t0)
         state.dataset_profile = dataset_profile
@@ -583,6 +733,18 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             'suggested_groups': dataset_profile.suggested_feature_groups,
             'algo_hint': dataset_profile.algo_hint,
         })
+
+        # ── Control-gate tuning (max_cluster_size_pct, sub_n_clusters, max_depth) ─
+        # The Decision Maker (bypass) or the user (interactive) sets these based
+        # on dataset stats rather than hard-coding 0.40 / 3 / 2.
+        _tuned_gates = self._tune_control_gates(
+            raw_df=raw_df if raw_df is not None else features_df,
+            dataset_profile=dataset_profile,
+            user_intent=state.user_intent,
+        )
+        self.config['max_cluster_size_pct'] = _tuned_gates['max_cluster_size_pct']
+        self.config['sub_n_clusters'] = _tuned_gates['sub_n_clusters']
+        self.config['max_depth'] = _tuned_gates['max_depth']
 
         # ── Decision-Maker case-memory recall ──────────────────────────────────
         # Look up any prior successful run whose dataset+goal matches this one
@@ -622,21 +784,183 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     'case_memory_recall',
                     match_type=recall.match_type,
                     notes=recall.notes,
+                    prior_dataset=recall.case.get('dataset', {}).get('name'),
+                    prior_purpose=recall.case.get('intent', {}).get('business_purpose'),
                     prior_silhouette=recall.case.get('outcome', {}).get('silhouette'),
                     prior_cv_f1_macro=recall.case.get('outcome', {}).get('cv_f1_macro'),
                     prior_algorithm=strat.get('algorithm'),
                     prior_k=strat.get('k'),
+                    prior_vif_threshold=strat.get('vif_threshold'),
+                    prior_min_silhouette=strat.get('min_silhouette'),
+                    prior_n_features_kept=strat.get('n_features_kept'),
                 )
+
+                # Ask the user how to use the recall (interactive only).
+                # Three options:
+                #   reuse  — seed iteration 1's tuning_params with the prior
+                #            recipe AND drop the LLM hint block so it doesn't
+                #            second-guess the user's chosen recipe.
+                #   modify — keep defaults but inject the recall as a HINT in
+                #            the failure-tuning prompt (the historical behaviour).
+                #   ignore — clear the recall entirely; pretend we never matched.
+                #
+                # Bypass mode auto-picks 'modify' so headless runs behave as
+                # they did before this gate existed.
+                from skills.orchestrator_bus import read_pipeline_mode
+                _mode = read_pipeline_mode()
+                if _mode == 'interactive':
+                    _decision = self._wait_for_case_recall_decision(recall, state)
+                else:
+                    _decision = 'modify'
+                    print(f'  [Orchestrator] BYPASS — auto-applying case recall as a hint (decision=modify).')
+
+                self.bus.emit('case_memory_decision', decision=_decision,
+                              match_type=recall.match_type)
+
+                if _decision == 'reuse':
+                    # Seed iteration 1's tuning params with the prior recipe.
+                    # Each value is only applied when present in the case so we
+                    # don't clobber defaults with None.
+                    seeded: dict = {}
+                    if strat.get('algorithm'):
+                        state.tuning_params['algorithm'] = strat.get('algorithm')
+                        seeded['algorithm'] = strat.get('algorithm')
+                    if strat.get('k') is not None:
+                        try:
+                            _k = int(strat.get('k'))
+                            state.tuning_params['k_range'] = [_k]
+                            seeded['k_range'] = [_k]
+                        except (TypeError, ValueError):
+                            pass
+                    if strat.get('vif_threshold') is not None:
+                        try:
+                            state.tuning_params['vif_threshold'] = float(strat.get('vif_threshold'))
+                            seeded['vif_threshold'] = float(strat.get('vif_threshold'))
+                        except (TypeError, ValueError):
+                            pass
+                    if strat.get('min_silhouette') is not None:
+                        try:
+                            state.tuning_params['min_silhouette'] = float(strat.get('min_silhouette'))
+                            seeded['min_silhouette'] = float(strat.get('min_silhouette'))
+                        except (TypeError, ValueError):
+                            pass
+                    if strat.get('feature_focus'):
+                        state.tuning_params['feature_focus'] = strat.get('feature_focus')
+                        seeded['feature_focus'] = strat.get('feature_focus')
+                    # Drop the recall so the failure-tuning LLM doesn't get a
+                    # contradictory hint block AND so case_recall isn't
+                    # re-applied later.
+                    state.case_recall = None
+                    print(f'  [Orchestrator] 🧠 REUSE — seeded iteration 1 with prior recipe: {seeded}')
+                elif _decision == 'ignore':
+                    state.case_recall = None
+                    print('  [Orchestrator] 🧠 IGNORE — discarding recall; fresh run.')
+                else:
+                    # modify — keep recall on state so the failure-tuning prompt
+                    # gets the hint block. No tuning_params seeded.
+                    print('  [Orchestrator] 🧠 MODIFY — recall stays as a hint for failure-tuning only.')
             else:
                 print('\n[Orchestrator] 🧠 Case-memory: no matching prior case found.')
         except Exception as _exc:  # noqa: BLE001
             print(f'  [Orchestrator] (case-memory lookup failed: {_exc})')
+
+        # ── Step 2a: TEXT modality — TextPreparer replaces FeatureEngineer ─────
+        # When the dataset is text-dominant, vectorize the documents into an
+        # embedding matrix. That matrix is a plain numeric feature table, so the
+        # SAME FeatureSelector → Clusterer → PersonaNamer → Classifier loop and
+        # its control gates run unchanged on it.
+        modality = getattr(dataset_profile, 'modality', 'tabular')
+        if modality == 'text':
+            print('\n[Orchestrator] Text modality — launching TextPreparerAgent...')
+            self._active_agent = 'TextPreparer'
+            _t0 = time.perf_counter()
+            source_df = full_raw_df if full_raw_df is not None else features_df
+            _tv = str(self.config.get('text_vectorizer', 'auto') or 'auto').lower()
+            try:
+                features_df, tp_result = self.text_preparer_agent.run(
+                    raw_df=source_df,
+                    user_intent=state.user_intent or UserIntent(
+                        target_entity='documents',
+                        business_purpose='discover distinct themes in the documents',
+                        dataset_path=raw_data_path or features_path,
+                    ),
+                    dataset_profile=dataset_profile,
+                    output_path='data/processed/text_embeddings.parquet',
+                    iteration=0,
+                    method=_tv if _tv in ('tfidf_svd', 'transformer') else None,
+                )
+            except RuntimeError as e:
+                print(f'\n[Orchestrator] TextPreparer BLOCKED: {e}')
+                return {'status': 'blocked', 'personas': None, 'run_history': run_history}
+            self._timings['TextPreparer'].append(time.perf_counter() - _t0)
+            # Stash text artifacts so Clusterer/PersonaNamer/FeatureSelector can
+            # access raw docs + TF-IDF vocab for c-TF-IDF distinctive terms +
+            # representative documents per cluster. `modality` mirrors the
+            # detected profile so each downstream agent can take the text branch.
+            state.modality = 'text'
+            state.text_artifacts = {
+                'method': tp_result.method,
+                'text_column': tp_result.text_column,
+                'raw_docs': tp_result.raw_docs,
+                'feature_names': tp_result.artifacts.get('feature_names', []),
+                'tfidf': tp_result.artifacts.get('tfidf'),
+                'tfidf_matrix': tp_result.artifacts.get('tfidf_matrix'),
+                'doc_index': list(features_df.index),
+            }
+            state.text_prep = tp_result  # type: ignore[attr-defined]
+            need_feature_engineering = False
+
+            # Relax control gates for text: topic clusters are fuzzier than
+            # tabular RFM clusters, so the same thresholds would loop needlessly.
+            # Values come from config.yaml:text_overrides, with hardcoded
+            # fallbacks so existing tests that don't load the YAML still pass.
+            txt_ov = dict(self.config.get('text_overrides') or {})
+            min_sil_text = float(txt_ov.get('min_silhouette') or 0.01)
+            sil_target_text = float(txt_ov.get('silhouette_target') or 0.18)
+            f1_text = float(txt_ov.get('classifier_f1_threshold') or 0.60)
+            max_pct_text = float(txt_ov.get('max_cluster_size_pct') or 0.60)
+            state.tuning_params['min_silhouette'] = min_sil_text
+            # Drive the orchestrator's dynamic silhouette target through the
+            # override mechanism so _current_silhouette_target() picks it up
+            # for *every* iteration (not just for the first relax cycle).
+            state.silhouette_target_override = sil_target_text
+            self.classifier_agent.F1_THRESHOLD = f1_text
+            # Also widen max_cluster_size_pct so Clusterer doesn't over-split
+            # natural topic groups (the tabular 0.40 cap was tuned for behavioral
+            # features; text topics commonly occupy 40-55% of a small corpus).
+            # Only widen, never tighten — respect a user-set explicit value.
+            if float(self.config.get('max_cluster_size_pct', 0.40)) < max_pct_text:
+                self.config['max_cluster_size_pct'] = max_pct_text
+            print(
+                f'  [Orchestrator] Text mode gates from config.text_overrides: '
+                f'min_silhouette={min_sil_text}, silhouette_target={sil_target_text}, '
+                f'classifier F1 threshold={f1_text}, '
+                f'max_cluster_size_pct={self.config["max_cluster_size_pct"]}'
+            )
+
+            run_history.append({
+                'iteration': 0,
+                'stage': 'text_preparation',
+                'n_docs': tp_result.n_docs,
+                'n_dims': tp_result.n_dims,
+                'method': tp_result.method,
+                'text_column': tp_result.text_column,
+                'elapsed_s': round(self._timings['TextPreparer'][-1], 1),
+            })
 
         # ── Step 2: Feature Engineering (only when a raw CSV was provided) ─────
         # When the user gave a .csv path, the FeatureEngineerAgent turns the
         # event-level data into an entity-level feature matrix and saves
         # it to data/processed/. Downstream agents then use that parquet.
         if need_feature_engineering:
+            # Resolve entity/timestamp/amount/category columns before engineering
+            _resolved_cols = self._resolve_columns(
+                raw_df=raw_df if raw_df is not None else full_raw_df,
+                dataset_profile=dataset_profile,
+                user_intent=state.user_intent,
+            )
+            state.resolved_columns = _resolved_cols
+
             print('\n[Orchestrator] Launching FeatureEngineerAgent on raw transaction data...')
             _t0 = time.perf_counter()
             self._active_agent = 'FeatureEngineer'
@@ -651,6 +975,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     dataset_profile=dataset_profile,
                     output_path='data/processed/engineered_features.parquet',
                     iteration=0,
+                    resolved_columns=_resolved_cols,
                 )
                 self._timings['FeatureEngineer'].append(time.perf_counter() - _t0)
                 run_history.append({
@@ -664,6 +989,10 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 print(
                     f'  [Orchestrator] Feature engineering done: '
                     f'{fe_result.n_features} features × {fe_result.n_entities} entities'
+                )
+                self._save_pre_modelling_preview(
+                    features_df, list(features_df.columns),
+                    stage='feature_engineering', iteration=0,
                 )
             except RuntimeError as e:
                 print(f'\n[Orchestrator] FeatureEngineer BLOCKED: {e}')
@@ -730,6 +1059,42 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
 
             # ── ESCALATION: re-engineer features from scratch ─────────────────
             # Triggered when we've had N consecutive low-silhouette iterations.
+            # SKIP for text modality: FeatureEngineer is a tabular RFM/aggregate
+            # builder and has nothing useful to do with raw text columns — it
+            # would hang on the heavy LLM call looking for "behavioral features"
+            # in title/body strings. For text, the escalation path is instead
+            # handled by _ask_parameter_tuning: it picks a different algorithm
+            # (kmeans ↔ hierarchical ↔ nmf ↔ lda) or a different text_vectorizer
+            # (tfidf_svd ↔ transformer). We just clear the flag and let the
+            # main loop continue.
+            _is_text = getattr(state, 'modality', 'tabular') == 'text'
+            if state.needs_feature_engineering and _is_text:
+                print(
+                    f'\n[Orchestrator] ESCALATION (text mode) — '
+                    f'{state.consecutive_silhouette_failures} silhouette failures. '
+                    f'Skipping FeatureEngineer re-run (tabular-only); the Decision '
+                    f'Maker will pick a different algorithm / text_vectorizer on '
+                    f'this iteration instead.'
+                )
+                self.bus.emit(
+                    'feature_re_engineering',
+                    consecutive_failures=state.consecutive_silhouette_failures,
+                    silhouette_target=_current_silhouette_target(),
+                    modality='text',
+                    skipped='FeatureEngineer is tabular-only; tuning algorithm instead',
+                )
+                # Force a fresh algorithm pick on this iteration by clearing
+                # the cached one — _ask_parameter_tuning will be invoked later
+                # in the loop via the silhouette-miss branch.
+                state.tuning_params['algorithm'] = None
+                state.tuning_params['feature_focus'] = (
+                    f"Previous text clustering gave silhouette < target across "
+                    f"{state.consecutive_silhouette_failures} iterations — try a "
+                    f"fundamentally different algorithm (kmeans/hierarchical/nmf/lda) "
+                    f"or text_vectorizer (tfidf_svd↔transformer)."
+                )
+                state.needs_feature_engineering = False
+                state.consecutive_silhouette_failures = 0
             if state.needs_feature_engineering and full_raw_df is not None:
                 print(f'\n[Orchestrator] ESCALATION — {state.consecutive_silhouette_failures} '
                       f'failures in a row. Re-running FeatureEngineer from raw data + '
@@ -760,11 +1125,16 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                         dataset_profile=state.dataset_profile,
                         output_path='data/processed/engineered_features.parquet',
                         iteration=iteration,
+                        resolved_columns=state.resolved_columns,
                     )
                     self._timings['FeatureEngineer'].append(time.perf_counter() - _t0)
                     state.needs_feature_engineering = False
                     state.consecutive_silhouette_failures = 0
                     state.needs_feature_selection = True   # force fresh selection
+                    self._save_pre_modelling_preview(
+                        features_df, list(features_df.columns),
+                        stage='feature_engineering', iteration=iteration,
+                    )
                 except RuntimeError as e:
                     print(f'[Orchestrator] FeatureEngineer escalation failed: {e}')
                     state.needs_feature_engineering = False  # don't loop forever
@@ -773,6 +1143,57 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             if self.bus.has_hard_block():
                 print('\n[Orchestrator] Hard block detected — triggering human checkpoint.')
                 break
+
+            # ── (1b) Cross-modal loopback: re-vectorise text if the failure-
+            # tuning LLM picked a different embedding method last round. This is
+            # the text-mode analog of FeatureEngineer re-engineering — the LLM
+            # decided tfidf_svd was the wrong call and asked for transformer
+            # (or vice-versa).
+            if (getattr(state, 'modality', 'tabular') == 'text'
+                    and state.tuning_params.get('text_vectorizer') is not None):
+                _requested = state.tuning_params['text_vectorizer']
+                _current = (state.text_artifacts or {}).get('method')
+                if _requested != _current and _requested in ('tfidf_svd', 'transformer'):
+                    print(f'\n[Orchestrator] Text re-vectorisation — switching '
+                          f'{_current!r} → {_requested!r} (LLM-driven).')
+                    self._active_agent = 'TextPreparer'
+                    _t0 = time.perf_counter()
+                    _source_df = full_raw_df if full_raw_df is not None else features_df
+                    try:
+                        features_df, tp_result = self.text_preparer_agent.run(
+                            raw_df=_source_df,
+                            user_intent=state.user_intent,
+                            dataset_profile=dataset_profile,
+                            output_path='data/processed/text_embeddings.parquet',
+                            iteration=iteration,
+                            method=_requested,
+                            feedback=(f"Failure-tuning LLM asked to switch embedding "
+                                      f"method to {_requested!r} after the previous "
+                                      f"method produced low silhouette."),
+                        )
+                        self._timings['TextPreparer'].append(time.perf_counter() - _t0)
+                        state.text_artifacts = {
+                            'method': tp_result.method,
+                            'text_column': tp_result.text_column,
+                            'raw_docs': tp_result.raw_docs,
+                            'feature_names': tp_result.artifacts.get('feature_names', []),
+                            'tfidf': tp_result.artifacts.get('tfidf'),
+                            'tfidf_matrix': tp_result.artifacts.get('tfidf_matrix'),
+                            'doc_index': list(features_df.index),
+                        }
+                        state.text_prep = tp_result  # type: ignore[attr-defined]
+                        state.needs_feature_selection = True  # re-select on the new matrix
+                        run_history.append({
+                            'iteration': iteration,
+                            'stage': 'text_re_vectorisation',
+                            'from_method': _current,
+                            'to_method': tp_result.method,
+                            'n_dims': tp_result.n_dims,
+                            'elapsed_s': round(self._timings['TextPreparer'][-1], 1),
+                        })
+                    except RuntimeError as e:
+                        print(f'  [Orchestrator] Re-vectorisation failed ({e}); '
+                              f'keeping previous embeddings.')
 
             # ── (2) Feature Selection ──────────────────────────────────────────
             if state.needs_feature_selection:
@@ -792,9 +1213,14 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     iteration=iteration,
                     vif_threshold=state.tuning_params.get('vif_threshold'),
                     feature_focus=state.tuning_params.get('feature_focus', ''),
+                    modality=getattr(state, 'modality', 'tabular'),
                 )
                 self._timings['FeatureSelector'].append(time.perf_counter() - _t0)
                 state.update_features(fs)
+                self._save_pre_modelling_preview(
+                    features_df, list(state.selected_features or []),
+                    stage='feature_selection', iteration=iteration,
+                )
                 run_history.append({
                     'iteration': iteration,
                     'stage': 'feature_selection',
@@ -814,6 +1240,17 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 _cluster_override['clustering_algorithm'] = state.tuning_params['algorithm']
             if state.tuning_params.get('k_range') is not None:
                 _cluster_override['k_search_range'] = state.tuning_params['k_range']
+            # Threshold-decision modal only pauses the pipeline when the user
+            # has explicitly toggled the UI mode to 'interactive'. Otherwise
+            # (default + CLI --bypass) the clusterer auto-applies the
+            # recommended option and emits an event the UI surfaces as a
+            # warning banner. This mirrors the existing _relax_silhouette_target
+            # flow so the two pause paths behave consistently.
+            from skills.orchestrator_bus import read_pipeline_mode
+            _bypass_for_decisions = (
+                read_pipeline_mode() != 'interactive'
+                or bool(self.config.get('bypass_mode', False))
+            )
             cr = self.cluster_agent.run(
                 features_df,
                 selected_features=state.selected_features,
@@ -825,6 +1262,10 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 config_override=_cluster_override or None,
                 min_silhouette=state.tuning_params.get('min_silhouette'),
                 silhouette_target=_current_silhouette_target(),
+                text_artifacts=(state.text_artifacts
+                                if getattr(state, 'modality', 'tabular') == 'text'
+                                else None),
+                bypass=_bypass_for_decisions,
             )
             self._timings['Clusterer'].append(time.perf_counter() - _t0)
             state.clustering_history.append(cr)
@@ -978,6 +1419,11 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             if _silhouette_missed:
                 state.consecutive_silhouette_failures += 1
                 state.silhouette_fail_for_relax += 1
+                # Pull candidate info from the clustering report if available
+                _cand = cr.candidate_evidence if cr else {}
+                _cand_best = _cand.get("best") if isinstance(_cand, dict) else None
+                _cand_all = _cand.get("candidates", []) if isinstance(_cand, dict) else []
+                _algos = sorted(set(c["algorithm"] for c in _cand_all))
                 print(f'\n[Orchestrator] Silhouette {_sil:.3f} < target {_target_now:.2f} '
                       f'(re-engineer counter {state.consecutive_silhouette_failures}/{max_reselect_failures} · '
                       f'relax counter {state.silhouette_fail_for_relax}/{max_relax_failures}).')
@@ -989,6 +1435,9 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     max_failures=max_reselect_failures,
                     relax_failures=state.silhouette_fail_for_relax,
                     max_relax_failures=max_relax_failures,
+                    candidate_best=_cand_best,
+                    algorithms=_algos,
+                    n_candidates=len(_cand_all),
                 )
                 if state.silhouette_fail_for_relax >= max_relax_failures:
                     self._relax_silhouette_target(state, _target_now)
@@ -1241,6 +1690,102 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             'llm_usage': self._llm_usage_dict(),
         }
 
+    # ── Pre-modelling preview (Evidence tab: dataset after transformations) ───
+
+    def _save_pre_modelling_preview(self, features_df, selected_cols,
+                                     stage: str, iteration: int) -> None:
+        """Snapshot the dataset state after FeatureEngineer / FeatureSelector.
+
+        Writes outputs/pre_modelling_preview.json with head rows, basic column
+        stats, and a stage label. The UI's "Pre-modelling dataset" card reads
+        this file so the user can see what the dataset looks like AFTER each
+        transformation step, without having to load the full parquet.
+        """
+        import numpy as np
+        if features_df is None or len(features_df) == 0:
+            return
+        if selected_cols:
+            cols = [c for c in selected_cols if c in features_df.columns]
+        else:
+            cols = list(features_df.columns)
+        if not cols:
+            return
+        df = features_df[cols]
+        n_rows, n_cols = df.shape
+
+        head = df.head(8)
+        rows = [[('' if v is None or (isinstance(v, float) and np.isnan(v))
+                  else (round(float(v), 4) if isinstance(v, (int, float, np.floating, np.integer))
+                        else str(v)))
+                 for v in row] for row in head.itertuples(index=False, name=None)]
+
+        col_stats = []
+        for i, c in enumerate(cols[:200]):
+            # Positional access: df[c] returns a DataFrame when column names duplicate.
+            s = df.iloc[:, i]
+            if isinstance(s, pd.DataFrame):
+                s = s.iloc[:, 0]
+            try:
+                is_numeric = bool(pd.api.types.is_numeric_dtype(s))
+            except (TypeError, AttributeError):
+                is_numeric = False
+            entry = {
+                'name': str(c),
+                'numeric': is_numeric,
+                'missing_pct': round(float(s.isna().mean() * 100.0), 2),
+            }
+            if is_numeric:
+                try:
+                    sk = float(s.dropna().skew())
+                    if not np.isnan(sk):
+                        entry['skew'] = round(sk, 3)
+                except Exception:
+                    pass
+            col_stats.append(entry)
+
+        from datetime import datetime, timezone
+        snapshot = {
+            'stage': stage,
+            'iteration': iteration,
+            'ts': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+            'n_rows': int(n_rows),
+            'n_cols': int(n_cols),
+            'columns': [str(c) for c in cols],
+            'rows': rows,
+            'col_stats': col_stats,
+        }
+
+        # Append to a list of snapshots so the user can browse every
+        # FeatureEngineer / FeatureSelector run in the Data & Evidence tab.
+        # Replace any existing entry with the same (stage, iteration) key so
+        # re-runs of the same step don't accumulate duplicates. Cap to the
+        # most recent MAX_SNAPSHOTS entries to keep the file small.
+        MAX_SNAPSHOTS = 20
+        out_path = pathlib.Path('outputs/pre_modelling_preview.json')
+        try:
+            existing = json.loads(out_path.read_text(encoding='utf-8')) if out_path.exists() else []
+        except (OSError, json.JSONDecodeError):
+            existing = []
+        # Back-compat: file previously held a single dict, not a list.
+        if isinstance(existing, dict):
+            existing = [existing]
+        elif not isinstance(existing, list):
+            existing = []
+        existing = [s for s in existing
+                    if not (s.get('stage') == stage and s.get('iteration') == iteration)]
+        existing.append(snapshot)
+        if len(existing) > MAX_SNAPSHOTS:
+            existing = existing[-MAX_SNAPSHOTS:]
+        payload = existing
+        try:
+            out_path.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding='utf-8'
+            )
+            print(f'  [Orchestrator] Pre-modelling preview saved '
+                  f'(stage={stage}, iter {iteration}, {n_rows}×{n_cols})')
+        except OSError as e:
+            print(f'  [Orchestrator] Pre-modelling preview save failed: {e}')
+
     # ── Per-iteration PCA projection (Evidence tab visual) ────────────────────
 
     def _save_pca_projection(self, features_df, selected_features, cluster_labels,
@@ -1314,6 +1859,33 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             new_target = suggested
             print(f'  [Orchestrator] BYPASS — auto-lowering silhouette_target '
                   f'{current_target:.2f} → {new_target:.2f}')
+            # Also surface through the new threshold-decision banner so the
+            # Evidence tab shows every bypass-applied relaxation in one place.
+            try:
+                self.bus.emit(
+                    'threshold_decision_auto_applied',
+                    mode='bypass',
+                    chosen='relax',
+                    decision_id=f'orch_relax_target_iter{state.total_iterations}',
+                    agent='Orchestrator',
+                    title='Silhouette target auto-relaxed',
+                    summary=(
+                        f"3 consecutive iterations missed silhouette target "
+                        f"{current_target:.2f}. Bypass mode auto-dropped it to "
+                        f"{new_target:.2f}."
+                    ),
+                    options=[
+                        {'key': 'relax', 'label': f'Drop to {new_target:.2f}',
+                         'description': 'Lower the bar; future iterations only need to clear the new target.'},
+                        {'key': 'keep', 'label': f'Keep at {current_target:.2f}',
+                         'description': 'Demand the original quality; may exhaust iterations.'},
+                    ],
+                    recommended='relax',
+                    extra={'previous': current_target, 'new': new_target,
+                           'iterations_failed': 3},
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
         state.silhouette_target_override = float(new_target)
         state.silhouette_fail_for_relax = 0
@@ -1360,6 +1932,66 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         except Exception:  # noqa: BLE001
             pass
 
+    def _wait_for_case_recall_decision(self, recall, state) -> str:
+        """Block until the user decides what to do with a case-memory recall.
+
+        Reads outputs/pending_case_recall.json (written by POST
+        /api/case-recall-decision). Valid decisions: 'reuse' | 'modify' |
+        'ignore'. Defaults to 'modify' if the user doesn't respond in time —
+        same behaviour the system had before this gate existed, so a missed
+        click never blocks a run forever.
+        """
+        import pathlib, time as _time
+        pending = pathlib.Path('outputs/pending_case_recall.json')
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        strat = recall.case.get('winning_strategy', {}) or {}
+        outcome = recall.case.get('outcome', {}) or {}
+        ds = recall.case.get('dataset', {}) or {}
+        intent = recall.case.get('intent', {}) or {}
+
+        self.bus.emit(
+            'awaiting_case_recall_decision',
+            match_type=recall.match_type,
+            notes=recall.notes,
+            prior_dataset=ds.get('name'),
+            prior_purpose=intent.get('business_purpose'),
+            prior_algorithm=strat.get('algorithm'),
+            prior_k=strat.get('k'),
+            prior_vif_threshold=strat.get('vif_threshold'),
+            prior_min_silhouette=strat.get('min_silhouette'),
+            prior_n_features_kept=strat.get('n_features_kept'),
+            prior_silhouette=outcome.get('silhouette'),
+            prior_cv_f1_macro=outcome.get('cv_f1_macro'),
+            timeout_s=300,
+        )
+        print(f'\n  [INTERACTIVE MODE] Case memory matched a prior run '
+              f'({recall.match_type}). Pipeline paused — waiting for you to '
+              f'pick Reuse / Modify / Ignore in the UI banner.')
+
+        valid = {'reuse', 'modify', 'ignore'}
+        deadline = _time.time() + 300
+        try:
+            while _time.time() < deadline:
+                if pending.exists():
+                    try:
+                        payload = json.loads(pending.read_text(encoding='utf-8'))
+                        d = str(payload.get('decision') or '').strip().lower()
+                        if d in valid:
+                            try: pending.unlink(missing_ok=True)
+                            except OSError: pass
+                            return d
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                        pass
+                _time.sleep(0.6)
+        except KeyboardInterrupt:
+            pass
+        print('  [INTERACTIVE MODE] Case-recall decision timed out — defaulting to MODIFY.')
+        return 'modify'
+
     def _wait_for_target_change(self, current_target: float, suggested: float, state) -> float:
         """Block until the user submits a new silhouette_target via /api/silhouette-target."""
         import pathlib, time as _time
@@ -1398,6 +2030,594 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             pass
         print(f'  [INTERACTIVE MODE] Timed out — auto-lowering to {suggested:.2f}.')
         return suggested
+
+    # ── Control-gate tuning (max_cluster_size_pct, sub_n_clusters, max_depth) ──
+
+    def _tune_control_gates(
+        self,
+        raw_df: pd.DataFrame,
+        dataset_profile,
+        user_intent: UserIntent | None,
+    ) -> dict:
+        """Decide max_cluster_size_pct, sub_n_clusters, and max_depth.
+
+        Bypass mode    → LLM decides from dataset stats (transparent print-out).
+        Interactive mode → UI modal asks the user; falls back to defaults on timeout.
+
+        Returns a dict with the three keys. The orchestrator should merge this
+        into self.config before clustering.
+        """
+        import pathlib, time as _time
+
+        # Gather lightweight dataset stats for the prompt / UI
+        n_rows = len(raw_df)
+        n_features = len(raw_df.columns)
+        modality = getattr(dataset_profile, 'modality', 'tabular') if dataset_profile else 'tabular'
+        purpose = (user_intent.business_purpose if user_intent else '') or ''
+        target = (user_intent.target_entity if user_intent else 'entities') or 'entities'
+
+        # Quick skewness read
+        numeric = raw_df.select_dtypes(include=[np.number])
+        mean_skew = 0.0
+        if not numeric.empty:
+            try:
+                mean_skew = float(numeric.skew().abs().mean())
+            except Exception:
+                pass
+
+        # Quick PCA — just first 2 components' explained variance
+        pca_ev = []
+        if not numeric.empty and len(numeric.columns) >= 2:
+            try:
+                from sklearn.decomposition import PCA
+                from sklearn.preprocessing import StandardScaler
+                X_num = numeric.dropna().to_numpy(dtype=float)
+                if len(X_num) > 2:
+                    X_s = StandardScaler().fit_transform(X_num)
+                    pca = PCA(n_components=min(2, X_s.shape[1]))
+                    pca.fit(X_s)
+                    pca_ev = [round(float(v), 4) for v in pca.explained_variance_ratio_]
+            except Exception:
+                pass
+
+        # ── Data-driven defaults (ignore config.yaml — the Decision Maker decides) ─
+        if n_rows < 1_000 or modality == 'text':
+            _dd_max_pct = 0.55
+            _dd_sub_k = 2
+            _dd_depth = 1
+        elif n_rows < 50_000:
+            _dd_max_pct = 0.40
+            _dd_sub_k = 3
+            _dd_depth = 2
+        else:
+            _dd_max_pct = 0.30
+            _dd_sub_k = 3
+            _dd_depth = 2
+
+        if mean_skew > 2.0:
+            _dd_max_pct = max(0.25, _dd_max_pct - 0.10)
+            _dd_depth = min(3, _dd_depth + 1)
+
+        # Honor explicit user-intent overrides (e.g. "max cluster size 25%" in text)
+        _user_max_pct = (
+            float(user_intent.max_cluster_size_pct)
+            if user_intent and user_intent.max_cluster_size_pct is not None
+            else None
+        )
+
+        defaults = {
+            'max_cluster_size_pct': _user_max_pct if _user_max_pct is not None else _dd_max_pct,
+            'sub_n_clusters': _dd_sub_k,
+            'max_depth': _dd_depth,
+        }
+
+        print(
+            f"\n[Orchestrator] Control-gate data-driven defaults:\n"
+            f"  max_cluster_size_pct = {defaults['max_cluster_size_pct']:.0%}\n"
+            f"  sub_n_clusters       = {defaults['sub_n_clusters']}\n"
+            f"  max_depth            = {defaults['max_depth']}"
+            f"{'  (user override)' if _user_max_pct is not None else ''}"
+        )
+
+        from skills.orchestrator_bus import read_pipeline_mode
+        mode = read_pipeline_mode()
+
+        # ── BYPASS MODE: ask the LLM Decision Maker ─────────────────────────────
+        if mode == 'bypass':
+            prompt = f"""You are tuning three control-gate parameters for a clustering pipeline.
+
+Dataset snapshot:
+  target_entity      : {target}
+  business_purpose   : {purpose}
+  modality           : {modality}
+  n_rows             : {n_rows:,}
+  n_features         : {n_features}
+  mean_abs_skewness  : {mean_skew:.2f}
+  PCA EV (1st 2)     : {pca_ev if pca_ev else 'N/A'}
+
+{_user_max_pct is not None and f"NOTE: user explicitly requested max_cluster_size_pct = {_user_max_pct:.0%} in their intent. Respect this exact value." or ""}
+
+Data-driven starting point (from dataset stats — you may adjust):
+  max_cluster_size_pct = {defaults['max_cluster_size_pct']:.0%}
+  sub_n_clusters       = {defaults['sub_n_clusters']}
+  max_depth            = {defaults['max_depth']}
+
+Data-science guidelines:
+  max_cluster_size_pct:
+    - Small datasets (< 1k) or text topics  → 0.50–0.60 (tight splitting is risky)
+    - Medium (1k–50k) tabular               → 0.35–0.45
+    - Large (> 50k) tabular                 → 0.25–0.35
+    - Highly skewed features                → 0.25–0.30 (natural groups are uneven)
+  sub_n_clusters:
+    - Small datasets                        → 2 (conservative)
+    - Medium                                → 2–3
+    - Large or many expected personas       → 3–4
+  max_depth:
+    - Small datasets                        → 1 (avoid over-splitting)
+    - Medium                                → 2
+    - Large or hierarchical purpose         → 2–3
+
+Return ONLY a JSON object (no markdown, no prose):
+{{
+  "max_cluster_size_pct": <float 0.15–0.80>,
+  "sub_n_clusters": <int 2–6>,
+  "max_depth": <int 1–4>,
+  "reasoning": "<1 sentence per parameter>"
+}}"""
+            try:
+                raw = self.bus.ask(
+                    agent='Orchestrator',
+                    purpose='tune control gates from dataset stats (bypass mode)',
+                    prompt=prompt,
+                    max_tokens=256,
+                    category='pipeline',
+                ).strip()
+                if '```' in raw:
+                    for part in raw.split('```'):
+                        p = part.strip()
+                        if p.startswith('json'):
+                            p = p[4:].strip()
+                        if p.startswith('{'):
+                            raw = p
+                            break
+                parsed = json.loads(raw)
+                result = {
+                    'max_cluster_size_pct': float(parsed.get('max_cluster_size_pct', defaults['max_cluster_size_pct'])),
+                    'sub_n_clusters': int(parsed.get('sub_n_clusters', defaults['sub_n_clusters'])),
+                    'max_depth': int(parsed.get('max_depth', defaults['max_depth'])),
+                }
+                # Clamp to sane ranges
+                result['max_cluster_size_pct'] = max(0.15, min(0.80, result['max_cluster_size_pct']))
+                result['sub_n_clusters'] = max(2, min(6, result['sub_n_clusters']))
+                result['max_depth'] = max(1, min(4, result['max_depth']))
+
+                print(
+                    f"\n[Orchestrator] Control gates tuned by Decision Maker (bypass):\n"
+                    f"  max_cluster_size_pct = {result['max_cluster_size_pct']:.0%}\n"
+                    f"  sub_n_clusters       = {result['sub_n_clusters']}\n"
+                    f"  max_depth            = {result['max_depth']}\n"
+                    f"  Reasoning: {parsed.get('reasoning', 'N/A')}"
+                )
+                self.bus.emit(
+                    'control_gates_tuned',
+                    mode='bypass',
+                    source='llm',
+                    **result,
+                    reasoning=parsed.get('reasoning', ''),
+                )
+                return result
+            except Exception as exc:
+                print(f'  [Orchestrator] Control-gate tuning failed ({exc}) — using data-driven defaults.')
+                self.bus.emit('control_gates_tuned', mode='bypass', source='data_driven_default', **defaults)
+                return defaults
+
+        # ── INTERACTIVE MODE: ask the user via UI modal ─────────────────────────
+        pending = pathlib.Path('outputs/pending_control_gates.json')
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        self.bus.emit(
+            'awaiting_control_gates',
+            defaults=defaults,
+            dataset_stats={
+                'n_rows': n_rows,
+                'n_features': n_features,
+                'modality': modality,
+                'mean_abs_skewness': round(mean_skew, 2),
+                'pca_ev': pca_ev,
+                'target_entity': target,
+                'business_purpose': purpose,
+            },
+            timeout_s=300,
+        )
+        print(
+            f'\n  [INTERACTIVE MODE] Control-gate tuning — pipeline paused.\n'
+            f'  Please set max_cluster_size_pct, sub_n_clusters, and max_depth '
+            f'in the UI modal (or wait 5 min to accept data-driven defaults).'
+        )
+
+        deadline = _time.time() + 300
+        try:
+            while _time.time() < deadline:
+                if pending.exists():
+                    try:
+                        payload = json.loads(pending.read_text(encoding='utf-8'))
+                        result = {
+                            'max_cluster_size_pct': float(
+                                payload.get('max_cluster_size_pct', defaults['max_cluster_size_pct'])
+                            ),
+                            'sub_n_clusters': int(
+                                payload.get('sub_n_clusters', defaults['sub_n_clusters'])
+                            ),
+                            'max_depth': int(
+                                payload.get('max_depth', defaults['max_depth'])
+                            ),
+                        }
+                        # Clamp
+                        result['max_cluster_size_pct'] = max(0.15, min(0.80, result['max_cluster_size_pct']))
+                        result['sub_n_clusters'] = max(2, min(6, result['sub_n_clusters']))
+                        result['max_depth'] = max(1, min(4, result['max_depth']))
+                        try:
+                            pending.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        print(
+                            f'\n[Orchestrator] Control gates set by user:\n'
+                            f"  max_cluster_size_pct = {result['max_cluster_size_pct']:.0%}\n"
+                            f"  sub_n_clusters       = {result['sub_n_clusters']}\n"
+                            f"  max_depth            = {result['max_depth']}"
+                        )
+                        self.bus.emit(
+                            'control_gates_tuned',
+                            mode='interactive',
+                            source='user',
+                            **result,
+                        )
+                        return result
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                        pass
+                _time.sleep(0.6)
+        except KeyboardInterrupt:
+            pass
+        print('  [INTERACTIVE MODE] Control-gate tuning timed out — using data-driven defaults.')
+        self.bus.emit('control_gates_tuned', mode='interactive', source='data_driven_default', **defaults)
+        return defaults
+
+    # ── Column resolution (entity_id, timestamp, amount, category) ─────────────
+
+    def _resolve_columns(
+        self,
+        raw_df: pd.DataFrame,
+        dataset_profile,
+        user_intent,
+    ) -> dict:
+        """
+        Resolve entity_id, timestamp, amount, and category columns using
+        data-science heuristics.  If ambiguous:
+          - bypass mode   → ask the LLM Decision Maker to decide
+          - interactive   → pause and ask the user via UI modal
+        Returns a dict with keys: entity_id, timestamp, amount, category.
+        """
+        import time as _time
+
+        n_rows = len(raw_df)
+        results: dict[str, str | None] = {}
+        ambiguous: dict[str, list[str]] = {}
+
+        def _score_name(col: str, keywords: list[str]) -> int:
+            col_l = col.lower().replace('_', '').replace('-', '')
+            score = 0
+            for kw in keywords:
+                kw_l = kw.lower().replace('_', '').replace('-', '')
+                if kw_l == col_l:
+                    score += 100
+                elif kw_l in col_l:
+                    score += 50
+            return score
+
+        # 1. Entity ID
+        entity_candidates = []
+        for col in raw_df.columns:
+            if col.startswith('_'):
+                continue
+            nuniq = raw_df[col].nunique()
+            ratio = nuniq / max(n_rows, 1)
+            score = _score_name(col, [
+                'id', 'entityid', 'userid', 'customerid', 'clientid',
+                'accountid', 'subjectid', 'patientid', 'deviceid',
+                'sensorid', 'itemid', 'productid', 'orderid',
+                'sessionid', 'recordid', 'uuid', 'uid', 'pid',
+                'cardnumber', 'ccnum',
+            ])
+            if ratio >= 0.90:
+                score += 80
+            elif ratio >= 0.70:
+                score += 40
+            elif ratio >= 0.50:
+                score += 10
+            if pd.api.types.is_integer_dtype(raw_df[col]):
+                score += 20
+            if score > 0:
+                entity_candidates.append((col, score, ratio))
+        entity_candidates.sort(key=lambda x: (-x[1], -x[2]))
+        if entity_candidates and entity_candidates[0][1] >= 80:
+            results['entity_id'] = entity_candidates[0][0]
+        elif entity_candidates:
+            ambiguous['entity_id'] = [c[0] for c in entity_candidates[:5]]
+        else:
+            results['entity_id'] = '_row_id'
+
+        # 2. Timestamp
+        ts_candidates = []
+        for col in raw_df.columns:
+            if col.startswith('_'):
+                continue
+            score = _score_name(col, [
+                'timestamp', 'datetime', 'date', 'time', 'ts',
+                'createdat', 'occurredat', 'recordedat', 'updatedat',
+                'eventtime', 'eventdate', 'visitdate', 'purchasedate',
+                'orderdate', 'transdate', 'transdatetranstime',
+            ])
+            if pd.api.types.is_datetime64_any_dtype(raw_df[col]):
+                score += 100
+            else:
+                try:
+                    sample = raw_df[col].dropna().head(20)
+                    if len(sample) > 0:
+                        parsed = pd.to_datetime(sample, errors='coerce')
+                        if parsed.notna().sum() / len(sample) >= 0.8:
+                            score += 80
+                except Exception:
+                    pass
+            if score > 0:
+                ts_candidates.append((col, score))
+        ts_candidates.sort(key=lambda x: -x[1])
+        if ts_candidates and ts_candidates[0][1] >= 80:
+            results['timestamp'] = ts_candidates[0][0]
+        elif ts_candidates:
+            ambiguous['timestamp'] = [c[0] for c in ts_candidates[:5]]
+
+        # 3. Amount (numeric, positive, not binary, not an ID)
+        exclude_for_amount = {results.get('entity_id')}
+        amount_candidates = []
+        for col in raw_df.columns:
+            if col.startswith('_') or col in exclude_for_amount:
+                continue
+            if not pd.api.types.is_numeric_dtype(raw_df[col]):
+                continue
+            nuniq = raw_df[col].nunique()
+            ratio = nuniq / max(n_rows, 1)
+            if ratio >= 0.95:
+                continue
+            s = raw_df[col].dropna()
+            if len(s) == 0 or s.nunique() <= 2:
+                continue
+            score = _score_name(col, [
+                'amount', 'value', 'price', 'total', 'amt',
+                'cost', 'revenue', 'qty', 'quantity', 'score',
+                'duration', 'size', 'weight', 'measurement', 'reading', 'level',
+            ])
+            if s.min() >= 0:
+                score += 30
+            if s.max() > s.min() * 10:
+                score += 20
+            if score > 0:
+                amount_candidates.append((col, score))
+        amount_candidates.sort(key=lambda x: -x[1])
+        if amount_candidates and amount_candidates[0][1] >= 50:
+            results['amount'] = amount_candidates[0][0]
+        elif amount_candidates:
+            ambiguous['amount'] = [c[0] for c in amount_candidates[:5]]
+
+        # 4. Category (low-cardinality, object/categorical)
+        exclude_for_category = {results.get('entity_id'), results.get('timestamp')}
+        category_candidates = []
+        for col in raw_df.columns:
+            if col.startswith('_') or col in exclude_for_category:
+                continue
+            nuniq = raw_df[col].nunique()
+            if nuniq < 2 or nuniq > 100:
+                continue
+            score = _score_name(col, [
+                'category', 'cat', 'type', 'kind', 'label',
+                'class', 'group', 'segment', 'tag', 'genre',
+                'department', 'sector', 'channel', 'mode',
+                'eventtype', 'itemtype', 'producttype', 'productcategory',
+                'itemcategory', 'subcategory', 'transactiontype',
+            ])
+            if pd.api.types.is_categorical_dtype(raw_df[col]) or raw_df[col].dtype == object:
+                score += 30
+            if 2 <= nuniq <= 50:
+                score += 20
+            if score > 0:
+                category_candidates.append((col, score))
+        category_candidates.sort(key=lambda x: -x[1])
+        if category_candidates and category_candidates[0][1] >= 40:
+            results['category'] = category_candidates[0][0]
+        elif category_candidates:
+            ambiguous['category'] = [c[0] for c in category_candidates[:5]]
+
+        # ── No ambiguity → return immediately ──────────────────────────────────
+        if not ambiguous:
+            print(
+                f"\n[Orchestrator] Column resolution (auto-detect):\n"
+                f"  entity_id  = {results.get('entity_id', 'N/A')}\n"
+                f"  timestamp  = {results.get('timestamp', 'N/A')}\n"
+                f"  amount     = {results.get('amount', 'N/A')}\n"
+                f"  category   = {results.get('category', 'N/A')}"
+            )
+            self.bus.emit('columns_resolved', mode='auto', source='heuristics', **results)
+            return results
+
+        # ── Build schema context for LLM / user ────────────────────────────────
+        schema_lines = []
+        for col in raw_df.columns[:40]:
+            if pd.api.types.is_datetime64_any_dtype(raw_df[col]):
+                ctype = 'datetime'
+            elif pd.api.types.is_numeric_dtype(raw_df[col]):
+                ctype = 'numeric'
+            elif raw_df[col].dtype == object or pd.api.types.is_categorical_dtype(raw_df[col]):
+                ctype = 'categorical'
+            else:
+                ctype = 'other'
+            nuniq = raw_df[col].nunique()
+            example = str(raw_df[col].dropna().iloc[0]) if len(raw_df[col].dropna()) > 0 else ''
+            if len(example) > 30:
+                example = example[:30] + '...'
+            schema_lines.append(f"  {col}: {ctype}, {nuniq} unique, e.g. {example!r}")
+        schema_str = '\n'.join(schema_lines)
+
+        purpose = (user_intent.business_purpose if user_intent else '') or ''
+        target = (user_intent.target_entity if user_intent else 'entities') or 'entities'
+
+        from skills.orchestrator_bus import read_pipeline_mode
+        mode = read_pipeline_mode()
+
+        # ── BYPASS MODE: ask the LLM Decision Maker ────────────────────────────
+        if mode == 'bypass':
+            ambig_desc = []
+            for role, cands in ambiguous.items():
+                ambig_desc.append(f"{role}: candidates are {', '.join(cands)}")
+            prompt = f"""You are resolving ambiguous column roles for a clustering pipeline.
+
+Dataset target: {target}
+Business purpose: {purpose}
+
+Schema:
+{schema_str}
+
+The following column roles are ambiguous:
+{'\n'.join(ambig_desc)}
+
+For each ambiguous role, pick the BEST column from the candidates and explain why.
+If none of the candidates fit, respond with null.
+
+Return ONLY a valid JSON object (no markdown, no prose):
+{{
+  "entity_id": "<column_name or null>",
+  "timestamp": "<column_name or null>",
+  "amount": "<column_name or null>",
+  "category": "<column_name or null>",
+  "reasoning": "<1 sentence per decision>"
+}}"""
+            try:
+                raw = self.bus.ask(
+                    agent='Orchestrator',
+                    purpose='resolve ambiguous columns from schema (bypass mode)',
+                    prompt=prompt,
+                    max_tokens=512,
+                    category='pipeline',
+                ).strip()
+                if '```' in raw:
+                    for part in raw.split('```'):
+                        p = part.strip()
+                        if p.startswith('json'):
+                            p = p[4:].strip()
+                        if p.startswith('{'):
+                            raw = p
+                            break
+                parsed = json.loads(raw)
+                for key in ['entity_id', 'timestamp', 'amount', 'category']:
+                    val = parsed.get(key)
+                    if val and val in raw_df.columns:
+                        results[key] = val
+                    elif key in ambiguous:
+                        results[key] = ambiguous[key][0]
+                if 'entity_id' not in results:
+                    results['entity_id'] = '_row_id'
+                print(
+                    f"\n[Orchestrator] Column resolution (Decision Maker — bypass):\n"
+                    f"  entity_id  = {results.get('entity_id', 'N/A')}\n"
+                    f"  timestamp  = {results.get('timestamp', 'N/A')}\n"
+                    f"  amount     = {results.get('amount', 'N/A')}\n"
+                    f"  category   = {results.get('category', 'N/A')}\n"
+                    f"  Reasoning: {parsed.get('reasoning', 'N/A')}"
+                )
+                self.bus.emit(
+                    'columns_resolved',
+                    mode='bypass',
+                    source='llm',
+                    ambiguous_roles=list(ambiguous.keys()),
+                    **results,
+                    reasoning=parsed.get('reasoning', ''),
+                )
+                return results
+            except Exception as exc:
+                print(f'  [Orchestrator] Column-resolution LLM call failed ({exc}) — using heuristic fallbacks.')
+                for key, cands in ambiguous.items():
+                    results[key] = cands[0]
+                if 'entity_id' not in results:
+                    results['entity_id'] = '_row_id'
+                self.bus.emit('columns_resolved', mode='bypass', source='heuristic_fallback', **results)
+                return results
+
+        # ── INTERACTIVE MODE: ask the user via UI modal ────────────────────────
+        pending = pathlib.Path('outputs/pending_column_resolution.json')
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        self.bus.emit(
+            'awaiting_column_resolution',
+            ambiguous_roles=ambiguous,
+            heuristics=results,
+            schema=schema_str,
+            dataset_stats={
+                'n_rows': n_rows,
+                'n_cols': len(raw_df.columns),
+                'target_entity': target,
+                'business_purpose': purpose,
+            },
+            timeout_s=300,
+        )
+        print(
+            f'\n  [INTERACTIVE MODE] Column resolution — pipeline paused.\n'
+            f'  Ambiguous roles: {list(ambiguous.keys())}.\n'
+            f'  Please confirm or override column choices in the UI modal.'
+        )
+
+        deadline = _time.time() + 300
+        try:
+            while _time.time() < deadline:
+                if pending.exists():
+                    try:
+                        payload = json.loads(pending.read_text(encoding='utf-8'))
+                        for key in ['entity_id', 'timestamp', 'amount', 'category']:
+                            val = payload.get(key)
+                            if val and val in raw_df.columns:
+                                results[key] = val
+                            elif key in ambiguous:
+                                results[key] = ambiguous[key][0]
+                        if 'entity_id' not in results:
+                            results['entity_id'] = '_row_id'
+                        try:
+                            pending.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        print(
+                            f'\n[Orchestrator] Column resolution set by user:\n'
+                            f"  entity_id  = {results.get('entity_id', 'N/A')}\n"
+                            f"  timestamp  = {results.get('timestamp', 'N/A')}\n"
+                            f"  amount     = {results.get('amount', 'N/A')}\n"
+                            f"  category   = {results.get('category', 'N/A')}"
+                        )
+                        self.bus.emit('columns_resolved', mode='interactive', source='user', **results)
+                        return results
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                        pass
+                _time.sleep(0.6)
+        except KeyboardInterrupt:
+            pass
+        print('  [INTERACTIVE MODE] Column-resolution timed out — using heuristic fallbacks.')
+        for key, cands in ambiguous.items():
+            results[key] = cands[0]
+        if 'entity_id' not in results:
+            results['entity_id'] = '_row_id'
+        self.bus.emit('columns_resolved', mode='interactive', source='heuristic_fallback', **results)
+        return results
 
     # ── Dynamic parameter tuning ───────────────────────────────────────────────
 
@@ -1490,27 +2710,48 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 print(f'  [Orchestrator] (case-memory hint render failed: {_exc})')
 
         cur = state.tuning_params
-        prompt = prefs_preamble + case_preamble + f"""You are orchestrating a customer-clustering pipeline. Iteration {iteration} just failed.
+        _modality_now = getattr(state, 'modality', 'tabular')
+        _modality_banner = (
+            "\n>>> MODALITY = TEXT / UNSTRUCTURED — read the TEXT-mode section\n"
+            ">>> below FIRST. The TABULAR thresholds (silhouette 0.5, F1 0.70,\n"
+            ">>> VIF, log-skew) DO NOT apply. Cosine silhouette of 0.10–0.30 is\n"
+            ">>> the realistic band for usable topic clusters.\n"
+            if _modality_now == 'text' else ""
+        )
+        prompt = prefs_preamble + case_preamble + _modality_banner + f"""You are orchestrating a customer-clustering pipeline. Iteration {iteration} just failed.
 
 Current parameters:
-  vif_threshold  : {cur.get('vif_threshold', 10.0)}   (higher = keep more correlated features; range 5–25)
+  vif_threshold  : {cur.get('vif_threshold', 10.0)}   (higher = keep more correlated features; range 5–25) — IGNORE for text
   algorithm      : {cur.get('algorithm') or 'auto'}
   k_range        : {cur.get('k_range') or 'default [3,4,5,6,7,8,10,12,15]'}
   min_silhouette : {cur.get('min_silhouette', 0.05)}  (hard-block; range 0.02–0.12)
-  feature_focus  : "{cur.get('feature_focus', '')}"
+  feature_focus  : "{cur.get('feature_focus', '')}"   — IGNORE for text
+  modality       : {_modality_now}
+  text_vectorizer: {cur.get('text_vectorizer') or 'auto'}   (text mode only)
 
 Best silhouette achieved so far: {best_sil_str}{k_scores_str}
 
 Pipeline history (recent):
 {chr(10).join(history_lines)}
 
-Dataset: ~983 bank customers, ~232 transaction-ratio/spend/frequency features.
-Banking features typically yield silhouette 0.08–0.20 even in good segmentations.
+Dataset shape: {self._describe_dataset_for_tuning(state)}
 
-Available clustering algorithms:
+Available clustering algorithms (geometric — both modalities):
   kmeans, hierarchical, dbscan, gmm, fuzzy_cmeans, or null (auto-select)
 
-Tuning guidelines:
+Text-only algorithms (only valid when modality=text — Clusterer rejects them on tabular):
+  lda          — Latent Dirichlet Allocation. Probabilistic topic model on TF-IDF.
+                 Interpretable topics, soft assignment (we take argmax for hard labels).
+                 Good when natural topics exist; needs ≥ ~30 docs for stability.
+  nmf          — Non-negative Matrix Factorization on TF-IDF. Sharper / more
+                 deterministic topics than LDA on short corpora. Try this first
+                 for short-text rescue.
+  llm_cluster  — LAST-RESORT rescue: sends every doc to Claude and asks for cluster
+                 assignment. Use ONLY when geometric methods AND topic models have
+                 BOTH failed. Capped at 200 docs by the clusterer (prompt cost grows
+                 linearly). Expensive — burns several thousand tokens per run.
+
+Tuning guidelines (TABULAR mode):
 - If VIF gate removes >60 features or hits max_iterations: raise vif_threshold (try 12–18)
 - If silhouette consistently <0.10 with hierarchical: switch to kmeans or gmm
 - If silhouette is low across all k values: narrow k_range to [3,4,5,6] or [4,5,6,7]
@@ -1519,13 +2760,47 @@ Tuning guidelines:
 - Do NOT lower min_silhouette below 0.02
 - dbscan is good when you suspect outlier-heavy data or irregular cluster shapes
 
+Tuning guidelines (TEXT / UNSTRUCTURED mode — only applies when modality=text):
+- Embedding spaces are high-dim and cosine-shaped; numeric expectations differ:
+  * silhouette 0.10–0.30 cosine = usable topic clusters (NOT a failure signal)
+  * classifier F1 ~0.55–0.70 is the realistic band, not the 0.70 tabular bar
+  * VIF / log-skew / feature_focus do NOT apply — leave them as-is
+  * max_cluster_size_pct is loosened (0.60) because text topics naturally vary in size
+- ALGORITHM PREFERENCE for text — try in this order:
+  1. GEOMETRIC FIRST: kmeans (= spherical k-means on L2-normalised embeddings,
+     cosine-friendly) or hierarchical (Ward linkage). These are cheap and
+     usually adequate.
+  2. TOPIC MODELS if geometric silhouette stays below ~0.10 after ≥2 retries
+     AND the corpus has clear lexical themes: try `nmf` (sharper topics on
+     short text, deterministic) first, then `lda` (probabilistic, interpretable).
+     Topic models can find structure that geometric clustering on SVD misses.
+  3. LLM-AS-CLUSTERER as LAST RESORT: pick `llm_cluster` ONLY after both
+     geometric AND topic-model algos have failed, and only when the corpus is
+     small (clusterer caps it at 200 docs). It is expensive; do not pick it
+     before iteration 4+.
+  * AVOID: gmm (Gaussian assumption fails for text embeddings), dbscan
+    (distance saturation in high-dim), fuzzy_cmeans (inherits GMM weakness).
+  * If the current algorithm is one of {{gmm, dbscan, fuzzy_cmeans}} and
+    silhouette is low, your first move should be to switch to kmeans or
+    hierarchical, NOT to tune k_range.
+- If silhouette stays low AND current text_vectorizer is "tfidf_svd": switch to
+  "transformer" — semantic embeddings often separate topics that share vocabulary.
+- If switching to "transformer" failed (it's unavailable / no improvement) and
+  the corpus is short/keyword-heavy: stay on "tfidf_svd" and instead narrow
+  k_range to [3,4,5,6].
+- min_silhouette default for text is 0.01; don't raise it without a clear reason.
+- If the user wrote `text_columns=col_a,col_b` in their constraints, RESPECT
+  that — don't propose changing the text column. The first listed column is
+  weighted 2× in the embedding, which is intentional.
+
 Return ONLY a valid JSON object — no markdown fences, no extra text:
 {{
   "vif_threshold": <float 5–25>,
   "k_range": [<int>, ...],
-  "algorithm": "kmeans" | "hierarchical" | "dbscan" | "gmm" | "fuzzy_cmeans" | null,
+  "algorithm": "kmeans" | "hierarchical" | "dbscan" | "gmm" | "fuzzy_cmeans" | "lda" | "nmf" | "llm_cluster" | null,
   "min_silhouette": <float 0.02–0.12>,
   "feature_focus": "<short hint for FeatureSelector, or empty string>",
+  "text_vectorizer": "tfidf_svd" | "transformer" | null,
   "reasoning": "<1-2 sentences explaining the change>"
 }}"""
 
@@ -1559,19 +2834,26 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
             result['vif_threshold'] = float(max(5.0, min(25.0, params['vif_threshold'])))
         if 'k_range' in params and isinstance(params['k_range'], list) and len(params['k_range']) >= 2:
             result['k_range'] = [int(k) for k in params['k_range'] if isinstance(k, (int, float))]
-        if params.get('algorithm') in ('kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans', None):
+        if params.get('algorithm') in (
+            'kmeans', 'hierarchical', 'dbscan', 'gmm', 'fuzzy_cmeans',
+            'lda', 'nmf', 'llm_cluster', None,
+        ):
             result['algorithm'] = params['algorithm']
         if 'min_silhouette' in params:
             result['min_silhouette'] = float(max(0.02, min(0.12, params['min_silhouette'])))
         if 'feature_focus' in params:
             result['feature_focus'] = str(params.get('feature_focus', ''))
+        if 'text_vectorizer' in params and params['text_vectorizer'] in (
+                'tfidf_svd', 'transformer', None):
+            result['text_vectorizer'] = params['text_vectorizer']
 
         reasoning = params.get('reasoning', '')
         print(
             f'  [Orchestrator] Tuned → vif={result.get("vif_threshold","—")}, '
             f'algo={result.get("algorithm","—")}, '
             f'k_range={result.get("k_range","—")}, '
-            f'min_sil={result.get("min_silhouette","—")}'
+            f'min_sil={result.get("min_silhouette","—")}, '
+            f'text_vec={result.get("text_vectorizer","—")}'
         )
         if reasoning:
             print(f'  [Orchestrator] Reasoning: {reasoning}')
@@ -1714,6 +2996,29 @@ Return ONLY a valid JSON object — no markdown fences, no extra text:
             )
         except Exception as exc:  # noqa: BLE001
             print(f'  [Orchestrator] (case-memory save failed: {exc})')
+
+    def _describe_dataset_for_tuning(self, state) -> str:
+        """One-line dataset summary for the failure-tuning LLM prompt.
+
+        Was previously hardcoded to a banking-dataset description, which
+        confused the LLM on every other domain. Now derived from state.
+        """
+        modality = getattr(state, 'modality', 'tabular')
+        prof = getattr(state, 'dataset_profile', None)
+        n_rows = getattr(prof, 'n_rows', None)
+        n_cols = getattr(prof, 'n_cols', None)
+        if modality == 'text':
+            tp = getattr(state, 'text_prep', None)
+            method = state.text_artifacts.get('method', 'tfidf_svd') if state.text_artifacts else 'tfidf_svd'
+            return (
+                f"TEXT corpus, ~{n_rows or '?'} docs, vectorised as "
+                f"{tp.n_dims if tp else '?'} dims via {method}. "
+                "Cosine silhouettes on text are typically 0.03–0.12 even on clean topical clusters."
+            )
+        return (
+            f"TABULAR data, ~{n_rows or '?'} rows × {n_cols or '?'} columns. "
+            "Tabular silhouettes typically land 0.08–0.30 even in good segmentations."
+        )
 
     # ── Catalog helpers ────────────────────────────────────────────────────────
 

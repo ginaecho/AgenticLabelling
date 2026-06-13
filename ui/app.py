@@ -84,6 +84,47 @@ def _load_profiles() -> dict:
     return {cid: d.get('cluster_stats', {}) for cid, d in _load_personas().items()}
 
 
+def _sorted_cluster_ids(personas: dict) -> list[str]:
+    """Cluster ids in numeric order when possible, else lexical."""
+    return sorted(
+        personas.keys(),
+        key=lambda x: (0, int(x)) if str(x).isdigit() else (1, str(x)),
+    )
+
+
+def _clusters_overview_lines(personas: dict, max_feats: int = 6) -> list[str]:
+    """One compact block per cluster — name, size, and the features it is
+    stronger / weaker in. This roster lets the LLM reason ACROSS clusters
+    (compare, contrast, explain why two clusters that share a high-level trait
+    still diverge) instead of being boxed into a single cluster's numbers."""
+    lines: list[str] = []
+    for ocid in _sorted_cluster_ids(personas):
+        c = personas[ocid]
+        per = c.get('persona', {})
+        st = c.get('cluster_stats', {})
+        fm = st.get('feature_means', {}) or {}
+        above = list((st.get('top_above_average') or {}).items())[:max_feats]
+        below = list((st.get('top_below_average') or {}).items())[:max_feats]
+        above_s = ", ".join(
+            f"{f} ({round(r, 2)}x, mean={round(fm.get(f, 0), 3)})" for f, r in above
+        ) or "—"
+        below_s = ", ".join(
+            f"{f} ({round(r, 2)}x, mean={round(fm.get(f, 0), 3)})" for f, r in below
+        ) or "—"
+        try:
+            pct = float(st.get('pct_total', 0) or 0)
+        except (TypeError, ValueError):
+            pct = 0.0
+        lines.append(
+            f"Cluster {ocid} — \"{per.get('name', '?')}\": {per.get('tagline', '')}\n"
+            f"    size={st.get('n_entities', '?')} ({pct:.1f}%), "
+            f"confidence={per.get('confidence', '?')}/10\n"
+            f"    stronger in: {above_s}\n"
+            f"    weaker in: {below_s}"
+        )
+    return lines
+
+
 # ── Cluster math (for merge) ──────────────────────────────────────────────────
 
 def _n_entities(profile: dict) -> int:
@@ -475,6 +516,16 @@ def get_status():
     return jsonify(_derive_status(_read_events()))
 
 
+@app.get('/api/capabilities')
+def get_capabilities():
+    """Feature flags so the frontend can detect an outdated UI server."""
+    return jsonify({
+        'cluster_comparison': True,
+        'cluster_chat': True,
+        'explain': True,
+    })
+
+
 @app.get('/api/events')
 def get_events():
     return jsonify({'events': _read_events()})
@@ -677,6 +728,26 @@ def set_mode():
     return jsonify({'mode': mode})
 
 
+@app.post('/api/case-recall-decision')
+def submit_case_recall_decision():
+    """Save the user's Reuse / Modify / Ignore decision for a case-memory recall.
+
+    The paused orchestrator polls outputs/pending_case_recall.json (see
+    Orchestrator._wait_for_case_recall_decision) and applies the decision
+    before starting iteration 1.
+    """
+    payload = request.get_json(force=True) or {}
+    decision = str(payload.get('decision') or '').strip().lower()
+    if decision not in ('reuse', 'modify', 'ignore'):
+        return jsonify({'error': "decision must be 'reuse' | 'modify' | 'ignore'"}), 400
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_case_recall.json').write_text(
+        json.dumps({'decision': decision}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'decision': decision})
+
+
 @app.post('/api/silhouette-target')
 def submit_silhouette_target():
     """Save the user's new silhouette_target so the paused orchestrator picks it up."""
@@ -713,6 +784,56 @@ def submit_decision():
     return jsonify({'ok': True})
 
 
+@app.post('/api/human-checkpoint')
+def submit_human_checkpoint():
+    """Save the user's Approve / Re-cluster / Reselect / Quit decision so the
+    paused orchestrator can resume.
+
+    Body: {"action": "approve" | "recluster" | "reselect_features" | "quit",
+           "feedback": "<optional reason string>"}.
+    The orchestrator polls outputs/pending_human_checkpoint.json (see
+    agents/orchestrator.py:_collect_human_decision) and consumes the file.
+    """
+    payload = request.get_json(force=True) or {}
+    action = str(payload.get('action') or '').strip().lower()
+    feedback = str(payload.get('feedback') or '').strip()
+    if action not in ('approve', 'recluster', 'reselect_features', 'quit'):
+        return jsonify({'error': "action must be 'approve' | 'recluster' | "
+                                 "'reselect_features' | 'quit'"}), 400
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_human_checkpoint.json').write_text(
+        json.dumps({'action': action, 'feedback': feedback}, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'action': action})
+
+
+@app.post('/api/threshold-decision')
+def submit_threshold_decision():
+    """Save a structured choice for a paused threshold-decision point.
+
+    Body: {"decision_id": "<id>", "chosen_key": "<one of the option keys>"}.
+    The paused agent / orchestrator polls outputs/pending_threshold_decision.json
+    (see skills/user_decisions.py:ask_user_decision) and applies the chosen
+    option. Separate from /api/decision, which handles the older free-form
+    interactive-mode warning flow.
+    """
+    payload = request.get_json(force=True) or {}
+    decision_id = (payload.get('decision_id') or '').strip()
+    chosen_key = (payload.get('chosen_key') or '').strip()
+    if not decision_id:
+        return jsonify({'error': 'decision_id is required'}), 400
+    if not chosen_key:
+        return jsonify({'error': 'chosen_key is required'}), 400
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_threshold_decision.json').write_text(
+        json.dumps({'decision_id': decision_id, 'chosen_key': chosen_key},
+                   ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'decision_id': decision_id, 'chosen_key': chosen_key})
+
+
 @app.post('/api/intent')
 def submit_intent():
     """Save the UI-submitted intent so UserInputAgent can pick it up."""
@@ -724,6 +845,14 @@ def submit_intent():
     if len(purpose) < 5:
         return jsonify({'error': 'business_purpose is required (a sentence or two)'}), 400
 
+    max_iters_raw = payload.get('max_total_iterations')
+    try:
+        max_iters = int(max_iters_raw) if max_iters_raw not in (None, '', 'null') else None
+        if max_iters is not None:
+            max_iters = max(1, min(max_iters, 50))
+    except (TypeError, ValueError):
+        max_iters = None
+
     cleaned = {
         'target_entity': target,
         'business_purpose': purpose,
@@ -731,12 +860,64 @@ def submit_intent():
         'constraints': (payload.get('constraints') or '').strip(),
         'n_clusters_requested': payload.get('n_clusters_requested'),
         'must_have_clusters': payload.get('must_have_clusters') or [],
+        'max_total_iterations': max_iters,
     }
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / 'pending_intent.json').write_text(
         json.dumps(cleaned, indent=2, ensure_ascii=False), encoding='utf-8',
     )
     return jsonify({'ok': True, 'intent': cleaned})
+
+
+@app.post('/api/control-gates')
+def submit_control_gates():
+    """Save the user's control-gate choices so the orchestrator can consume them.
+
+    Body: {"max_cluster_size_pct": 0.35, "sub_n_clusters": 3, "max_depth": 2}
+    """
+    payload = request.get_json(force=True) or {}
+    try:
+        max_pct = float(payload.get('max_cluster_size_pct', 0.40))
+        sub_k = int(payload.get('sub_n_clusters', 3))
+        depth = int(payload.get('max_depth', 2))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid numeric values'}), 400
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_control_gates.json').write_text(
+        json.dumps({
+            'max_cluster_size_pct': max_pct,
+            'sub_n_clusters': sub_k,
+            'max_depth': depth,
+        }, indent=2, ensure_ascii=False),
+        encoding='utf-8',
+    )
+    return jsonify({
+        'ok': True,
+        'max_cluster_size_pct': max_pct,
+        'sub_n_clusters': sub_k,
+        'max_depth': depth,
+    })
+
+
+@app.post('/api/column-resolution')
+def submit_column_resolution():
+    """Save the user's column-resolution choices so the orchestrator can consume them.
+
+    Body: {"entity_id": "customer_id", "timestamp": "Date", "amount": "amount", "category": "category"}
+    """
+    payload = request.get_json(force=True) or {}
+    cleaned = {
+        'entity_id': (payload.get('entity_id') or '').strip() or None,
+        'timestamp': (payload.get('timestamp') or '').strip() or None,
+        'amount': (payload.get('amount') or '').strip() or None,
+        'category': (payload.get('category') or '').strip() or None,
+    }
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / 'pending_column_resolution.json').write_text(
+        json.dumps(cleaned, indent=2, ensure_ascii=False), encoding='utf-8',
+    )
+    return jsonify({'ok': True, 'columns': cleaned})
 
 
 @app.post('/api/abort')
@@ -809,6 +990,12 @@ def get_evidence():
     if upload:
         out['upload_preview'] = upload
 
+    # Dataset preview AFTER FeatureEngineer / FeatureSelector (pre-modelling).
+    # Written by the orchestrator each time those agents run.
+    pre_modelling = _load_json(OUT / 'pre_modelling_preview.json', None)
+    if pre_modelling:
+        out['pre_modelling_preview'] = pre_modelling
+
     # Per-iteration PCA projections (data points + cluster labels)
     pca = _load_json(OUT / 'pca_iterations.json', None)
     if pca:
@@ -849,25 +1036,54 @@ def cluster_chat():
     below_lines = [f"  {f}: {round(r, 2)}x avg (mean={round(feat_means.get(f, 0), 4)})"
                    for f, r in list(top_below.items())[:10]]
 
+    # Build the cross-cluster roster FIRST (before the focus block) so the LLM
+    # cannot miss it. Prior versions buried it under FOCUS and the model would
+    # claim "I only have data for cluster X" even though every cluster was in
+    # the prompt. Putting it up top + restating in the rules section fixes that.
+    other_lines = _clusters_overview_lines(personas)
+    cluster_ids = _sorted_cluster_ids(personas)
+    n_clusters = len(personas)
+    ids_csv = ", ".join(cluster_ids)
+
     sys_lines = [
-        f"You are a data analyst helping a user understand cluster {cid} from a",
-        f"customer-segmentation pipeline. Answer concretely, cite specific feature",
-        f"names + values when asked WHY a label was chosen. If a trait was inferred",
-        f"from indirect signals, say so — don't invent evidence.",
+        f"You are a data analyst for a customer-segmentation pipeline. The run",
+        f"produced {n_clusters} clusters: {ids_csv}. You have the full profile",
+        f"(name, size, top features above/below average) for EVERY cluster — see",
+        f"the roster below. The user's current focus is cluster {cid}, but you",
+        f"can and must reason across clusters when asked.",
         f"",
-        f"Cluster {cid} — \"{persona.get('name', '?')}\"",
+        f"RULES",
+        f"  1. NEVER say 'I don't have data for cluster N' or 'cluster N's profile",
+        f"     hasn't been shared' for any cluster id in the roster below. All",
+        f"     {n_clusters} cluster profiles are in this prompt.",
+        f"  2. When asked WHY a label was chosen, cite specific feature names +",
+        f"     values from the cluster's STRONGER/WEAKER lists.",
+        f"  3. When asked to compare/contrast two clusters, look up BOTH in the",
+        f"     roster and quote the specific features and ratios that diverge.",
+        f"  4. If a trait was inferred indirectly (proxy feature), say so — don't",
+        f"     fabricate evidence.",
+        f"",
+        f"─" * 48,
+        f"ALL {n_clusters} CLUSTERS IN THIS RUN — full reference data",
+        f"(use these numbers verbatim; do not guess any value)",
+        f"",
+        *other_lines,
+        f"",
+        f"─" * 48,
+        f"FOCUS — Cluster {cid} — \"{persona.get('name', '?')}\"",
         f"  Tagline: {persona.get('tagline', '')}",
         f"  Description: {persona.get('description', '')}",
         f"  Traits: {persona.get('traits', [])}",
         f"  Confidence: {persona.get('confidence', '?')}/10",
         f"  Size: {stats.get('n_entities', '?')} entities ({stats.get('pct_total', 0):.1f}% of total)",
         f"",
-        f"FEATURES THIS CLUSTER IS STRONGER IN (vs overall):",
+        f"Cluster {cid} features STRONGER than overall average (extended):",
         *above_lines,
         f"",
-        f"FEATURES THIS CLUSTER IS WEAKER IN:",
+        f"Cluster {cid} features WEAKER than overall average (extended):",
         *below_lines,
     ]
+
     if mode == 'conclude':
         sys_lines += [
             "",
@@ -961,6 +1177,87 @@ def cluster_chat():
     return jsonify(out)
 
 
+# ── /api/cluster-comparison cache ─────────────────────────────────────────────
+# Cross-cluster contrasting analysis for the Data & Evidence tab. Cached by the
+# set of clusters + focus so repeated opens / multiple browser windows don't
+# re-bill the evidence ledger for an identical request.
+_COMPARE_CACHE: dict = {}
+_COMPARE_CACHE_TTL = 600.0   # seconds
+_COMPARE_CACHE_LOCK = threading.Lock()
+
+
+@app.post('/api/cluster-comparison')
+def cluster_comparison():
+    """LLM-driven CROSS-CLUSTER contrasting analysis across every named cluster.
+
+    Lazy / on-demand (the Data & Evidence tab fires it on a button click) so it
+    never auto-bills. Cost lands on the 'evidence' ledger, separate from the
+    pipeline + naming ledgers.
+    """
+    payload = request.get_json(silent=True) or {}
+    focus = (payload.get('focus') or '').strip()
+
+    personas = _load_personas()
+    if len(personas) < 2:
+        return jsonify({'error': 'Need at least 2 named clusters to compare'}), 400
+
+    # Cache key: cluster ids + names + the optional focus. A rename / merge
+    # changes the key so the analysis refreshes; identical re-opens reuse it.
+    sig = "|".join(
+        f"{cid}:{personas[cid].get('persona', {}).get('name', '')}"
+        for cid in _sorted_cluster_ids(personas)
+    ) + f"||focus={focus}"
+    now = time.time()
+    with _COMPARE_CACHE_LOCK:
+        hit = _COMPARE_CACHE.get(sig)
+        if hit and (now - hit['ts']) < _COMPARE_CACHE_TTL:
+            cached = dict(hit['response'])
+            cached['_cached'] = True
+            return jsonify(cached)
+
+    roster = "\n".join(_clusters_overview_lines(personas, max_feats=8))
+    focus_line = (
+        f"\nThe user wants the comparison focused on: {focus}\n" if focus else ""
+    )
+    prompt = f"""You are a data analyst comparing the customer segments produced by a
+clustering pipeline. Below is EVERY named cluster, its size, and the features it
+is stronger / weaker in versus the overall average.
+
+{roster}
+{focus_line}
+Write a CROSS-CLUSTER COMPARISON / contrasting analysis (not one-cluster-at-a-time
+descriptions). Structure it as short markdown sections / bullets:
+
+1. **Separating axes** — the 1-2 dimensions that best pull the clusters apart.
+2. **Contrasts** — pairs of clusters that look alike on one trait but diverge on
+   another (e.g. "C0 and C3 are both high-X, but C0 leans <feature> while C3
+   leans <feature>"). Always cite the specific feature names + ratios.
+3. **Overlap / merge candidates** — any clusters that look redundant.
+4. **Takeaway** — one or two sentences on how the segmentation hangs together.
+
+Cite cluster ids and feature names from the data above. Do NOT invent features
+that are not listed."""
+
+    from ui.llm_bridge import _load_env_file
+    _load_env_file()
+    if not os.environ.get('ANTHROPIC_API_KEY'):
+        return jsonify({'error': 'ANTHROPIC_API_KEY not set'}), 500
+
+    try:
+        from ui.llm_bridge import make_persona_agent
+        _, bus = make_persona_agent()
+        raw = bus.ask(agent='ClusterComparison',
+                      purpose='cross-cluster contrasting analysis',
+                      prompt=prompt, max_tokens=1300, category='evidence')
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({'error': f'LLM call failed: {exc}'}), 500
+
+    result = {'comparison': raw.strip(), 'n_clusters': len(personas)}
+    with _COMPARE_CACHE_LOCK:
+        _COMPARE_CACHE[sig] = {'response': result, 'ts': now}
+    return jsonify(result)
+
+
 # ── /api/explain dedup cache ──────────────────────────────────────────────────
 # When 2+ browser windows are open (recording mode runs 3+ Chromium contexts),
 # each independently subscribes to SSE and fires its own POST /api/explain for
@@ -981,12 +1278,13 @@ def explain_warning():
     payload = request.get_json(force=True) or {}
     agent = (payload.get('agent') or 'agent').strip()
     issue = (payload.get('issue') or '').strip()
+    iteration = payload.get('iteration')
     evidence = payload.get('evidence') or {}   # numbers backing the warning
     if not issue:
         return jsonify({'error': 'issue is required'}), 400
 
     # Cache hit? Return immediately without billing another LLM call.
-    cache_key = f"{agent}::{issue}"
+    cache_key = f"{agent}::{issue}::{iteration or ''}"
     now = time.time()
     with _EXPLAIN_CACHE_LOCK:
         hit = _EXPLAIN_CACHE.get(cache_key)
@@ -998,6 +1296,7 @@ def explain_warning():
     # In bypass mode the user sees this as the AGENT'S DECISION (not advice).
     # The LLM must respond as if the action has already been taken / queued —
     # active voice, present/past tense, no "we recommend" or "you should".
+    _iter_note = f" (iteration {iteration})" if iteration is not None else ""
     ev_text = json.dumps(evidence, indent=2, ensure_ascii=False)[:1500]
     prompt = f"""You speak FOR the multi-agent pipeline. A warning fired and the
 pipeline is in BYPASS mode — that means the decision has already been made and
@@ -1008,7 +1307,12 @@ Use phrasing like: "The pipeline will / chose to / is applying / is keeping /
 is ignoring". DO NOT use "we recommend", "you should", "consider", "you may want
 to". Be concrete and short.
 
-Warning from: {agent}
+CRITICAL: Always reference the exact iteration number ({iteration or 'unknown'}) and
+the exact cluster numbers / values from the warning text. Do NOT invent different
+numbers. If the warning says "Cluster 4 has 50.9%", your explanation must say
+"Cluster 4 has 50.9%" — never "Cluster 0 has 92.4%".
+
+Warning from: {agent}{_iter_note}
 Warning text: "{issue}"
 
 Supporting evidence (numbers the agent saw):

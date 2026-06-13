@@ -1,0 +1,1821 @@
+[run_pipeline] Logging full output to /Users/tzu-chunchen/Documents/AI/AI_Personalization/outputs/pipeline_run_20260606_214842.txt
+[run_pipeline] Launching live UI at http://127.0.0.1:5057/ (use --no-ui to disable)
+ * Serving Flask app 'ui.app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5057
+[33mPress CTRL+C to quit[0m
+  [Orchestrator] Skill catalog loaded: 12913 chars (skill.md)
+  [Orchestrator] Agent catalog loaded: 20866 chars (agent.md)
+
+=================================================================
+Multi-Agent Clustering & Persona Discovery Pipeline
+=================================================================
+Config       : {'dataset_path': None, 'modality': 'auto', 'text_column': None, 'text_vectorizer': 'auto', 'n_clusters': None, 'clustering_algorithm': 'auto', 'enable_automl_candidate_search': True, 'candidate_search_algorithms': None, 'candidate_search_top_n': 8, 'candidate_stability_repeats': 3, 'candidate_stability_sample_frac': 0.8, 'max_cluster_size_pct': 0.4, 'sub_n_clusters': 3, 'max_depth': 2, 'silhouette_target': 0.5, 'max_reselect_failures': 3, 'max_relax_failures': 3, 'persona_tone': 'easy', 'ae_bottleneck_cap': 32, 'ae_max_iter': 200, 'classifier_model': 'auto', 'text_overrides': {'silhouette_target': 0.18, 'min_silhouette': 0.01, 'classifier_f1_threshold': 0.6, 'per_class_f1_min': 0.3, 'max_cluster_size_pct': 0.6, 'min_cluster_size': 2, 'skip_vif': True, 'skip_correlation': True, 'skip_skewness_check': True, 'preferred_algorithms': ['kmeans', 'hierarchical', 'nmf', 'lda'], 'discouraged_algorithms': ['gmm', 'dbscan', 'fuzzy_cmeans']}, 'bypass_mode': False}
+Features     : data/raw/fraudTrain.csv
+Max iters    : 10
+Classifier F1 threshold: 0.7
+
+=================================================================
+AGENTIC CLUSTERING PIPELINE — Intent Collection
+=================================================================
+
+  [UserInput] Waiting up to 600s for intent from the UI form
+  [UserInput] (open http://127.0.0.1:5057/ and submit the intent form,
+  [UserInput]  or press Ctrl-C to fall back to terminal prompts)
+127.0.0.1 - - [06/Jun/2026 21:48:44] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [06/Jun/2026 21:48:45] "[36mGET /static/app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [06/Jun/2026 21:48:45] "[36mGET /static/style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [06/Jun/2026 21:48:45] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 21:48:45] "GET /api/events HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 21:48:45] "GET /api/mode HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 21:48:45] "GET /api/events/stream HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 21:48:55] "POST /api/upload HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jun/2026 21:49:13] "POST /api/intent HTTP/1.1" 200 -
+
+─────────────────────────────────────────────────────────────────
+Captured intent (from UI):
+  Target entity    : id
+  Business purpose : cluster ids based on the title and body context
+  Dataset path     : data/uploads/text_articles_6.csv
+  Clusters wanted  : data-driven (auto-select)
+  Max run iterations: 10 (default)
+─────────────────────────────────────────────────────────────────
+  [Bus] ✓ UserInput (iter 0): SUCCESS — Collected intent from UI: target='id', purpose='cluster ids based on the title a
+
+Loading raw transaction data: data/uploads/text_articles_6.csv
+  36 transactions × 4 columns
+
+[DatasetExaminer] Iteration 0
+  Target entity : id
+  Purpose       : cluster ids based on the title and body context
+  No README.md found in dataset folder.
+  Shape: 36 rows × 4 columns
+  Modality: TEXT  (text column: 'body')
+  [DatasetExaminer → Orchestrator] Requesting LLM: suggest feature engineering groups from schema + business purpose (pipeline)
+
+  [Orchestrator] ← DatasetExaminer requests LLM help: suggest feature engineering groups from schema + business purpose (pipeline)
+  [Orchestrator] → DatasetExaminer: LLM answered (in=1108 out=681 14.95s)
+  [Orchestrator → DatasetExaminer] LLM response received (2995 chars)
+  Suggested feature groups: ['topic_category', 'text_sentiment_tone', 'text_length_complexity', 'keyword_domain_signals']
+  [Bus] ✓ DatasetExaminer (iter 0): SUCCESS — Profiled 36×4 dataset. Found 2 numeric cols. LLM suggested 4 feature groups.
+         Doubt: Suggested groups are based on column names; actual feature buildability depends on data quality. Mean skewness=0.0.
+
+[Orchestrator] Control-gate data-driven defaults:
+  max_cluster_size_pct = 55%
+  sub_n_clusters       = 2
+  max_depth            = 1
+  [Orchestrator → Orchestrator] Requesting LLM: tune control gates from dataset stats (bypass mode) (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune control gates from dataset stats (bypass mode) (pipeline)
+  [Orchestrator] → Orchestrator: LLM answered (in=1073 out=153 3.62s)
+  [Orchestrator → Orchestrator] LLM response received (509 chars)
+
+[Orchestrator] Control gates tuned by Decision Maker (bypass):
+  max_cluster_size_pct = 55%
+  sub_n_clusters       = 2
+  max_depth            = 1
+  Reasoning: max_cluster_size_pct set to 0.55 as this is a small text dataset (36 rows) where tight splitting is risky and natural groups may be uneven; sub_n_clusters set to 2 as the conservative choice for small datasets to avoid over-partitioning; max_depth set to 1 to prevent over-splitting on a very small dataset, especially given PCA shows nearly all variance in the first component suggesting limited cluster structure.
+
+[Orchestrator] 🧠 Case-memory recall (EXACT): Same dataset fingerprint: column Jaccard=1.00, row count Δ=0.0%. Business purpose similarity=0.54.
+  [Orchestrator] Prior winning recipe → algo=NMF, k=5, vif=10.0, features=35.
+  [Orchestrator] BYPASS — auto-applying case recall as a hint (decision=modify).
+  [Orchestrator] 🧠 MODIFY — recall stays as a hint for failure-tuning only.
+
+[Orchestrator] Text modality — launching TextPreparerAgent...
+
+[TextPreparer] Iteration 0
+  Purpose : cluster ids based on the title and body context
+  Text column : 'body'  |  usable docs: 36
+  [TextVectorizer] → TFIDF_SVD  (confidence=1.0)
+    · avg_doc_len=20 tokens — short text clusters well on lexical TF-IDF
+  [TextPreparer → Orchestrator] Requesting LLM: select text embedding method for clustering (pipeline)
+
+  [Orchestrator] ← TextPreparer requests LLM help: select text embedding method for clustering (pipeline)
+  [Orchestrator] → TextPreparer: LLM answered (in=821 out=80 2.64s)
+  [Orchestrator → TextPreparer] LLM response received (302 chars)
+  [TextVectorizer] TF-IDF vocab=45 → TruncatedSVD to 35 dims
+  Embeddings  : 36 docs × 35 dims  (method=tfidf_svd)
+  Saved → data/processed/text_embeddings.parquet
+  [Bus] ✓ TextPreparer (iter 0): SUCCESS — Vectorized 36 documents from column 'body' into a 35-dim embedding matrix using 
+  [Orchestrator] Text mode gates from config.text_overrides: min_silhouette=0.01, silhouette_target=0.18, classifier F1 threshold=0.6, max_cluster_size_pct=0.6
+
+─────────────────────────────────────────────────────────────────
+ITERATION 1 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 1  (text modality — skipping PCA/AE/VIF, keeping all 35 dims)
+  [Orchestrator] Pre-modelling preview saved (stage=feature_selection, iter 1, 36×35)
+
+[Clusterer] Iteration 1
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  [AlgoRecommender] → HIERARCHICAL  (confidence=0.50)
+    · n_rows=36 is small → Hierarchical is stable
+    · modality=text — prefer ['kmeans', 'hierarchical', 'nmf', 'lda'] (cosine-friendly on L2-normalised embeddings), discourage ['gmm', 'dbscan', 'fuzzy_cmeans'] (Gaussian assumption / distance saturation in high-dim). Topic models (nmf/lda) available as alternates.
+    · Scores: hierarchical=4, nmf=4, lda=4, kmeans=3, llm_cluster=0, dbscan=-3, gmm=-3, fuzzy_cmeans=-3
+  Algorithm auto-selected: hierarchical  (confidence=0.50)
+  [AutoMLCandidateSearch] algorithms=['kmeans', 'hierarchical']; k_range=[3, 4, 5, 6, 7, 8, 10, 12, 15]; metric=cosine
+    kmeans       k=   3  sil=0.0896  DB=3.250  CH=2.5  stability_ari=0.2934  max_pct=0.42  score=10.61
+    kmeans       k=   4  sil=0.1072  DB=2.911  CH=2.6  stability_ari=0.3002  max_pct=0.47  score=9.24
+    kmeans       k=   5  sil=0.1163  DB=2.660  CH=2.4  stability_ari=0.1820  max_pct=0.31  score=11.56
+    kmeans       k=   6  sil=0.1198  DB=2.378  CH=2.3  stability_ari=0.3565  max_pct=0.25  score=17.48
+    kmeans       k=   7  sil=0.1570  DB=2.068  CH=2.5  stability_ari=0.4405  max_pct=0.31  score=22.81
+    kmeans       k=   8  sil=0.0832  DB=2.141  CH=2.1  stability_ari=0.3053  max_pct=0.22  score=15.74
+    kmeans       k=  10  sil=0.1062  DB=1.232  CH=2.1  stability_ari=0.3406  max_pct=0.53  score=15.81
+    kmeans       k=  12  sil=0.0826  DB=1.210  CH=2.0  stability_ari=0.2937  max_pct=0.47  score=16.46
+    kmeans       k=  15  sil=0.0845  DB=1.079  CH=2.0  stability_ari=0.2522  max_pct=0.39  score=19.78
+    hierarchical k=   3  sil=0.1063  DB=2.469  CH=2.8  stability_ari=0.5299  max_pct=0.64  score=8.82
+    hierarchical k=   4  sil=0.1248  DB=2.291  CH=2.7  stability_ari=0.3912  max_pct=0.56  score=11.24
+    hierarchical k=   5  sil=0.1381  DB=2.187  CH=2.6  stability_ari=0.2263  max_pct=0.47  score=12.40
+    hierarchical k=   6  sil=0.1601  DB=2.025  CH=2.5  stability_ari=0.2556  max_pct=0.42  score=17.71
+    hierarchical k=   7  sil=0.1852  DB=1.841  CH=2.6  stability_ari=0.3080  max_pct=0.42  score=21.07
+    hierarchical k=   8  sil=0.1815  DB=1.713  CH=2.6  stability_ari=0.3199  max_pct=0.42  score=21.84
+    hierarchical k=  10  sil=0.2125  DB=1.654  CH=2.6  stability_ari=0.4046  max_pct=0.31  score=26.49
+    hierarchical k=  12  sil=0.2339  DB=1.509  CH=2.7  stability_ari=0.4637  max_pct=0.22  score=29.66
+    hierarchical k=  15  sil=0.2301  DB=1.167  CH=2.7  stability_ari=0.6004  max_pct=0.14  score=34.61
+  AutoML candidate winner: Selected hierarchical k=15 by candidate tournament: silhouette=0.2301, stability_ari=0.6004, max_cluster_pct=0.14, score=34.61.
+  k: 15 (from AutoML candidate search; silhouette=0.2301, stability_ari=0.6004)
+  Initial clustering: 15 clusters  |  silhouette=0.2301
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  [Clusterer] Merged tiny cluster C13 (n=1) → C0 (nearest by centroid, dist=1.04). Reason: n < min_cluster_size=2.
+  [Clusterer] Merged tiny cluster C14 (n=1) → C0 (nearest by centroid, dist=1.04). Reason: n < min_cluster_size=2.
+  [Clusterer] Singleton-merge step: 2 cluster(s) merged.
+  Final: 13 leaf clusters  |  silhouette=0.2426
+  [Bus] ✓ Clusterer (iter 1): SUCCESS — Used AgglomerativeClustering with k=15 (AutoML-selected from 8 candidates, compo
+         Issue: AutoML evaluated 8 candidate(s). Best: hierarchical k=15 with composite=34.612 (sil=0.230, DB=1.17, CH=2.7, ARI=0.600). Silhouette=0.243 < 0.25 — meets dynamic target 0.18 but clusters may still overlap; consider different k or algorithm.
+         Doubt: AutoML top-3: hierarchical(k=15, comp=34.612, sil=0.230) | hierarchical(k=12, comp=29.658, sil=0.234) | hierarchical(k=10, comp=26.488, sil=0.212). Diagnosed 2 tiny cluster(s) (n<2) — root cause of per-class F1=0 / singleton-class CV failure. Merged into nearest leaf: C13(n=1)→C0, C14(n=1)→C0.
+  [Orchestrator] PCA snapshot saved (iter 1, 36 points)
+
+[PersonaNamer] Iteration 1  (tone: 'easy')
+  Prepared cluster prompt for 15 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 15 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 15 clusters (tone='easy') (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (847 chars)
+127.0.0.1 - - [06/Jun/2026 21:49:42] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=6712 out=2849 52.71s)
+  [Orchestrator → PersonaNamer] LLM response received (10499 chars)
+  Cluster 0  [depth 0]: "Tech News & Comfort Food Cooks"  conf=6/10
+  Cluster 1  [depth 0]: "Light & Fresh — Food, Sport, and Gadgets"  conf=8/10
+  Cluster 2  [depth 0]: "Slow Improvement — Recipes and OTA Updates"  conf=7/10
+  Cluster 3  [depth 0]: "World Record Breakers"  conf=9/10
+  Cluster 4  [depth 0]: "Quick Weeknight Meals"  conf=9/10
+  Cluster 5  [depth 0]: "Faster Processors & Faster Builds"  conf=8/10
+  Cluster 6  [depth 0]: "Nail-Biting Wins Over Rivals"  conf=8/10
+  Cluster 7  [depth 0]: "Championship Finals & Last-Hole Glory"  conf=9/10
+  Cluster 8  [depth 0]: "Warm & Slow Comfort Dishes"  conf=7/10
+  Cluster 9  [depth 0]: "Chip Makers & Smartphone Launches"  conf=9/10
+  Cluster 10  [depth 0]: "Low & Slow Braised Meats"  conf=9/10
+  Cluster 11  [depth 0]: "Baked Goods with Patience"  conf=9/10
+  Cluster 12  [depth 0]: "New Tech Products & AI Launches"  conf=8/10
+  Cluster 13  [depth 0]: "Empty Cluster"  conf=1/10
+  Cluster 14  [depth 0]: "Empty Cluster"  conf=1/10
+  Clarity Gate FAILED: ['Duplicate persona names detected']
+  [Bus] ⚠ PersonaNamer (iter 1): WARNING — Named 15 clusters using LLM (tone='easy'). Clarity Gate FAILED. Avg confidence=7
+         Issue: Duplicate persona names detected
+         Doubt: Low-confidence clusters: C13(conf=1), C14(conf=1)
+
+[PersonaNamer] Iteration 1  (tone: 'easy')
+  Feedback: Clarity Gate failed once; running with force_proceed so Classifier can still score this iteration.
+  Prepared cluster prompt for 15 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 15 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 15 clusters (tone='easy') (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from PersonaNamer (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (617 chars)
+127.0.0.1 - - [06/Jun/2026 21:50:33] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=6736 out=3685 68.53s)
+  [Orchestrator → PersonaNamer] LLM response received (14057 chars)
+  Cluster 0  [depth 0]: "Cooking, Tech & Team Sports Mix"  conf=4/10
+  Cluster 1  [depth 0]: "Light & Refreshing — Food, Sport & Gadgets"  conf=7/10
+  Cluster 2  [depth 0]: "Better With Time — OTA Update & Slow Pasta Sauce"  conf=8/10
+  Cluster 3  [depth 0]: "World Record Breakers"  conf=9/10
+  Cluster 4  [depth 0]: "Quick & Easy Weeknight Cooking"  conf=9/10
+  Cluster 5  [depth 0]: "Faster Software & Quantum Computing Breakthroughs"  conf=8/10
+  Cluster 6  [depth 0]: "Narrow Victory Over Rivals"  conf=8/10
+  Cluster 7  [depth 0]: "Championship Final Showdowns"  conf=9/10
+  Cluster 8  [depth 0]: "Warm & Slow Comfort Food"  conf=7/10
+  Cluster 9  [depth 0]: "Consumer Chip & Smartphone Launches"  conf=8/10
+  Cluster 10  [depth 0]: "Low & Slow Braised Meat"  conf=9/10
+  Cluster 11  [depth 0]: "Baked Goods — Sourdough & Chocolate Cake"  conf=9/10
+  Cluster 12  [depth 0]: "New AI, Streaming & Wearable Tech Launches"  conf=8/10
+  Cluster 13  [depth 0]: "Empty Cluster A"  conf=1/10
+  Cluster 14  [depth 0]: "Empty Cluster B"  conf=1/10
+  Clarity Gate PASSED  (avg_conf=7.0, unique=True)
+  [Bus] ✓ PersonaNamer (iter 1): SUCCESS — Named 15 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7
+
+[Classifier] Iteration 1
+  Entities: 36  |  Personas (classes): 13
+  Class distribution:
+    Cooking, Tech & Team Sports Mix                  7 (19.4%)
+    World Record Breakers                            3 (8.3%)
+    Championship Final Showdowns                     3 (8.3%)
+    Light & Refreshing — Food, Sport & Gadgets       3 (8.3%)
+    New AI, Streaming & Wearable Tech Launches       3 (8.3%)
+    Quick & Easy Weeknight Cooking                   3 (8.3%)
+    Narrow Victory Over Rivals                       2 (5.6%)
+    Consumer Chip & Smartphone Launches              2 (5.6%)
+    Faster Software & Quantum Computing Breakthroughs    2 (5.6%)
+    Better With Time — OTA Update & Slow Pasta Sauce    2 (5.6%)
+    Low & Slow Braised Meat                          2 (5.6%)
+    Baked Goods — Sourdough & Chocolate Cake         2 (5.6%)
+    Warm & Slow Comfort Food                         2 (5.6%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1161 out=80 2.91s)
+  [Orchestrator → Classifier] LLM response received (308 chars)
+  [Classifier] LLM selected model: svm  (With n_features (35) > n_samples (36) and 13 classes, SVM is well-suited as it handles high-dimensional spaces effectively and can find clear margins even with limited samples. It outperforms tree-based methods in this regime where the feature space exceeds the sample count.)
+  Using classifier: svm
+  Running 2-fold stratified CV ...
+  CV accuracy    : 0.2500
+  CV F1 (macro)  : 0.1032  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.1497
+  Per-class F1:
+    Baked Goods — Sourdough & Chocolate Cake      0.000  
+    Better With Time — OTA Update & Slow Pasta Sauce 0.000  
+    Consumer Chip & Smartphone Launches           0.000  
+    Faster Software & Quantum Computing Breakthroughs 0.000  
+    Light & Refreshing — Food, Sport & Gadgets    0.000  
+    Low & Slow Braised Meat                       0.000  
+    Narrow Victory Over Rivals                    0.000  
+    New AI, Streaming & Wearable Tech Launches    0.000  
+    Quick & Easy Weeknight Cooking                0.000  
+    Warm & Slow Comfort Food                      0.000  
+    Cooking, Tech & Team Sports Mix               0.342  ██████
+    Championship Final Showdowns                  0.500  ██████████
+    World Record Breakers                         0.500  ██████████
+  Top 10 features: ['emb_0', 'emb_1', 'emb_2', 'emb_3', 'emb_4', 'emb_5', 'emb_6', 'emb_7', 'emb_8', 'emb_9']
+  Performance below threshold (0.1032 < 0.6). Consulting LLM...
+  [Classifier → Orchestrator] Requesting LLM: diagnose low CV F1=0.103 — route to reselect_features or recluster (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: diagnose low CV F1=0.103 — route to reselect_features or recluster (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1523 out=164 4.33s)
+  [Orchestrator → Classifier] LLM response received (620 chars)
+  LLM decision: recluster  |  With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  [Bus] ⚠ Classifier (iter 1): WARNING — Trained svm, 2-fold CV. CV macro-F1=0.103 < 0.6. LLM routed: recluster.
+         Issue: CV macro-F1=0.103 below threshold 0.6. Clusters may not be well-separated.
+         Doubt: Hardest personas: Baked Goods — Sourdough & Chocolate Cake(0.00), Better With Time — OTA Update & Slow Pasta Sauce(0.00), Consumer Chip & Smartphone Launches(0.00)
+  [Orchestrator] iter 1 is new BEST (F1=0.103, Sil=0.243, maxVIF=1.00, score=17.60)
+
+[Orchestrator] Classifier → re-cluster: With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 2...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Classifier (evidence)
+  [Orchestrator] → Orchestrator: LLM answered (in=3707 out=203 5.01s)
+  [Orchestrator → Orchestrator] LLM response received (577 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: The prior successful run on this exact dataset converged with NMF at k=5 (silhouette=0.125, F1=0.929), and the current best silhouette of 0.243 was already achieved geometrically — switching to NMF with a focused k_range around 5 should yield sharper topic separation and better Classifier F1 (which failed at 0.103 in iter 1, likely due to poor cluster boundaries rather than embedding quality).
+
+─────────────────────────────────────────────────────────────────
+ITERATION 2 / 10
+─────────────────────────────────────────────────────────────────
+
+[Clusterer] Iteration 2
+  Feedback: Classifier CV F1=0.103 too low: With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ⚠ Clusterer (iter 2): WARNING — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < target 0.18 — orchestrator will reselect features (or escalate after 3 consecutive misses).
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 2, 36 points)
+
+[PersonaNamer] Iteration 2  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (665 chars)
+127.0.0.1 - - [06/Jun/2026 21:51:53] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (689 chars)
+127.0.0.1 - - [06/Jun/2026 21:51:55] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1747 36.83s)
+  [Orchestrator → PersonaNamer] LLM response received (6575 chars)
+  Cluster 0  [depth 0]: "Tech Innovation News"  conf=8/10
+  Cluster 1  [depth 0]: "Competitive Sports Moments"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked Comfort Food Recipes"  conf=9/10
+  Cluster 3  [depth 0]: "Speed & Performance Tech Upgrades"  conf=8/10
+  Cluster 4  [depth 0]: "Light & Lean — Sports, Salads, and Slim Gadgets"  conf=4/10
+  Cluster 5  [depth 0]: "Baking & Overnight Processes"  conf=6/10
+  Cluster 6  [depth 0]: "Quick & Easy Weeknight Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.6, unique=True)
+  [Bus] ✓ PersonaNamer (iter 2): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 2
+  Feedback: With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech Innovation News                             9 (25.0%)
+    Slow-Cooked Comfort Food Recipes                 6 (16.7%)
+    Competitive Sports Moments                       6 (16.7%)
+    Quick & Easy Weeknight Cooking                   5 (13.9%)
+    Speed & Performance Tech Upgrades                4 (11.1%)
+    Light & Lean — Sports, Salads, and Slim Gadgets    3 (8.3%)
+    Baking & Overnight Processes                     3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1329 out=90 3.12s)
+  [Orchestrator → Classifier] LLM response received (367 chars)
+  [Classifier] LLM selected model: random_forest  (SVM failed with F1=0.103, and with n_features (35) close to n_samples (36) and 7 classes, random_forest is the robust default that handles high-dimensional small datasets well without the sensitivity to poorly-separated boundaries that hurt SVM. It also provides feature importance insights to help diagnose cluster quality.)
+  Using classifier: random_forest
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.7222
+  CV F1 (macro)  : 0.6105  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.6785
+  Per-class F1:
+    Light & Lean — Sports, Salads, and Slim Gadgets 0.000  
+    Baking & Overnight Processes                  0.500  ██████████
+    Slow-Cooked Comfort Food Recipes              0.615  ████████████
+    Quick & Easy Weeknight Cooking                0.667  █████████████
+    Speed & Performance Tech Upgrades             0.750  ███████████████
+    Tech Innovation News                          0.818  ████████████████
+    Competitive Sports Moments                    0.923  ██████████████████
+  Top 10 features: ['emb_2', 'emb_1', 'emb_4', 'emb_5', 'emb_3', 'emb_6', 'emb_0', 'emb_8', 'emb_31', 'emb_15']
+  Performance OK — proceeding.
+  [Bus] ✓ Classifier (iter 2): SUCCESS — Trained random_forest, 3-fold stratified CV. CV macro-F1=0.610 ≥ 0.6 threshold.
+         Doubt: Lowest-F1 personas: Light & Lean — Sports, Salads, and Slim Gadgets(0.00), Baking & Overnight Processes(0.50), Slow-Cooked Comfort Food Recipes(0.62)
+  [Orchestrator] iter 2 is new BEST (F1=0.610, Sil=0.176, maxVIF=1.00, score=66.32)
+
+[Orchestrator] Silhouette 0.176 < target 0.18 (re-engineer counter 1/3 · relax counter 1/3).
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 3...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [Orchestrator] → Orchestrator: LLM answered (in=3760 out=204 4.72s)
+  [Orchestrator → Orchestrator] LLM response received (554 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: Iteration 2 achieved F1=0.610 with NMF, which is within the realistic text-mode band (0.55–0.70), and silhouette=0.175 is comfortably in the usable range (0.10–0.30). The prior winning recipe used NMF k=5 and converged successfully — the pipeline is performing well; proceed with the same parameters and allow the classifier's 'proceed' action to carry forward.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 3 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 3  (text modality — skipping PCA/AE/VIF, keeping all 35 dims)
+  [Orchestrator] Pre-modelling preview saved (stage=feature_selection, iter 3, 36×35)
+
+[Clusterer] Iteration 3
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ⚠ Clusterer (iter 3): WARNING — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < target 0.18 — orchestrator will reselect features (or escalate after 3 consecutive misses).
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 3, 36 points)
+
+[PersonaNamer] Iteration 3  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1690 32.43s)
+  [Orchestrator → PersonaNamer] LLM response received (6281 chars)
+  Cluster 0  [depth 0]: "Tech & Innovation News"  conf=8/10
+  Cluster 1  [depth 0]: "Sports Competition & Victory"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked & Braised Recipes"  conf=9/10
+  Cluster 3  [depth 0]: "Performance & Speed Tech Upgrades"  conf=7/10
+  Cluster 4  [depth 0]: "Light & Refreshing Mix"  conf=4/10
+  Cluster 5  [depth 0]: "Baked Goods & Overnight Processes"  conf=7/10
+  Cluster 6  [depth 0]: "Quick & Easy Everyday Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.6, unique=True)
+  [Bus] ✓ PersonaNamer (iter 3): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 3
+  Feedback: With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Innovation News                           9 (25.0%)
+    Slow-Cooked & Braised Recipes                    6 (16.7%)
+    Sports Competition & Victory                     6 (16.7%)
+    Quick & Easy Everyday Cooking                    5 (13.9%)
+    Performance & Speed Tech Upgrades                4 (11.1%)
+    Light & Refreshing Mix                           3 (8.3%)
+    Baked Goods & Overnight Processes                3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1330 out=90 2.95s)
+  [Orchestrator → Classifier] LLM response received (345 chars)
+  [Classifier] LLM selected model: svm  (With n_features (35) close to n_samples (36), SVM is well-suited as it handles high-dimensional spaces effectively and finds clear margins between classes. The previous random_forest achieved only F1=0.610, and SVM's margin-maximization may better separate the 7 clusters in this small, high-dimensional dataset.)
+  Using classifier: svm
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.5000
+  CV F1 (macro)  : 0.3279  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.4211
+  Per-class F1:
+    Baked Goods & Overnight Processes             0.000  
+    Light & Refreshing Mix                        0.000  
+    Performance & Speed Tech Upgrades             0.000  
+    Quick & Easy Everyday Cooking                 0.250  █████
+    Tech & Innovation News                        0.545  ██████████
+    Slow-Cooked & Braised Recipes                 0.667  █████████████
+    Sports Competition & Victory                  0.833  ████████████████
+  Top 10 features: ['emb_0', 'emb_1', 'emb_2', 'emb_3', 'emb_4', 'emb_5', 'emb_6', 'emb_7', 'emb_8', 'emb_9']
+  Performance below threshold (0.3279 < 0.6). Consulting LLM...
+  [Classifier → Orchestrator] Requesting LLM: diagnose low CV F1=0.328 — route to reselect_features or recluster (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: diagnose low CV F1=0.328 — route to reselect_features or recluster (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1881 out=147 3.54s)
+  [Orchestrator → Classifier] LLM response received (579 chars)
+  LLM decision: recluster  |  The SVM macro-F1 of 0.3279 with 7 classes indicates poor cluster separation, and the worst personas (F1=0.00) suggest some clusters are nearly indistinguishable in feature space. The top predictive features are raw embeddings (emb_0–emb_4), meaning the feature space does carry signal — the problem lies in the cluster boundaries, not the features themselves. Reducing n_clusters or switching to a structure-aware algorithm like Hierarchical/Ward or GMM should consolidate overlapping micro-clusters into more coherent, separable personas.
+  [Bus] ⚠ Classifier (iter 3): WARNING — Trained svm, 3-fold CV. CV macro-F1=0.328 < 0.6. LLM routed: recluster.
+         Issue: CV macro-F1=0.328 below threshold 0.6. Clusters may not be well-separated.
+         Doubt: Hardest personas: Baked Goods & Overnight Processes(0.00), Light & Refreshing Mix(0.00), Performance & Speed Tech Upgrades(0.00)
+
+[Orchestrator] Silhouette 0.176 < target 0.18 (re-engineer counter 2/3 · relax counter 2/3).
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 4...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Classifier (evidence)
+  [Orchestrator] → Orchestrator: LLM answered (in=3837 out=197 4.48s)
+  [Orchestrator → Orchestrator] LLM response received (514 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: Iteration 1 with NMF achieved the best silhouette of 0.243 and Iteration 2 yielded a solid F1 of 0.610 — results are unstable across runs likely due to NMF random initialisation. Retrying NMF with the same parameters to recover the Iter 1/2 quality; if F1 remains low next iteration, switch to llm_cluster as last resort.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 4 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 4  (text modality — skipping PCA/AE/VIF, keeping all 35 dims)
+  [Orchestrator] Pre-modelling preview saved (stage=feature_selection, iter 4, 36×35)
+
+[Clusterer] Iteration 4
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ⚠ Clusterer (iter 4): WARNING — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < target 0.18 — orchestrator will reselect features (or escalate after 3 consecutive misses).
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 4, 36 points)
+
+[PersonaNamer] Iteration 4  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [Orchestrator → EvidenceExplainer] LLM response received (715 chars)
+127.0.0.1 - - [06/Jun/2026 21:53:22] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1698 32.29s)
+  [Orchestrator → PersonaNamer] LLM response received (6346 chars)
+  Cluster 0  [depth 0]: "Tech & Innovation Headlines"  conf=8/10
+  Cluster 1  [depth 0]: "Sports Showdowns & Championship Moments"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked & Hearty Recipes"  conf=9/10
+  Cluster 3  [depth 0]: "Speed & Performance Tech Upgrades"  conf=8/10
+  Cluster 4  [depth 0]: "Light & Bright — Three Different Meanings"  conf=4/10
+  Cluster 5  [depth 0]: "Overnight & Slow-Rise Baking"  conf=7/10
+  Cluster 6  [depth 0]: "Fast & Flavourful Weeknight Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.7, unique=True)
+  [Bus] ✓ PersonaNamer (iter 4): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 4
+  Feedback: With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Innovation Headlines                      9 (25.0%)
+    Slow-Cooked & Hearty Recipes                     6 (16.7%)
+    Sports Showdowns & Championship Moments          6 (16.7%)
+    Fast & Flavourful Weeknight Cooking              5 (13.9%)
+    Speed & Performance Tech Upgrades                4 (11.1%)
+    Light & Bright — Three Different Meanings        3 (8.3%)
+    Overnight & Slow-Rise Baking                     3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1329 out=99 3.39s)
+  [Orchestrator → Classifier] LLM response received (405 chars)
+  [Classifier] LLM selected model: random_forest  (SVM achieved only F1=0.328, so switching model families is warranted; with n_features (35) close to n_samples (36) and 7 classes, random_forest is the robust default that handles high-dimensional small datasets well without the linear-separability assumptions that hurt SVM here. Its ensemble nature also tolerates overlapping cluster boundaries better than SVM.)
+  Using classifier: random_forest
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.7222
+  CV F1 (macro)  : 0.6105  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.6785
+  Per-class F1:
+    Light & Bright — Three Different Meanings     0.000  
+    Overnight & Slow-Rise Baking                  0.500  ██████████
+    Slow-Cooked & Hearty Recipes                  0.615  ████████████
+    Fast & Flavourful Weeknight Cooking           0.667  █████████████
+    Speed & Performance Tech Upgrades             0.750  ███████████████
+    Tech & Innovation Headlines                   0.818  ████████████████
+    Sports Showdowns & Championship Moments       0.923  ██████████████████
+  Top 10 features: ['emb_2', 'emb_1', 'emb_4', 'emb_5', 'emb_3', 'emb_6', 'emb_0', 'emb_8', 'emb_31', 'emb_15']
+  Performance OK — proceeding.
+  [Bus] ✓ Classifier (iter 4): SUCCESS — Trained random_forest, 3-fold stratified CV. CV macro-F1=0.610 ≥ 0.6 threshold.
+         Doubt: Lowest-F1 personas: Light & Bright — Three Different Meanings(0.00), Overnight & Slow-Rise Baking(0.50), Slow-Cooked & Hearty Recipes(0.62)
+
+[Orchestrator] Silhouette 0.176 < target 0.18 (re-engineer counter 3/3 · relax counter 3/3).
+  [Orchestrator] BYPASS — auto-lowering silhouette_target 0.18 → 0.08
+  [Bus] ⚠ Orchestrator (iter 4): WARNING — Silhouette target relaxed 0.18 → 0.08 (bypass mode) after 3 consecutive iteratio
+         Issue: ⚠ silhouette_target degraded 0.18→0.08 (step #4, bypass)
+         Doubt: Lower target accepts weaker cluster separation — interpretability of the resulting personas may drop.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 5 / 10
+─────────────────────────────────────────────────────────────────
+
+[Orchestrator] ESCALATION (text mode) — 3 silhouette failures. Skipping FeatureEngineer re-run (tabular-only); the Decision Maker will pick a different algorithm / text_vectorizer on this iteration instead.
+
+[Clusterer] Iteration 5
+  Feedback: 3 consecutive iterations with silhouette < target. Pick a completely different algorithm next round based on the whole history.
+  Config overrides: {'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  [AlgoRecommender] → HIERARCHICAL  (confidence=0.50)
+    · n_rows=36 is small → Hierarchical is stable
+    · modality=text — prefer ['kmeans', 'hierarchical', 'nmf', 'lda'] (cosine-friendly on L2-normalised embeddings), discourage ['gmm', 'dbscan', 'fuzzy_cmeans'] (Gaussian assumption / distance saturation in high-dim). Topic models (nmf/lda) available as alternates.
+    · Scores: hierarchical=4, nmf=4, lda=4, kmeans=3, llm_cluster=0, dbscan=-3, gmm=-3, fuzzy_cmeans=-3
+  Algorithm auto-selected: hierarchical  (confidence=0.50)
+  [AutoMLCandidateSearch] algorithms=['kmeans', 'hierarchical']; k_range=[4, 5, 6, 7, 8]; metric=cosine
+    kmeans       k=   4  sil=0.1072  DB=2.911  CH=2.6  stability_ari=0.3002  max_pct=0.47  score=9.24
+    kmeans       k=   5  sil=0.1163  DB=2.660  CH=2.4  stability_ari=0.1820  max_pct=0.31  score=11.56
+    kmeans       k=   6  sil=0.1198  DB=2.378  CH=2.3  stability_ari=0.3565  max_pct=0.25  score=17.48
+    kmeans       k=   7  sil=0.1570  DB=2.068  CH=2.5  stability_ari=0.4405  max_pct=0.31  score=22.81
+    kmeans       k=   8  sil=0.0832  DB=2.141  CH=2.1  stability_ari=0.3053  max_pct=0.22  score=15.74
+    hierarchical k=   4  sil=0.1248  DB=2.291  CH=2.7  stability_ari=0.3912  max_pct=0.56  score=11.24
+    hierarchical k=   5  sil=0.1381  DB=2.187  CH=2.6  stability_ari=0.2263  max_pct=0.47  score=12.40
+    hierarchical k=   6  sil=0.1601  DB=2.025  CH=2.5  stability_ari=0.2556  max_pct=0.42  score=17.71
+    hierarchical k=   7  sil=0.1852  DB=1.841  CH=2.6  stability_ari=0.3080  max_pct=0.42  score=21.07
+    hierarchical k=   8  sil=0.1815  DB=1.713  CH=2.6  stability_ari=0.3199  max_pct=0.42  score=21.84
+  AutoML candidate winner: Selected kmeans k=7 by candidate tournament: silhouette=0.1570, stability_ari=0.4405, max_cluster_pct=0.31, score=22.81.
+  k: 7 (from AutoML candidate search; silhouette=0.1570, stability_ari=0.4405)
+  Initial clustering: 7 clusters  |  silhouette=0.1570
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1570
+  [Bus] ✓ Clusterer (iter 5): SUCCESS — Used KMeans with k=7 (AutoML-selected from 8 candidates, composite=22.8105). Ran
+         Issue: AutoML evaluated 8 candidate(s). Best: kmeans k=7 with composite=22.811 (sil=0.157, DB=2.07, CH=2.5, ARI=0.441). Silhouette=0.157 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+         Doubt: AutoML top-3: kmeans(k=7, comp=22.811, sil=0.157) | hierarchical(k=8, comp=21.845, sil=0.181) | hierarchical(k=7, comp=21.074, sil=0.185).
+  [Orchestrator] PCA snapshot saved (iter 5, 36 points)
+
+[PersonaNamer] Iteration 5  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Orchestrator (evidence)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (660 chars)
+127.0.0.1 - - [06/Jun/2026 21:54:03] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (857 chars)
+127.0.0.1 - - [06/Jun/2026 21:54:04] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=4960 out=1686 33.91s)
+  [Orchestrator → PersonaNamer] LLM response received (6317 chars)
+  Cluster 0  [depth 0]: "From-Scratch Bakers & Slow Cooks"  conf=9/10
+  Cluster 1  [depth 0]: "Tech & Kitchen Crossroads"  conf=5/10
+  Cluster 2  [depth 0]: "Dramatic Sports Finales"  conf=9/10
+  Cluster 3  [depth 0]: "New Product & Record-Breaking Launches"  conf=9/10
+  Cluster 4  [depth 0]: "Team Sports Rivalry Wins"  conf=8/10
+  Cluster 5  [depth 0]: "Quick & Easy Weeknight Cooking"  conf=9/10
+  Cluster 6  [depth 0]: "Light & Bright Mixed Moments"  conf=5/10
+  Clarity Gate PASSED  (avg_conf=7.7, unique=True)
+  [Bus] ✓ PersonaNamer (iter 5): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 5
+  Feedback: With 13 classes and a macro-F1 of only 0.1032 (barely above random chance at 1/13 ≈ 0.077), the clusters are not forming separable groups in feature space. The top predictive features are raw embeddings (emb_0 through emb_4), suggesting the feature space itself has signal but the cluster boundaries are poorly defined — 13 clusters is likely too many and the algorithm may be fragmenting natural groupings into overlapping micro-clusters. Reducing n_clusters or switching to a more structure-aware algorithm (e.g. Hierarchical/Ward or GMM) should yield better-separated personas.
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Kitchen Crossroads                       11 (30.6%)
+    New Product & Record-Breaking Launches           6 (16.7%)
+    Quick & Easy Weeknight Cooking                   5 (13.9%)
+    Dramatic Sports Finales                          4 (11.1%)
+    Light & Bright Mixed Moments                     4 (11.1%)
+    Team Sports Rivalry Wins                         3 (8.3%)
+    From-Scratch Bakers & Slow Cooks                 3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1330 out=102 3.97s)
+  [Orchestrator → Classifier] LLM response received (395 chars)
+  [Classifier] LLM selected model: svm  (With n_features (35) > n_samples (36), SVM is well-suited as it excels in high-dimensional spaces and can find clear margins between classes. Switching from the tree-based random_forest to a different model family is warranted given the previous F1 of 0.610, and SVM's kernel trick may better capture the cluster boundaries in this embedding-heavy feature space.)
+  Using classifier: svm
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.4444
+  CV F1 (macro)  : 0.2047  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.3116
+  Per-class F1:
+    Dramatic Sports Finales                       0.000  
+    From-Scratch Bakers & Slow Cooks              0.000  
+    Light & Bright Mixed Moments                  0.000  
+    Quick & Easy Weeknight Cooking                0.000  
+    Team Sports Rivalry Wins                      0.000  
+    Tech & Kitchen Crossroads                     0.524  ██████████
+    New Product & Record-Breaking Launches        0.909  ██████████████████
+  Top 10 features: ['emb_0', 'emb_1', 'emb_2', 'emb_3', 'emb_4', 'emb_5', 'emb_6', 'emb_7', 'emb_8', 'emb_9']
+  Performance below threshold (0.2047 < 0.6). Consulting LLM...
+  [Classifier → Orchestrator] Requesting LLM: diagnose low CV F1=0.205 — route to reselect_features or recluster (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: diagnose low CV F1=0.205 — route to reselect_features or recluster (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=2092 out=186 4.88s)
+  [Orchestrator → Classifier] LLM response received (744 chars)
+  LLM decision: recluster  |  The pipeline shows a recurring pattern: SVM consistently fails (F1=0.20-0.33) while Random Forest passes (F1=0.61) on the same clusters, indicating the clusters have non-linear, complex boundaries that SVM cannot capture — not a feature quality issue, since emb_0–emb_4 carry clear signal. The worst personas (F1=0.00) suggest some clusters are nearly indistinguishable or severely overlapping, likely because 7 clusters is still too many or the current algorithm is creating fragmented, poorly-separated groupings. Switching to a structure-aware algorithm like Hierarchical/Ward or GMM with a reduced cluster count should produce more cohesive, linearly-separable personas that even SVM can distinguish.
+  [Bus] ⚠ Classifier (iter 5): WARNING — Trained svm, 3-fold CV. CV macro-F1=0.205 < 0.6. LLM routed: recluster.
+         Issue: CV macro-F1=0.205 below threshold 0.6. Clusters may not be well-separated.
+         Doubt: Hardest personas: Dramatic Sports Finales(0.00), From-Scratch Bakers & Slow Cooks(0.00), Light & Bright Mixed Moments(0.00)
+
+[Orchestrator] Classifier → re-cluster: The pipeline shows a recurring pattern: SVM consistently fails (F1=0.20-0.33) while Random Forest passes (F1=0.61) on the same clusters, indicating the clusters have non-linear, complex boundaries that SVM cannot capture — not a feature quality issue, since emb_0–emb_4 carry clear signal. The worst personas (F1=0.00) suggest some clusters are nearly indistinguishable or severely overlapping, likely because 7 clusters is still too many or the current algorithm is creating fragmented, poorly-separated groupings. Switching to a structure-aware algorithm like Hierarchical/Ward or GMM with a reduced cluster count should produce more cohesive, linearly-separable personas that even SVM can distinguish.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 6...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Classifier (evidence)
+  [Orchestrator] → Orchestrator: LLM answered (in=3887 out=203 4.49s)
+  [Orchestrator → Orchestrator] LLM response received (558 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: The prior successful run on this exact dataset used NMF with k=5 and achieved silhouette=0.125 and F1=0.929 — strongly reusing that winning recipe. Geometric methods (tfidf_svd + auto/kmeans) have stalled with inconsistent F1 (0.205–0.610) across iterations, so switching to NMF which is deterministic and well-suited for short-text topic extraction on this corpus.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 6 / 10
+─────────────────────────────────────────────────────────────────
+
+[Clusterer] Iteration 6
+  Feedback: Classifier CV F1=0.205 too low: The pipeline shows a recurring pattern: SVM consistently fails (F1=0.20-0.33) while Random Forest passes (F1=0.61) on the same clusters, indicating the clusters have non-linear, complex boundaries that SVM cannot capture — not a feature quality issue, since emb_0–emb_4 carry clear signal. The worst personas (F1=0.00) suggest some clusters are nearly indistinguishable or severely overlapping, likely because 7 clusters is still too many or the current algorithm is creating fragmented, poorly-separated groupings. Switching to a structure-aware algorithm like Hierarchical/Ward or GMM with a reduced cluster count should produce more cohesive, linearly-separable personas that even SVM can distinguish.
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+  [Orchestrator → EvidenceExplainer] LLM response received (660 chars)
+127.0.0.1 - - [06/Jun/2026 21:54:46] "POST /api/explain HTTP/1.1" 200 -
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ✓ Clusterer (iter 6): SUCCESS — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 6, 36 points)
+
+[PersonaNamer] Iteration 6  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (635 chars)
+127.0.0.1 - - [06/Jun/2026 21:54:51] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1659 31.32s)
+  [Orchestrator → PersonaNamer] LLM response received (6229 chars)
+  Cluster 0  [depth 0]: "Tech & Innovation News"  conf=8/10
+  Cluster 1  [depth 0]: "Competitive Sports Drama"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked Comfort Food"  conf=9/10
+  Cluster 3  [depth 0]: "Speed & Performance Tech"  conf=8/10
+  Cluster 4  [depth 0]: "Light & Bright Mixed Bag"  conf=5/10
+  Cluster 5  [depth 0]: "Overnight Baking & Slow Rises"  conf=7/10
+  Cluster 6  [depth 0]: "Quick Everyday Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.9, unique=True)
+  [Bus] ✓ PersonaNamer (iter 6): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 6
+  Feedback: The pipeline shows a recurring pattern: SVM consistently fails (F1=0.20-0.33) while Random Forest passes (F1=0.61) on the same clusters, indicating the clusters have non-linear, complex boundaries that SVM cannot capture — not a feature quality issue, since emb_0–emb_4 carry clear signal. The worst personas (F1=0.00) suggest some clusters are nearly indistinguishable or severely overlapping, likely because 7 clusters is still too many or the current algorithm is creating fragmented, poorly-separated groupings. Switching to a structure-aware algorithm like Hierarchical/Ward or GMM with a reduced cluster count should produce more cohesive, linearly-separable personas that even SVM can distinguish.
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Innovation News                           9 (25.0%)
+    Slow-Cooked Comfort Food                         6 (16.7%)
+    Competitive Sports Drama                         6 (16.7%)
+    Quick Everyday Cooking                           5 (13.9%)
+    Speed & Performance Tech                         4 (11.1%)
+    Light & Bright Mixed Bag                         3 (8.3%)
+    Overnight Baking & Slow Rises                    3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1351 out=108 3.31s)
+  [Orchestrator → Classifier] LLM response received (435 chars)
+  [Classifier] LLM selected model: random_forest  (The feedback explicitly shows Random Forest achieves F1=0.61 on these same clusters while SVM fails, confirming the cluster boundaries are non-linear and tree-based ensembles are well-suited here. With only 36 samples and 7 classes, Random Forest is the safest and most effective choice given its robustness to high-dimensional, non-linearly-separable data without requiring extensive tuning.)
+  Using classifier: random_forest
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.7222
+  CV F1 (macro)  : 0.6105  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.6785
+  Per-class F1:
+    Light & Bright Mixed Bag                      0.000  
+    Overnight Baking & Slow Rises                 0.500  ██████████
+    Slow-Cooked Comfort Food                      0.615  ████████████
+    Quick Everyday Cooking                        0.667  █████████████
+    Speed & Performance Tech                      0.750  ███████████████
+    Tech & Innovation News                        0.818  ████████████████
+    Competitive Sports Drama                      0.923  ██████████████████
+  Top 10 features: ['emb_2', 'emb_1', 'emb_4', 'emb_5', 'emb_3', 'emb_6', 'emb_0', 'emb_8', 'emb_31', 'emb_15']
+  Performance OK — proceeding.
+  [Bus] ✓ Classifier (iter 6): SUCCESS — Trained random_forest, 3-fold stratified CV. CV macro-F1=0.610 ≥ 0.6 threshold.
+         Doubt: Lowest-F1 personas: Light & Bright Mixed Bag(0.00), Overnight Baking & Slow Rises(0.50), Slow-Cooked Comfort Food(0.62)
+
+=================================================================
+HUMAN CHECKPOINT — Persona & Classifier Review
+=================================================================
+Silhouette score   : 0.1756
+Leaf clusters      : 7
+Algorithm used     : NMF
+Top-3 k values     : k=7(0.157), k=6(0.120), k=5(0.116)
+CV accuracy        : 0.7222
+CV F1 (macro)      : 0.6105
+CV F1 (weighted)   : 0.6785
+
+Cluster    Conf   CV-F1  Persona Name                                   Tagline
+-------------------------------------------------------------------------------------------------------------------
+  C0           8   0.818  Tech & Innovation News                         Fresh breakthroughs and brand-new gadgets making headlines
+  C1           9   0.923  Competitive Sports Drama                       Last-minute wins, final showdowns, and beating the rivals
+  C2           9   0.615  Slow-Cooked Comfort Food                       Low and slow — meals that take hours and taste like home
+  C3           8   0.750  Speed & Performance Tech                       Faster chips, quicker software, and better specs
+  C4           5   0.000  Light & Bright Mixed Bag                       The word 'light' ties together laptops, salads, and cricket
+  C5           7   0.500  Overnight Baking & Slow Rises                  Doughs, batters, and one sneaky software update that happened overnight
+  C6           9   0.667  Quick Everyday Cooking                         Fast, fresh meals you can throw together on a busy weeknight
+
+Hardest-to-predict personas (CV F1):
+  Light & Bright Mixed Bag                       0.000  
+  Overnight Baking & Slow Rises                  0.500  ██████████
+  Slow-Cooked Comfort Food                       0.615  ████████████
+
+Pipeline Agent Log (recent):
+[Iter 4] Clusterer → WARNING | done: Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf clusters. Silhouette=0.1756 (weak but usable).
+   Issues: Silhouette=0.176 < target 0.18 — orchestrator will reselect features (or escalate after 3 consecutive misses).
+   Doubts: Silhouette improved 0.083→0.176 across k range — marginal gain.
+   Metrics: {'algorithm': 'NMF', 'k_selected': 7, 'n_leaf_clusters': 7, 'silhouette': 0.1756, 'silhouette_target': 0.18, 'k_scores': {'4': 0.1072, '5': 0.1163, '6': 0.1198, '7': 0.157, '8': 0.0832}, 'singleton_merges': 0, 'min_cluster_size': 2, 'candidate_search': {}}
+   Recommendation: retry
+[Iter 4] PersonaNamer → SUCCESS | done: Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.7/10.
+   Metrics: {'n_clusters': 7, 'avg_confidence': 7.71, 'gate_passed': True, 'names_unique': True, 'must_have_clusters': []}
+   Recommendation: proceed
+[Iter 4] Classifier → SUCCESS | done: Trained random_forest, 3-fold stratified CV. CV macro-F1=0.610 ≥ 0.6 threshold.
+   Doubts: Lowest-F1 personas: Light & Bright — Three Different Meanings(0.00), Overnight & Slow-Rise Baking(0.50), Slow-Cooked & Hearty Recipes(0.62)
+   Metrics: {'cv_f1_macro': 0.6105, 'cv_accuracy': 0.7222, 'n_classes': 7, 'model_name': 'random_forest'}
+   Recommendation: proceed
+[Iter 4] Orchestrator → WARNING | done: Silhouette target relaxed 0.18 → 0.08 (bypass mode) after 3 consecutive iterations failed to clear the bar.
+   Issues: ⚠ silhouette_target degraded 0.18→0.08 (step #4, bypass)
+   Doubts: Lower target accepts weaker cluster separation — interpretability of the resulting personas may drop.
+   Metrics: {'silhouette_target_previous': 0.18, 'silhouette_target_new': 0.08, 'mode': 'bypass'}
+   Recommendation: proceed
+[Iter 5] Clusterer → SUCCESS | done: Used KMeans with k=7 (AutoML-selected from 8 candidates, composite=22.8105). Ran deepening loop → 7 leaf clusters. Silhouette=0.1570 (weak but usable).
+   Issues: AutoML evaluated 8 candidate(s). Best: kmeans k=7 with composite=22.811 (sil=0.157, DB=2.07, CH=2.5, ARI=0.441). Silhouette=0.157 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+   Doubts: AutoML top-3: kmeans(k=7, comp=22.811, sil=0.157) | hierarchical(k=8, comp=21.845, sil=0.181) | hierarchical(k=7, comp=21.074, sil=0.185).
+   Metrics: {'algorithm': 'KMeans', 'k_selected': 7, 'n_leaf_clusters': 7, 'silhouette': 0.157, 'silhouette_target': 0.08, 'k_scores': {'7': 0.157, '6': 0.1198, '8': 0.0832, '5': 0.1163}, 'singleton_merges': 0, 'min_cluster_size': 2, 'candidate_search': {'best': {'algorithm': 'kmeans', 'k': 7, 'silhouette': 0.157, 'davies_bouldin': 2.0683, 'calinski_harabasz': 2.52, 'stability_ari': 0.4405, 'max_cluster_pct': 0.3056, 'n_clusters_found': 7, 'composite_score': 22.8105, 'evidence': {'oversize_penalty': 0.0, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, 'candidates': [{'algorithm': 'kmeans', 'k': 7, 'silhouette': 0.157, 'davies_bouldin': 2.0683, 'calinski_harabasz': 2.52, 'stability_ari': 0.4405, 'max_cluster_pct': 0.3056, 'n_clusters_found': 7, 'composite_score': 22.8105, 'evidence': {'oversize_penalty': 0.0, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'hierarchical', 'k': 8, 'silhouette': 0.1815, 'davies_bouldin': 1.7127, 'calinski_harabasz': 2.58, 'stability_ari': 0.3199, 'max_cluster_pct': 0.4167, 'n_clusters_found': 8, 'composite_score': 21.8448, 'evidence': {'oversize_penalty': 0.8333, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'hierarchical', 'k': 7, 'silhouette': 0.1852, 'davies_bouldin': 1.8411, 'calinski_harabasz': 2.55, 'stability_ari': 0.308, 'max_cluster_pct': 0.4167, 'n_clusters_found': 7, 'composite_score': 21.0736, 'evidence': {'oversize_penalty': 0.8333, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'hierarchical', 'k': 6, 'silhouette': 0.1601, 'davies_bouldin': 2.025, 'calinski_harabasz': 2.54, 'stability_ari': 0.2556, 'max_cluster_pct': 0.4167, 'n_clusters_found': 6, 'composite_score': 17.7115, 'evidence': {'oversize_penalty': 0.8333, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'kmeans', 'k': 6, 'silhouette': 0.1198, 'davies_bouldin': 2.3783, 'calinski_harabasz': 2.28, 'stability_ari': 0.3565, 'max_cluster_pct': 0.25, 'n_clusters_found': 6, 'composite_score': 17.4814, 'evidence': {'oversize_penalty': 0.0, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'kmeans', 'k': 8, 'silhouette': 0.0832, 'davies_bouldin': 2.1405, 'calinski_harabasz': 2.09, 'stability_ari': 0.3053, 'max_cluster_pct': 0.2222, 'n_clusters_found': 8, 'composite_score': 15.7377, 'evidence': {'oversize_penalty': 0.0, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'hierarchical', 'k': 5, 'silhouette': 0.1381, 'davies_bouldin': 2.187, 'calinski_harabasz': 2.57, 'stability_ari': 0.2263, 'max_cluster_pct': 0.4722, 'n_clusters_found': 5, 'composite_score': 12.4029, 'evidence': {'oversize_penalty': 3.6111, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}, {'algorithm': 'kmeans', 'k': 5, 'silhouette': 0.1163, 'davies_bouldin': 2.66, 'calinski_harabasz': 2.44, 'stability_ari': 0.182, 'max_cluster_pct': 0.3056, 'n_clusters_found': 5, 'composite_score': 11.5565, 'evidence': {'oversize_penalty': 0.0, 'metric': 'cosine', 'stability_repeats': 3, 'stability_sample_frac': 0.8}}], 'reasoning': 'Selected kmeans k=7 by candidate tournament: silhouette=0.1570, stability_ari=0.4405, max_cluster_pct=0.31, score=22.81.'}}
+   Recommendation: retry
+[Iter 5] PersonaNamer → SUCCESS | done: Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.7/10.
+   Metrics: {'n_clusters': 7, 'avg_confidence': 7.71, 'gate_passed': True, 'names_unique': True, 'must_have_clusters': []}
+   Recommendation: proceed
+[Iter 5] Classifier → WARNING | done: Trained svm, 3-fold CV. CV macro-F1=0.205 < 0.6. LLM routed: recluster.
+   Issues: CV macro-F1=0.205 below threshold 0.6. Clusters may not be well-separated.
+   Doubts: Hardest personas: Dramatic Sports Finales(0.00), From-Scratch Bakers & Slow Cooks(0.00), Light & Bright Mixed Moments(0.00)
+   Metrics: {'cv_f1_macro': 0.2047, 'cv_accuracy': 0.4444, 'n_classes': 7, 'model_name': 'svm', 'llm_action': 'recluster'}
+   Recommendation: retry
+[Iter 6] Clusterer → SUCCESS | done: Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf clusters. Silhouette=0.1756 (weak but usable).
+   Issues: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+   Doubts: Silhouette improved 0.083→0.176 across k range — marginal gain.
+   Metrics: {'algorithm': 'NMF', 'k_selected': 7, 'n_leaf_clusters': 7, 'silhouette': 0.1756, 'silhouette_target': 0.08, 'k_scores': {'4': 0.1072, '5': 0.1163, '6': 0.1198, '7': 0.157, '8': 0.0832}, 'singleton_merges': 0, 'min_cluster_size': 2, 'candidate_search': {}}
+   Recommendation: retry
+[Iter 6] PersonaNamer → SUCCESS | done: Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.9/10.
+   Metrics: {'n_clusters': 7, 'avg_confidence': 7.86, 'gate_passed': True, 'names_unique': True, 'must_have_clusters': []}
+   Recommendation: proceed
+[Iter 6] Classifier → SUCCESS | done: Trained random_forest, 3-fold stratified CV. CV macro-F1=0.610 ≥ 0.6 threshold.
+   Doubts: Lowest-F1 personas: Light & Bright Mixed Bag(0.00), Overnight Baking & Slow Rises(0.50), Slow-Cooked Comfort Food(0.62)
+   Metrics: {'cv_f1_macro': 0.6105, 'cv_accuracy': 0.7222, 'n_classes': 7, 'model_name': 'random_forest'}
+   Recommendation: proceed
+
+[Auto-approve] Passing iteration #1 — continuing to collect more candidates before picking the winner (3 target).
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 7...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [Orchestrator] → Orchestrator: LLM answered (in=3812 out=179 4.39s)
+  [Orchestrator → Orchestrator] LLM response received (518 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: Iteration 6 repeated Iteration 4's result (sil=0.1756, F1=0.610, action=proceed) which is above the min_silhouette threshold and within acceptable text-mode F1 range — this looks like a valid converging result. Keeping all parameters unchanged to allow the orchestrator to accept this best-effort outcome rather than continuing to cycle.
+
+[Orchestrator] Human → re-cluster: 'Exploration round 1/3: keep iterating to find a higher-F1 cluster set. Try a different algorithm or k.'
+
+─────────────────────────────────────────────────────────────────
+ITERATION 7 / 10
+─────────────────────────────────────────────────────────────────
+
+[Clusterer] Iteration 7
+  Feedback: Exploration round 1/3: keep iterating to find a higher-F1 cluster set. Try a different algorithm or k.
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ✓ Clusterer (iter 7): SUCCESS — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 7, 36 points)
+
+[PersonaNamer] Iteration 7  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1601 30.88s)
+  [Orchestrator → PersonaNamer] LLM response received (5917 chars)
+  Cluster 0  [depth 0]: "Tech & Innovation Headlines"  conf=8/10
+  Cluster 1  [depth 0]: "Sports Competition & Championship Drama"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked & Braised Recipes"  conf=9/10
+  Cluster 3  [depth 0]: "Faster Chips & Software Upgrades"  conf=8/10
+  Cluster 4  [depth 0]: "Light Bites, Cricket & Thin Laptops"  conf=5/10
+  Cluster 5  [depth 0]: "Baking, Fermentation & Overnight Processes"  conf=7/10
+  Cluster 6  [depth 0]: "Quick & Easy Weeknight Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.9, unique=True)
+  [Bus] ✓ PersonaNamer (iter 7): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 7
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Innovation Headlines                      9 (25.0%)
+    Slow-Cooked & Braised Recipes                    6 (16.7%)
+    Sports Competition & Championship Drama          6 (16.7%)
+    Quick & Easy Weeknight Cooking                   5 (13.9%)
+    Faster Chips & Software Upgrades                 4 (11.1%)
+    Light Bites, Cricket & Thin Laptops              3 (8.3%)
+    Baking, Fermentation & Overnight Processes       3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1178 out=91 2.74s)
+  [Orchestrator → Classifier] LLM response received (327 chars)
+  [Classifier] LLM selected model: svm  (With n_features (35) > n_samples (36), SVM is well-suited as it handles high-dimensional spaces effectively and can find clear margins between the 7 classes. The previous random_forest achieved only 0.610 F1, so trying SVM as recommended for n_features > n_samples cases is a logical next step.)
+  Using classifier: svm
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.5000
+  CV F1 (macro)  : 0.3279  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.4211
+  Per-class F1:
+    Baking, Fermentation & Overnight Processes    0.000  
+    Faster Chips & Software Upgrades              0.000  
+    Light Bites, Cricket & Thin Laptops           0.000  
+    Quick & Easy Weeknight Cooking                0.250  █████
+    Tech & Innovation Headlines                   0.545  ██████████
+    Slow-Cooked & Braised Recipes                 0.667  █████████████
+    Sports Competition & Championship Drama       0.833  ████████████████
+  Top 10 features: ['emb_0', 'emb_1', 'emb_2', 'emb_3', 'emb_4', 'emb_5', 'emb_6', 'emb_7', 'emb_8', 'emb_9']
+  Performance below threshold (0.3279 < 0.6). Consulting LLM...
+  [Classifier → Orchestrator] Requesting LLM: diagnose low CV F1=0.328 — route to reselect_features or recluster (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: diagnose low CV F1=0.328 — route to reselect_features or recluster (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=2192 out=183 6.31s)
+  [Orchestrator → Classifier] LLM response received (814 chars)
+  LLM decision: reselect_features  |  The pipeline shows a persistent pattern across 6 iterations: Random Forest consistently passes (F1=0.61) while SVM consistently fails (F1=0.20-0.33) on the same clusters. This divergence strongly indicates the cluster boundaries are non-linear and complex — SVM with a linear or standard RBF kernel cannot separate them, while Random Forest can exploit complex decision boundaries. Rather than reclustering again (which has already been tried 3 times without resolving the SVM gap), reselecting features to engineer more linearly-separable dimensions — such as time-window ratios, category interaction features, or PCA-reduced embeddings — could produce cluster boundaries that even a linear classifier like SVM can distinguish, validating true persona separability.
+  [Bus] ⚠ Classifier (iter 7): WARNING — Trained svm, 3-fold CV. CV macro-F1=0.328 < 0.6. LLM routed: reselect_features.
+         Issue: CV macro-F1=0.328 below threshold 0.6. Clusters may not be well-separated.
+         Doubt: Hardest personas: Baking, Fermentation & Overnight Processes(0.00), Faster Chips & Software Upgrades(0.00), Light Bites, Cricket & Thin Laptops(0.00)
+
+[Orchestrator] Classifier → reselect features: The pipeline shows a persistent pattern across 6 iterations: Random Forest consistently passes (F1=0.61) while SVM consistently fails (F1=0.20-0.33) on the same clusters. This divergence strongly indicates the cluster boundaries are non-linear and complex — SVM with a linear or standard RBF kernel cannot separate them, while Random Forest can exploit complex decision boundaries. Rather than reclustering again (which has already been tried 3 times without resolving the SVM gap), reselecting features to engineer more linearly-separable dimensions — such as time-window ratios, category interaction features, or PCA-reduced embeddings — could produce cluster boundaries that even a linear classifier like SVM can distinguish, validating true persona separability.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 8...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Classifier (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (648 chars)
+127.0.0.1 - - [06/Jun/2026 21:56:11] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → Orchestrator: LLM answered (in=3815 out=191 4.7s)
+  [Orchestrator → Orchestrator] LLM response received (544 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=llm_cluster, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: NMF has been tried across multiple iterations with F1 swinging between 0.205 and 0.610 and silhouette plateauing around 0.175 — geometric and topic-model approaches have both been exhausted on this small 36-doc corpus. Escalating to llm_cluster as last resort to get semantically coherent assignments that tfidf_svd-based methods are failing to stabilise.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 8 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 8  (text modality — skipping PCA/AE/VIF, keeping all 35 dims)
+  [Orchestrator] Pre-modelling preview saved (stage=feature_selection, iter 8, 36×35)
+
+[Clusterer] Iteration 8
+  Config overrides: {'clustering_algorithm': 'llm_cluster', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: llm_cluster (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [Clusterer → Orchestrator] Requesting LLM: LLM-as-clusterer (geometric methods failed; semantic grouping fallback) (pipeline)
+
+  [Orchestrator] ← Clusterer requests LLM help: LLM-as-clusterer (geometric methods failed; semantic grouping fallback) (pipeline)
+  [Orchestrator] → Clusterer: LLM answered (in=1867 out=941 15.91s)
+  [Orchestrator → Clusterer] LLM response received (2010 chars)
+  Initial clustering: 7 clusters  |  silhouette=-0.0143
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=-0.0143
+  [decision/clusterer_sil_floor_iter8] BYPASS — applied recommended option 'reselect': Reselect features (recommended)
+  [Bus] ✗ Clusterer (iter 8): BLOCKED — Used LLMCluster, k=7; silhouette=-0.0143 (near-random — no useful structure).
+         Issue: Silhouette=-0.014 < 0.02 — near-random cluster structure.
+
+[Orchestrator] Clustering → reselect features: Silhouette < 0.02 — near-random structure. See docs/agents/clusterer.md.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 9...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [Orchestrator] → Orchestrator: LLM answered (in=3818 out=192 4.14s)
+  [Orchestrator → Orchestrator] LLM response received (515 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: llm_cluster has been used but F1 is inconsistent (0.610 then 0.328), and the prior successful run converged with NMF at k=5 on this exact dataset. Switching back to NMF (deterministic, sharper topics on short corpora) with tfidf_svd aligns with the proven winning recipe and avoids the cost and instability of llm_cluster.
+
+─────────────────────────────────────────────────────────────────
+ITERATION 9 / 10
+─────────────────────────────────────────────────────────────────
+
+[FeatureSelector] Iteration 9  (text modality — skipping PCA/AE/VIF, keeping all 35 dims)
+  [Orchestrator] Pre-modelling preview saved (stage=feature_selection, iter 9, 36×35)
+
+[Clusterer] Iteration 9
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ✓ Clusterer (iter 9): SUCCESS — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 9, 36 points)
+
+[PersonaNamer] Iteration 9  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [EvidenceExplainer → Orchestrator] Requesting LLM: explain warning from Clusterer (evidence)
+  [Orchestrator → EvidenceExplainer] LLM response received (660 chars)
+127.0.0.1 - - [06/Jun/2026 21:56:33] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator → EvidenceExplainer] LLM response received (633 chars)
+127.0.0.1 - - [06/Jun/2026 21:56:36] "POST /api/explain HTTP/1.1" 200 -
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1756 34.07s)
+  [Orchestrator → PersonaNamer] LLM response received (6514 chars)
+  Cluster 0  [depth 0]: "Tech & Innovation Headlines"  conf=8/10
+  Cluster 1  [depth 0]: "Sports Championship Moments"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked Comfort Food"  conf=9/10
+  Cluster 3  [depth 0]: "Faster, Smarter Tech Upgrades"  conf=8/10
+  Cluster 4  [depth 0]: "Light & Bright Mixed Bag"  conf=4/10
+  Cluster 5  [depth 0]: "Overnight & Baked Recipes (Plus One Odd Update)"  conf=6/10
+  Cluster 6  [depth 0]: "Quick Weeknight Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.6, unique=True)
+  [Bus] ✓ PersonaNamer (iter 9): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 9
+  Feedback: The pipeline shows a persistent pattern across 6 iterations: Random Forest consistently passes (F1=0.61) while SVM consistently fails (F1=0.20-0.33) on the same clusters. This divergence strongly indicates the cluster boundaries are non-linear and complex — SVM with a linear or standard RBF kernel cannot separate them, while Random Forest can exploit complex decision boundaries. Rather than reclustering again (which has already been tried 3 times without resolving the SVM gap), reselecting features to engineer more linearly-separable dimensions — such as time-window ratios, category interaction features, or PCA-reduced embeddings — could produce cluster boundaries that even a linear classifier like SVM can distinguish, validating true persona separability.
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Innovation Headlines                      9 (25.0%)
+    Slow-Cooked Comfort Food                         6 (16.7%)
+    Sports Championship Moments                      6 (16.7%)
+    Quick Weeknight Cooking                          5 (13.9%)
+    Faster, Smarter Tech Upgrades                    4 (11.1%)
+    Light & Bright Mixed Bag                         3 (8.3%)
+    Overnight & Baked Recipes (Plus One Odd Update)    3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1346 out=128 3.67s)
+  [Orchestrator → Classifier] LLM response received (484 chars)
+  [Classifier] LLM selected model: gradient_boosting  (Given the persistent evidence that cluster boundaries are non-linear and complex (Random Forest F1=0.61 vs SVM F1=0.20-0.33), a tree-based ensemble is clearly needed; gradient_boosting is chosen over random_forest as it often achieves higher accuracy on mid-size tabular datasets (n_samples=36 < 50k) by sequentially correcting errors, potentially pushing validation F1 above the 0.61 baseline and better confirming cluster separability.)
+  Using classifier: gradient_boosting
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.8333
+  CV F1 (macro)  : 0.7962  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.8224
+  Per-class F1:
+    Light & Bright Mixed Bag                      0.500  ██████████
+    Quick Weeknight Cooking                       0.727  ██████████████
+    Overnight & Baked Recipes (Plus One Odd Update) 0.800  ████████████████
+    Slow-Cooked Comfort Food                      0.800  ████████████████
+    Tech & Innovation Headlines                   0.857  █████████████████
+    Faster, Smarter Tech Upgrades                 0.889  █████████████████
+    Sports Championship Moments                   1.000  ████████████████████
+  Top 10 features: ['emb_1', 'emb_2', 'emb_3', 'emb_5', 'emb_6', 'emb_10', 'emb_15', 'emb_4', 'emb_25', 'emb_8']
+  Performance OK — proceeding.
+  [Bus] ✓ Classifier (iter 9): SUCCESS — Trained gradient_boosting, 3-fold stratified CV. CV macro-F1=0.796 ≥ 0.6 thresho
+         Doubt: Lowest-F1 personas: Light & Bright Mixed Bag(0.50), Quick Weeknight Cooking(0.73), Overnight & Baked Recipes (Plus One Odd Update)(0.80)
+  [Orchestrator] iter 9 is new BEST (F1=0.796, Sil=0.176, maxVIF=1.00, score=84.89)
+
+=================================================================
+HUMAN CHECKPOINT — Persona & Classifier Review
+=================================================================
+Silhouette score   : 0.1756
+Leaf clusters      : 7
+Algorithm used     : NMF
+Top-3 k values     : k=7(0.157), k=6(0.120), k=5(0.116)
+CV accuracy        : 0.8333
+CV F1 (macro)      : 0.7962
+CV F1 (weighted)   : 0.8224
+
+Cluster    Conf   CV-F1  Persona Name                                   Tagline
+-------------------------------------------------------------------------------------------------------------------
+  C0           8   0.857  Tech & Innovation Headlines                    Fresh launches, smart devices, and breakthrough research
+  C1           9   1.000  Sports Championship Moments                    Winning the final, beating the rivals, claiming glory
+  C2           9   0.800  Slow-Cooked Comfort Food                       Low heat, long hours, meltingly tender results
+  C3           8   0.889  Faster, Smarter Tech Upgrades                  Chips, software, and processors pushing performance higher
+  C4           4   0.500  Light & Bright Mixed Bag                       Thin laptops, fresh salads, and a cricket draw in fading light
+  C5           6   0.800  Overnight & Baked Recipes (Plus One Odd Update)  Ferment it, bake it, let time do the work
+  C6           9   0.727  Quick Weeknight Cooking                        Fast, simple meals ready in minutes
+
+Hardest-to-predict personas (CV F1):
+  Light & Bright Mixed Bag                       0.500  ██████████
+  Quick Weeknight Cooking                        0.727  ██████████████
+  Overnight & Baked Recipes (Plus One Odd Update)  0.800  ████████████████
+
+Pipeline Agent Log (recent):
+[Iter 6] Clusterer → SUCCESS | done: Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf clusters. Silhouette=0.1756 (weak but usable).
+   Issues: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+   Doubts: Silhouette improved 0.083→0.176 across k range — marginal gain.
+   Metrics: {'algorithm': 'NMF', 'k_selected': 7, 'n_leaf_clusters': 7, 'silhouette': 0.1756, 'silhouette_target': 0.08, 'k_scores': {'4': 0.1072, '5': 0.1163, '6': 0.1198, '7': 0.157, '8': 0.0832}, 'singleton_merges': 0, 'min_cluster_size': 2, 'candidate_search': {}}
+   Recommendation: retry
+[Iter 6] PersonaNamer → SUCCESS | done: Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.9/10.
+   Metrics: {'n_clusters': 7, 'avg_confidence': 7.86, 'gate_passed': True, 'names_unique': True, 'must_have_clusters': []}
+   Recommendation: proceed
+[Iter 6] Classifier → SUCCESS | done: Trained random_forest, 3-fold stratified CV. CV macro-F1=0.610 ≥ 0.6 threshold.
+   Doubts: Lowest-F1 personas: Light & Bright Mixed Bag(0.00), Overnight Baking & Slow Rises(0.50), Slow-Cooked Comfort Food(0.62)
+   Metrics: {'cv_f1_macro': 0.6105, 'cv_accuracy': 0.7222, 'n_classes': 7, 'model_name': 'random_forest'}
+   Recommendation: proceed
+[Iter 7] Clusterer → SUCCESS | done: Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf clusters. Silhouette=0.1756 (weak but usable).
+   Issues: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+   Doubts: Silhouette improved 0.083→0.176 across k range — marginal gain.
+   Metrics: {'algorithm': 'NMF', 'k_selected': 7, 'n_leaf_clusters': 7, 'silhouette': 0.1756, 'silhouette_target': 0.08, 'k_scores': {'4': 0.1072, '5': 0.1163, '6': 0.1198, '7': 0.157, '8': 0.0832}, 'singleton_merges': 0, 'min_cluster_size': 2, 'candidate_search': {}}
+   Recommendation: retry
+[Iter 7] PersonaNamer → SUCCESS | done: Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.9/10.
+   Metrics: {'n_clusters': 7, 'avg_confidence': 7.86, 'gate_passed': True, 'names_unique': True, 'must_have_clusters': []}
+   Recommendation: proceed
+[Iter 7] Classifier → WARNING | done: Trained svm, 3-fold CV. CV macro-F1=0.328 < 0.6. LLM routed: reselect_features.
+   Issues: CV macro-F1=0.328 below threshold 0.6. Clusters may not be well-separated.
+   Doubts: Hardest personas: Baking, Fermentation & Overnight Processes(0.00), Faster Chips & Software Upgrades(0.00), Light Bites, Cricket & Thin Laptops(0.00)
+   Metrics: {'cv_f1_macro': 0.3279, 'cv_accuracy': 0.5, 'n_classes': 7, 'model_name': 'svm', 'llm_action': 'reselect_features'}
+   Recommendation: retry
+[Iter 8] Clusterer → BLOCKED | done: Used LLMCluster, k=7; silhouette=-0.0143 (near-random — no useful structure).
+   Issues: Silhouette=-0.014 < 0.02 — near-random cluster structure.
+   Metrics: {'algorithm': 'LLMCluster', 'k_selected': 7, 'silhouette': -0.0143, 'k_scores': {'4': 0.1072, '5': 0.1163, '6': 0.1198, '7': 0.157, '8': 0.0832}, 'candidate_search': None}
+   Recommendation: retry
+[Iter 9] Clusterer → SUCCESS | done: Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf clusters. Silhouette=0.1756 (weak but usable).
+   Issues: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+   Doubts: Silhouette improved 0.083→0.176 across k range — marginal gain.
+   Metrics: {'algorithm': 'NMF', 'k_selected': 7, 'n_leaf_clusters': 7, 'silhouette': 0.1756, 'silhouette_target': 0.08, 'k_scores': {'4': 0.1072, '5': 0.1163, '6': 0.1198, '7': 0.157, '8': 0.0832}, 'singleton_merges': 0, 'min_cluster_size': 2, 'candidate_search': {}}
+   Recommendation: retry
+[Iter 9] PersonaNamer → SUCCESS | done: Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.6/10.
+   Metrics: {'n_clusters': 7, 'avg_confidence': 7.57, 'gate_passed': True, 'names_unique': True, 'must_have_clusters': []}
+   Recommendation: proceed
+[Iter 9] Classifier → SUCCESS | done: Trained gradient_boosting, 3-fold stratified CV. CV macro-F1=0.796 ≥ 0.6 threshold.
+   Doubts: Lowest-F1 personas: Light & Bright Mixed Bag(0.50), Quick Weeknight Cooking(0.73), Overnight & Baked Recipes (Plus One Odd Update)(0.80)
+   Metrics: {'cv_f1_macro': 0.7962, 'cv_accuracy': 0.8333, 'n_classes': 7, 'model_name': 'gradient_boosting'}
+   Recommendation: proceed
+
+[Auto-approve] Passing iteration #2 — continuing to collect more candidates before picking the winner (3 target).
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 10...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [Orchestrator] → Orchestrator: LLM answered (in=3832 out=201 5.62s)
+  [Orchestrator → Orchestrator] LLM response received (541 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=nmf, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: Iteration 9 achieved F1=0.796 and silhouette=0.1756 with NMF, both well within acceptable text-mode ranges (sil 0.10–0.30, F1 0.55–0.70+), and the best silhouette across the run is 0.2426. The pipeline appears to have converged — no parameter changes are needed; the Orchestrator should surface these results for human review rather than continuing to iterate.
+
+[Orchestrator] Human → re-cluster: 'Exploration round 2/3: keep iterating to find a higher-F1 cluster set. Try a different algorithm or k.'
+
+─────────────────────────────────────────────────────────────────
+ITERATION 10 / 10
+─────────────────────────────────────────────────────────────────
+
+[Clusterer] Iteration 10
+  Feedback: Exploration round 2/3: keep iterating to find a higher-F1 cluster set. Try a different algorithm or k.
+  Config overrides: {'clustering_algorithm': 'nmf', 'k_search_range': [4, 5, 6, 7, 8]}
+  Text mode: skipped log/StandardScaler; L2-normalised 36×35 embedding matrix. Silhouette metric=cosine.
+  Algorithm: nmf (from config)
+  [SilhouetteOptimizer] Trying k ∈ [4, 5, 6, 7, 8] with algorithm=kmeans
+    k=  4  sil=0.1072  DB=2.9114  CH=2.6
+    k=  5  sil=0.1163  DB=2.6600  CH=2.4
+    k=  6  sil=0.1198  DB=2.3783  CH=2.3
+    k=  7  sil=0.1570  DB=2.0683  CH=2.5
+    k=  8  sil=0.0832  DB=2.1405  CH=2.1
+  [SilhouetteOptimizer] WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  [SilhouetteOptimizer] Best k=7  composite=0.953  sil=0.1570  DB=2.0683  CH=2.5
+  k auto-selected: 7  composite=0.953  silhouette=0.1570  DB=2.0683  CH=2.5
+  WARNING: Best silhouette (0.157) is below the quality threshold (0.2). Clusters may not be well-separated. Consider different features or a different algorithm.
+  Initial clustering: 7 clusters  |  silhouette=0.1756
+  Round 1: no oversized cluster. Deepening done.
+  Text mode: min_cluster_size=2 (default 2; smaller threshold preserves topic-level groups in short corpora).
+  Final: 7 leaf clusters  |  silhouette=0.1756
+  [Bus] ✓ Clusterer (iter 10): SUCCESS — Used NMF with k=7 (auto-selected via silhouette). Ran deepening loop → 7 leaf cl
+         Issue: Silhouette=0.176 < 0.25 — meets dynamic target 0.08 but clusters may still overlap; consider different k or algorithm.
+         Doubt: Silhouette improved 0.083→0.176 across k range — marginal gain.
+  [Orchestrator] PCA snapshot saved (iter 10, 36 points)
+
+[PersonaNamer] Iteration 10  (tone: 'easy')
+  Prepared cluster prompt for 7 clusters — asking Orchestrator for naming...
+  [PersonaNamer] Injected 21 lines of UI feedback.
+  [PersonaNamer → Orchestrator] Requesting LLM: name and describe 7 clusters (tone='easy') (pipeline)
+
+  [Orchestrator] ← PersonaNamer requests LLM help: name and describe 7 clusters (tone='easy') (pipeline)
+  [Orchestrator] → PersonaNamer: LLM answered (in=4954 out=1707 33.8s)
+  [Orchestrator → PersonaNamer] LLM response received (6362 chars)
+  Cluster 0  [depth 0]: "Tech & Innovation News"  conf=8/10
+  Cluster 1  [depth 0]: "Competitive Sports Drama"  conf=9/10
+  Cluster 2  [depth 0]: "Slow-Cooked Comfort Food"  conf=9/10
+  Cluster 3  [depth 0]: "Speed & Performance Tech"  conf=8/10
+  Cluster 4  [depth 0]: "Light & Lean: Sports, Salads & Slim Laptops"  conf=5/10
+  Cluster 5  [depth 0]: "Overnight Bakes & Slow Rises"  conf=7/10
+  Cluster 6  [depth 0]: "Quick & Easy Everyday Cooking"  conf=9/10
+  Clarity Gate PASSED  (avg_conf=7.9, unique=True)
+  [Bus] ✓ PersonaNamer (iter 10): SUCCESS — Named 7 clusters using LLM (tone='easy'). Clarity Gate PASSED. Avg confidence=7.
+
+[Classifier] Iteration 10
+  Entities: 36  |  Personas (classes): 7
+  Class distribution:
+    Tech & Innovation News                           9 (25.0%)
+    Slow-Cooked Comfort Food                         6 (16.7%)
+    Competitive Sports Drama                         6 (16.7%)
+    Quick & Easy Everyday Cooking                    5 (13.9%)
+    Speed & Performance Tech                         4 (11.1%)
+    Light & Lean: Sports, Salads & Slim Laptops      3 (8.3%)
+    Overnight Bakes & Slow Rises                     3 (8.3%)
+  [Classifier → Orchestrator] Requesting LLM: select classifier model based on dataset characteristics (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: select classifier model based on dataset characteristics (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=1179 out=84 2.75s)
+  [Orchestrator → Classifier] LLM response received (333 chars)
+  [Classifier] LLM selected model: svm  (With n_features (35) > n_samples (36), SVM is preferred as it handles high-dimensional spaces effectively and finds clear margins between classes. The previous gradient_boosting achieved F1=0.796, but SVM is better suited to this feature-rich, small-sample regime and may improve performance further.)
+  Using classifier: svm
+  Running 3-fold stratified CV ...
+  CV accuracy    : 0.5000
+  CV F1 (macro)  : 0.3279  (threshold ≥ 0.6)
+  CV F1 (weighted): 0.4211
+  Per-class F1:
+    Light & Lean: Sports, Salads & Slim Laptops   0.000  
+    Overnight Bakes & Slow Rises                  0.000  
+    Speed & Performance Tech                      0.000  
+    Quick & Easy Everyday Cooking                 0.250  █████
+    Tech & Innovation News                        0.545  ██████████
+    Slow-Cooked Comfort Food                      0.667  █████████████
+    Competitive Sports Drama                      0.833  ████████████████
+  Top 10 features: ['emb_0', 'emb_1', 'emb_2', 'emb_3', 'emb_4', 'emb_5', 'emb_6', 'emb_7', 'emb_8', 'emb_9']
+  Performance below threshold (0.3279 < 0.6). Consulting LLM...
+  [Classifier → Orchestrator] Requesting LLM: diagnose low CV F1=0.328 — route to reselect_features or recluster (pipeline)
+
+  [Orchestrator] ← Classifier requests LLM help: diagnose low CV F1=0.328 — route to reselect_features or recluster (pipeline)
+  [Orchestrator] → Classifier: LLM answered (in=2434 out=157 3.87s)
+  [Orchestrator → Classifier] LLM response received (714 chars)
+  LLM decision: recluster  |  The pipeline shows a consistent pattern where tree-based models (Random Forest, Gradient Boosting) pass the F1 threshold while SVM repeatedly fails on the same clusters. This indicates the cluster boundaries are non-linear and complex — the clusters are not linearly separable in feature space, which is a clustering quality problem rather than a feature quality problem (since emb_0–emb_4 carry clear signal for tree-based models). Switching to a structure-aware algorithm like Hierarchical/Ward or GMM with a reduced cluster count should produce more compact, well-separated clusters with simpler decision boundaries that even a linear classifier like SVM can distinguish.
+  [Bus] ⚠ Classifier (iter 10): WARNING — Trained svm, 3-fold CV. CV macro-F1=0.328 < 0.6. LLM routed: recluster.
+         Issue: CV macro-F1=0.328 below threshold 0.6. Clusters may not be well-separated.
+         Doubt: Hardest personas: Light & Lean: Sports, Salads & Slim Laptops(0.00), Overnight Bakes & Slow Rises(0.00), Speed & Performance Tech(0.00)
+
+[Orchestrator] Classifier → re-cluster: The pipeline shows a consistent pattern where tree-based models (Random Forest, Gradient Boosting) pass the F1 threshold while SVM repeatedly fails on the same clusters. This indicates the cluster boundaries are non-linear and complex — the clusters are not linearly separable in feature space, which is a clustering quality problem rather than a feature quality problem (since emb_0–emb_4 carry clear signal for tree-based models). Switching to a structure-aware algorithm like Hierarchical/Ward or GMM with a reduced cluster count should produce more compact, well-separated clusters with simpler decision boundaries that even a linear classifier like SVM can distinguish.
+  [Orchestrator] Injected user-preference block into tuning prompt.
+  [Orchestrator] Injected case-memory hint block (match=exact) into tuning prompt.
+
+  [Orchestrator] Asking LLM to tune parameters for iteration 11...
+  [Orchestrator → Orchestrator] Requesting LLM: tune pipeline parameters based on iteration failures (pipeline)
+
+  [Orchestrator] ← Orchestrator requests LLM help: tune pipeline parameters based on iteration failures (pipeline)
+  [Orchestrator] → Orchestrator: LLM answered (in=3830 out=210 5.78s)
+  [Orchestrator → Orchestrator] LLM response received (625 chars)
+  [Orchestrator] Tuned → vif=10.0, algo=llm_cluster, k_range=[4, 5, 6, 7, 8], min_sil=0.02, text_vec=tfidf_svd
+  [Orchestrator] Reasoning: NMF and geometric methods have both been tried extensively; the best silhouette of 0.2426 was promising but the Classifier F1 dropped to 0.328 on the last iteration, signalling unstable cluster boundaries. With 36 docs, llm_cluster is within the 200-doc cap and serves as the last-resort rescue after both geometric (kmeans/hierarchical) and topic-model (NMF) approaches have failed to yield a stable, classifiable solution.
+
+=================================================================
+PIPELINE TIMING SUMMARY
+=================================================================
+Agent                   Calls     Total    Per call  % of total
+-----------------------------------------------------------------
+(0) UserInput               1     31.1s      31.1s        5.6%
+(1) DatasetExaminer         1     15.0s      15.0s        2.7%
+(2) FeatureEngineer         0      0.0s       0.0s        0.0%
+(3) FeatureSelector         5      0.0s       0.0s        0.0%
+(4) Clusterer              10     17.8s       1.8s        3.2%
+(5) PersonaNamer            9    318.3s      35.4s       56.8%
+(6) Classifier              9     59.6s       6.6s       10.6%
+-----------------------------------------------------------------
+TOTAL                            560.3s
+=================================================================
+
+[Orchestrator] Max iterations (10) reached.
+  Best approved result: avg_confidence=7.6  cv_f1=0.796
+  Saving best result...
+  Saved outputs/cluster_profiles.json
+  Saved outputs/cluster_lineage.json
+  Saved outputs/personas.json
+  Saved outputs/cluster_labels.csv
+  Saved outputs/classifier_metrics.json
+  Saved outputs/silhouette_curve.json
+  [Bus] Pipeline log saved → outputs/pipeline_log.json  (33 status messages, 37 LLM queries)
+  [Bus] Agents conversation log saved → outputs/agents_conversation.txt
+  [Orchestrator] 🧠 Saved case to memory (case_id=cc4429ec…, status=max_iterations_reached, algo=NMF, k=7, F1=0.7961863533292105).
+
+
+████████████████████████████████████████████████████████████████████████
+  MULTI-AGENT PERSONA DISCOVERY — FINAL REPORT
+████████████████████████████████████████████████████████████████████████
+
+════════════════════════════════════════════════════════════════════════
+  HOW THE AGENTS INTERACT
+════════════════════════════════════════════════════════════════════════
+
+  Four specialised agents + one Orchestrator form a feedback loop.
+  Every agent's quality gate can push the pipeline backward; it only
+  moves forward when ALL gates pass (or the user approves manually).
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                        ORCHESTRATOR                             │
+  │  (Python coordinator + LLM decision-maker)                      │
+  │                                                                 │
+  │  ① FeatureSelector ──────────────────────────────────────────► │
+  │    Role: LLM reads PCA + AE importance scores and               │
+  │    decides which features maximise persona separability.        │
+  │    Output: selected_features list (~30–60 features)             │
+  │         │                                                       │
+  │         ▼   ◄── loops here if ② or ④ request reselection      │
+  │  ② Clusterer ────────────────────────────────────────────────► │
+  │    Role: sklearn fits clusters; if a cluster > 40%   │
+  │    LLM decides: sub-cluster in-place OR reselect features.     │
+  │    Output: leaf cluster labels + profiles + lineage tree        │
+  │         │                                                       │
+  │         ▼   ◄── loops here if ③ Clarity Gate fails or ④ says  │
+  │  ③ PersonaNamer ─────────────────────────────────────────────► │
+  │    Role: LLM writes name/tagline/description/traits for         │
+  │    every cluster in one structured prompt (siblings grouped     │
+  │    together so names must contrast).                            │
+  │    Clarity Gate: sil ≥ 0.15 · avg_conf ≥ 6.0 · unique names   │
+  │    Output: personas dict                                        │
+  │         │                                                       │
+  │         ▼   ◄── loops here if LLM diagnoses poor clusters      │
+  │  ④ Classifier ───────────────────────────────────────────────► │
+  │    Role: classifier CV validates crispness; if macro-F1         │
+  │    < 0.70 LLM diagnoses root cause → route to ① or ②.         │
+  │    Output: CV metrics + per-class F1 + feature importances      │
+  │         │                                                       │
+  │         ▼                                                       │
+  │  ⑤ Human Checkpoint (persona table + CV-F1 + metric proof)    │
+  │    Approve → save all outputs.  Otherwise loop back.           │
+  └─────────────────────────────────────────────────────────────────┘
+
+  HOW PERSONAS ARE LABELLED
+  ─────────────────────────
+  ② Clusterer groups the 36 customers into k leaf segments by
+    behavioural distance in feature space.
+
+  ③ PersonaNamer builds a structured feature summary (top above-average
+    and below-average features, relative ratios vs dataset average)
+    for every cluster and sends it to the LLM.  The LLM reads the
+    numbers and writes a name, tagline, description, and traits
+    that are GROUNDED IN THOSE SPECIFIC METRICS — not invented.
+    Sub-clusters are shown alongside their siblings so each name
+    must explain HOW this group differs from its neighbours.
+
+  ④ Classifier proves the labelling is correct: it trains a
+    classifier to predict cluster membership from the same features.
+    Near-perfect CV-F1 means the clusters are genuinely crisp in
+    feature space — the personas are real segments.
+
+  40% GUARD  (config: max_cluster_size_pct=40%, sub_n_clusters=3, max_depth=2)
+  ─────────────────────────────────────────────────────────────────
+  After initial clustering, any cluster holding > 40% of entities
+  is automatically split into 3 sub-clusters.  The LLM is consulted
+  if the split decision is ambiguous.  The Cluster Size table below
+  proves all final clusters respect the limit.
+
+
+════════════════════════════════════════════════════════════════════════
+  CLUSTER SIZE CHECK  (40% guard)
+════════════════════════════════════════════════════════════════════════
+
+  Threshold   : > 40% triggers automatic split
+  Total cust  : 36
+
+  C    Persona                                            N     Pct  Status        Distribution
+  ────────────────────────────────────────────────────────────────────────────────
+  C0   Tech & Innovation Headlines                        9  25.0%  ✓ OK          ██████████
+  C1   Sports Championship Moments                        6  16.7%  ✓ OK          ██████
+  C2   Slow-Cooked Comfort Food                           6  16.7%  ✓ OK          ██████
+  C3   Faster, Smarter Tech Upgrades                      4  11.1%  ✓ OK          ████
+  C4   Light & Bright Mixed Bag                           3   8.3%  ✓ OK          ███
+  C5   Overnight & Baked Recipes (Plus One Odd Updat      3   8.3%  ✓ OK          ███
+  C6   Quick Weeknight Cooking                            5  13.9%  ✓ OK          █████
+
+  ✓  All clusters within limit. Deepening loop enforced correctly.
+
+════════════════════════════════════════════════════════════════════════
+  PERSONA SUMMARY  (notebook-04 format + supporting metrics)
+════════════════════════════════════════════════════════════════════════
+=================================================================
+PERSONA SUMMARY
+=================================================================
+  7 personas  |  36 customers  |  silhouette=n/a  |  CV F1 (macro)=n/a
+=================================================================
+-----------------------------------------------------------------
+
+Cluster 0  (9 entities, 25.0% of total)
+  Persona  : Tech & Innovation Headlines
+  Tagline  : Fresh launches, smart devices, and breakthrough research
+  Dominant : []
+  Traits:
+    • Heavy use of the word 'new' — far more than any other cluster
+    • Covers AI, wearables, and streaming platforms
+    • Data and benchmarks are central to the stories
+    • Focuses on product releases and research milestones
+    • No recipes, no race results, no sports drama
+
+  Description:
+    This cluster is packed with stories about brand-new things — new AI
+    models, new wearables, new streaming features. The word 'new' towers
+    above everything else here, and supporting terms like 'record',
+    'data', and 'chip' confirm these are technology and science news
+    stories. Nothing about cooking, sports wins, or speed improvements
+    belongs here.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀◀ new                                        7.46x         7.456
+  ◀  record                                     1.66x         1.661
+  ◀  data                                       1.15x         1.149
+  ◀  chip                                       1.14x         1.142
+  ◀  goal                                       0.93x         0.932
+  ◀  finish                                     0.83x        0.8281
+  ◀  world                                      0.82x        0.8156
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ garlic                                     0.65x             0
+    ▼ slowly                                     0.68x             0
+    ▼ adding                                     0.71x             0
+    ▼ warm                                       0.72x             0
+    ▼ company                                    0.77x             0
+-----------------------------------------------------------------
+
+Cluster 1  (6 entities, 16.7% of total)
+  Persona  : Sports Championship Moments
+  Tagline  : Winning the final, beating the rivals, claiming glory
+  Dominant : []
+  Traits:
+    • Obsessed with winning and losing
+    • Features multiple sports — basketball, cycling, golf
+    • The climactic final moment is always the centrepiece
+    • Opponents and rivals are always mentioned
+    • No technology, no food, no cooking methods
+
+  Description:
+    Every story here is about competition reaching its peak — a buzzer
+    beater, a mountain stage win, a birdie on the final hole. Words like
+    'final', 'win', 'rivals', 'team', and 'championship' are the loudest
+    signals. This cluster is pure sports drama, all about who came out
+    on top.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀◀ final                                      3.28x         3.281
+  ◀◀ win                                        3.04x         3.042
+  ◀◀ rivals                                     2.89x         2.892
+  ◀◀ team                                       2.12x         2.125
+  ◀  championship                               1.89x         1.887
+  ◀  powerful                                   1.13x         1.128
+  ◀  goal                                       0.82x        0.8189
+  ◀  long                                       0.71x        0.7073
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ slowly                                     0.32x             0
+    ▼ adding                                     0.34x             0
+    ▼ warm                                       0.34x             0
+    ▼ data                                       0.34x             0
+    ▼ chip                                       0.34x             0
+-----------------------------------------------------------------
+
+Cluster 2  (6 entities, 16.7% of total)
+  Persona  : Slow-Cooked Comfort Food
+  Tagline  : Low heat, long hours, meltingly tender results
+  Dominant : []
+  Traits:
+    • Long cooking times are a defining feature
+    • Braising, roasting, and slow simmering are the key methods
+    • Ingredients like garlic, stock, and parmesan feature prominently
+    • The end result is always described as tender or rich
+    • Totally absent of speed, competition, or technology
+
+  Description:
+    These are recipes that ask you to be patient — braised stews, slow-
+    roasted lamb, and carefully stirred risotto. The standout words are
+    'hours', 'slowly', 'tender', 'warm', and 'stock', painting a picture
+    of unhurried, comforting cooking. Nothing here is quick or tech-
+    related; it's all about depth of flavour built over time.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀◀ hours                                      2.88x         2.885
+  ◀◀ warm                                       2.52x         2.517
+  ◀◀ slowly                                     2.38x         2.382
+  ◀  tender                                     1.89x         1.892
+  ◀  stock                                      1.63x         1.628
+  ◀  finishing                                  1.54x         1.541
+  ◀  major                                      1.11x         1.111
+  ◀  let                                        0.76x        0.7591
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ team                                       0.28x             0
+    ▼ goal                                       0.30x             0
+    ▼ data                                       0.34x             0
+    ▼ chip                                       0.34x             0
+    ▼ company                                    0.36x             0
+-----------------------------------------------------------------
+
+Cluster 3  (4 entities, 11.1% of total)
+  Persona  : Faster, Smarter Tech Upgrades
+  Tagline  : Chips, software, and processors pushing performance higher
+  Dominant : []
+  Traits:
+    • Speed improvement is the central theme
+    • Covers smartphones, open-source tools, and quantum computing
+    • Performance comparisons against previous versions are common
+    • Company announcements and product launches drive the stories
+    • Distinct from Cluster 0 by focusing on speed rather than pure
+      newness
+
+  Description:
+    This cluster is about technology getting measurably better — faster
+    chips, quicker software builds, and processors outrunning older
+    machines. Unlike Cluster 0 which focuses on novelty, these stories
+    are specifically about speed and performance improvements. The word
+    'faster' is the top signal, alongside 'processor', 'software', and
+    'company'.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀◀ faster                                     3.11x         3.113
+  ◀◀ software                                   2.02x         2.022
+  ◀  company                                    1.71x         1.713
+  ◀  processor                                  1.13x         1.128
+  ◀  chip                                       0.82x        0.8246
+  ◀  data                                       0.80x        0.8014
+  ◀  better                                     0.80x        0.7992
+  ◀  adding                                     0.63x        0.6266
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ goal                                       0.30x             0
+    ▼ garlic                                     0.31x             0
+    ▼ slowly                                     0.32x             0
+    ▼ warm                                       0.34x             0
+    ▼ record                                     0.37x             0
+-----------------------------------------------------------------
+
+Cluster 4  (3 entities, 8.3% of total)
+  Persona  : Light & Bright Mixed Bag
+  Tagline  : Thin laptops, fresh salads, and a cricket draw in fading light
+  Dominant : []
+  Traits:
+    • The word 'light' is the dominant signal in all three senses
+    • Spans food, sport, and technology — unusually diverse
+    • Food items are fresh and summery (tomatoes, lemon, basil)
+    • The tech document is about thinness and portability
+    • Low thematic coherence — grouped by vocabulary, not topic
+
+  Description:
+    The glue holding this cluster together is the word 'light' — but it
+    appears in three very different contexts: bad light ending a cricket
+    match, a light summer salad, and a thin-and-light laptop. This is a
+    genuinely mixed cluster that the algorithm grouped around a shared
+    word rather than a shared topic. Confidence is lower because these
+    documents don't really belong to one human-understandable theme.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀◀ light                                      3.50x         3.503
+  ◀  tomatoes                                   0.91x        0.9099
+  ◀  lemon                                      0.91x        0.9081
+  ◀  high                                       0.63x        0.6341
+  ◀  long                                       0.63x        0.6324
+  ◀  processor                                  0.58x        0.5773
+  ◀  powerful                                   0.58x        0.5773
+  ◀  company                                    0.48x        0.4761
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ adding                                     0.34x             0
+    ▼ warm                                       0.34x             0
+    ▼ data                                       0.34x             0
+    ▼ chip                                       0.34x             0
+    ▼ record                                     0.37x             0
+-----------------------------------------------------------------
+
+Cluster 5  (3 entities, 8.3% of total)
+  Persona  : Overnight & Baked Recipes (Plus One Odd Update)
+  Tagline  : Ferment it, bake it, let time do the work
+  Dominant : []
+  Traits:
+    • Baking is the dominant activity — sourdough, chocolate cake
+    • Overnight waiting or resting is a shared theme
+    • Flour and butter are literal recipe ingredients
+    • One tech document is a misfit pulled in by 'overnight'
+    • Slower and more patient than the quick-cooking Cluster 6
+
+  Description:
+    Two of the three documents here are classic baking recipes —
+    sourdough that ferments overnight and a chocolate cake baked until
+    done. The terms 'flour', 'bake', 'butter', and 'overnight' are the
+    clearest signals. The third document is a car software update that
+    added features overnight, which is why it landed here — the word
+    'overnight' pulled it in despite being about technology.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀  overnight                                  1.98x         1.984
+  ◀  bake                                       1.96x         1.956
+  ◀  flour                                      1.96x         1.956
+  ◀  longer                                     0.91x        0.9099
+  ◀  butter                                     0.88x         0.884
+  ◀  let                                        0.74x        0.7414
+  ◀  adding                                     0.73x        0.7277
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ data                                       0.34x             0
+    ▼ chip                                       0.34x             0
+    ▼ company                                    0.36x             0
+    ▼ record                                     0.37x             0
+    ▼ hours                                      0.39x             0
+-----------------------------------------------------------------
+
+Cluster 6  (5 entities, 13.9% of total)
+  Persona  : Quick Weeknight Cooking
+  Tagline  : Fast, simple meals ready in minutes
+  Dominant : []
+  Traits:
+    • Speed is everything — meals done in minutes, not hours
+    • High-heat cooking methods like stir-frying are common
+    • Garlic, butter, and sauces add quick flavour
+    • Recipes suit busy weeknights with little prep time
+    • Sharply contrasts with Cluster 2's slow, tender braising style
+
+  Description:
+    Everything in this cluster is about getting a tasty meal on the
+    table fast — stir-fried noodles, a blended smoothie, garlic-butter
+    shrimp. The word 'quick' is the top signal by a wide margin, and
+    supporting words like 'simmer', 'sauce', 'garlic', and 'high heat'
+    confirm these are speedy, everyday recipes. This is the opposite of
+    the slow, patient cooking in Cluster 2.
+
+  Key features driving this persona:
+  ▲ Strongly above-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+  ◀◀ quick                                      3.27x         3.272
+  ◀  vegetables                                 1.87x         1.873
+  ◀  simmer                                     1.80x         1.799
+  ◀  sauce                                      1.58x         1.576
+  ◀  garlic                                     1.14x         1.143
+  ◀  rice                                       0.89x        0.8945
+  ◀  stir                                       0.70x        0.7041
+  ◀  high                                       0.70x        0.6958
+  ▼ Notably below-average features:
+    Feature                                   vs avg    mean value
+    ──────────────────────────────────────────────────────────────
+    ▼ warm                                       0.34x             0
+    ▼ data                                       0.34x             0
+    ▼ chip                                       0.34x             0
+    ▼ company                                    0.36x             0
+    ▼ record                                     0.37x             0
+
+=================================================================
+
+════════════════════════════════════════════════════════════════════════
+  KEY FEATURES THAT SEPARATE THE PERSONAS
+════════════════════════════════════════════════════════════════════════
+
+  Rank  Feature                                   Importance  Relative weight
+  ──────────────────────────────────────────────────────────────────
+  1     emb_1                                      0.22479   ██████████████████████
+  2     emb_2                                      0.16755   ████████████████
+  3     emb_3                                      0.16568   ████████████████
+  4     emb_5                                      0.12067   ███████████
+  5     emb_6                                      0.09033   ████████
+  6     emb_10                                     0.05413   █████
+  7     emb_15                                     0.04220   ████
+  8     emb_4                                      0.03331   ███
+  9     emb_25                                     0.03198   ███
+  10    emb_8                                      0.02512   ██
+  11    emb_24                                     0.01431   █
+  12    emb_14                                     0.00905   █
+  13    emb_13                                     0.00700   █
+  14    emb_7                                      0.00319   █
+  15    emb_16                                     0.00244   █
+
+════════════════════════════════════════════════════════════════════════
+  LLM AGENT USAGE  (role: orchestrator + python-script agent)
+════════════════════════════════════════════════════════════════════════
+
+  Every LLM call serves as an autonomous decision-maker embedded
+  inside a Python agent.  The Orchestrator coordinates these calls;
+  each call is one "reasoning task" within the pipeline.
+
+  Agent                   Role                            Calls    In tok   Out tok   API time
+  ────────────────────────────────────────────────────────────────────────────────────────
+  ⚙ Orchestrator          Parameter tuning between iterations     10    35,371     1,933      46.9s
+                                                          call 1: in=1,073 out=153 time=3.62s
+                                                          call 2: in=3,707 out=203 time=5.01s
+                                                          call 3: in=3,760 out=204 time=4.72s
+                                                          call 4: in=3,837 out=197 time=4.48s
+                                                          call 5: in=3,887 out=203 time=4.49s
+                                                          call 6: in=3,812 out=179 time=4.39s
+                                                          call 7: in=3,815 out=191 time=4.7s
+                                                          call 8: in=3,818 out=192 time=4.14s
+                                                          call 9: in=3,832 out=201 time=5.62s
+                                                          call 10: in=3,830 out=210 time=5.78s
+  ① FeatureSelector       Feature-subset decision             0         0         0       0.0s
+  ② Clusterer             Oversized-cluster routing           1     1,867       941      15.9s
+                                                          call 1: in=1,867 out=941 time=15.91s
+  ③ PersonaNamer          Cluster naming + description       10    53,086    20,078     386.8s
+                                                          call 1: in=6,712 out=2,849 time=52.71s
+                                                          call 2: in=6,736 out=3,685 time=68.53s
+                                                          call 3: in=4,954 out=1,747 time=36.83s
+                                                          call 4: in=4,954 out=1,690 time=32.43s
+                                                          call 5: in=4,954 out=1,698 time=32.29s
+                                                          call 6: in=4,960 out=1,686 time=33.91s
+                                                          call 7: in=4,954 out=1,659 time=31.32s
+                                                          call 8: in=4,954 out=1,601 time=30.88s
+                                                          call 9: in=4,954 out=1,756 time=34.07s
+                                                          call 10: in=4,954 out=1,707 time=33.8s
+  ④ Classifier            Low-F1 root-cause routing          14    21,655     1,709      51.7s
+                                                          call 1: in=1,161 out=80 time=2.91s
+                                                          call 2: in=1,523 out=164 time=4.33s
+                                                          call 3: in=1,329 out=90 time=3.12s
+                                                          call 4: in=1,330 out=90 time=2.95s
+                                                          call 5: in=1,881 out=147 time=3.54s
+                                                          call 6: in=1,329 out=99 time=3.39s
+                                                          call 7: in=1,330 out=102 time=3.97s
+                                                          call 8: in=2,092 out=186 time=4.88s
+                                                          call 9: in=1,351 out=108 time=3.31s
+                                                          call 10: in=1,178 out=91 time=2.74s
+                                                          call 11: in=2,192 out=183 time=6.31s
+                                                          call 12: in=1,346 out=128 time=3.67s
+                                                          call 13: in=1,179 out=84 time=2.75s
+                                                          call 14: in=2,434 out=157 time=3.87s
+  ────────────────────────────────────────────────────────────────────────────────────────
+  TOTAL                                                      37   111,979    24,661     501.4s
+
+  Input tokens  → prompt context sent to the LLM
+  Output tokens → LLM generated responses
+  Approx cost   : ~$0.7059  (Sonnet ~$3/M in · ~$15/M out, illustrative)
+
+════════════════════════════════════════════════════════════════════════
+  AGENTS & WALL-CLOCK TIME PER AGENT
+════════════════════════════════════════════════════════════════════════
+
+  Agent                     Calls     Total   Avg/call    Share  Per-call breakdown
+  ────────────────────────────────────────────────────────────────────────────
+  ① FeatureSelector             5      0.0s       0.0s     0.0%  [0.0s  0.0s  0.0s  0.0s  0.0s]
+  ② Clusterer                  10     17.8s       1.8s     3.2%  [0.9s  0.1s  0.1s  0.1s  0.2s  0.2s  0.1s  16.0s  0.1s  0.1s]
+  ③ PersonaNamer                9    318.3s      35.4s    56.8%  [52.7s  36.8s  32.4s  32.3s  33.9s  31.3s  30.9s  34.1s  33.8s]
+  ④ Classifier                  9     59.6s       6.6s    10.6%  [7.5s  5.8s  6.6s  5.1s  8.9s  5.0s  9.1s  4.9s  6.7s]
+  ────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════
+  TOTAL PIPELINE TIME
+════════════════════════════════════════════════════════════════════════
+
+  560.4 seconds  (9m 20s)  across 10 pipeline iteration(s)
+
+    LLM API calls  (①+③)           318.3s   56.8%  █████████████████
+    sklearn clustering  (②)         17.8s    3.2%  █
+    Random Forest CV    (④)         59.6s   10.6%  ███
+    Orchestration / I/O            164.7s   29.4%  ████████
+
+
+████████████████████████████████████████████████████████████████████████
+  Outputs saved to outputs/
+    persona_summary.txt   — full persona cards (notebook-04 format)
+    persona_metrics.csv   — 147 rows  (7 clusters × 14 categories)
+    personas.json         — machine-readable personas
+    classifier_metrics.json — CV scores + feature importances
+    pipeline_run_*.txt     — full terminal log from this run
+    agents_conversation.txt — agent status messages + full LLM prompts/responses
+████████████████████████████████████████████████████████████████████████
+
+  The interactive UI is still running at http://127.0.0.1:5057/
+  Edit personas, regenerate names, merge clusters, or add global rules.
+  (edits + suggestions are logged to outputs/user_feedback_log.jsonl
+   and replayed to the Decision Maker on every subsequent run.)
+
+  Submit a new intent in the UI to start another run, or Ctrl-C to exit.
+127.0.0.1 - - [06/Jun/2026 21:58:04] "GET /api/state HTTP/1.1" 200 -
