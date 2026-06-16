@@ -1386,6 +1386,14 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                 except Exception as _exc:  # noqa: BLE001
                     print(f'  [Orchestrator] PCA snapshot skipped: {_exc}')
 
+            # ── Per-iteration crash-safety snapshot ────────────────────────────
+            # Persist this iteration's clusters to a timestamped file BEFORE
+            # naming/classifier run, so a mid-iteration crash (e.g. an LLM API
+            # 500 during persona naming) still leaves the user with the
+            # intermediate results from every completed clustering pass.
+            self._save_iteration_snapshot(cr, iteration,
+                                          selected_features=state.selected_features)
+
             # ── HARD STOP: Clusterer itself bailed out (sil < hard min) ────────
             # When the clusterer's internal min_silhouette gate (~0.05) hits, no
             # cluster labels were produced. Without labels we can't run Naming or
@@ -1792,6 +1800,59 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
             'timing': self._timing_dict(),
             'llm_usage': self._llm_usage_dict(),
         }
+
+    # ── Per-iteration crash-safety snapshot ──────────────────────────────────
+
+    def _save_iteration_snapshot(self, cr, iteration: int, *,
+                                 selected_features=None) -> None:
+        """Persist one iteration's clustering to a timestamped file.
+
+        These are the *intermediate* results from each clustering pass. If the
+        run is interrupted (e.g. an LLM API 500 during persona naming), the user
+        still has every completed iteration's clusters on disk. The final,
+        approved result is written separately by save_outputs().
+
+        One file per iteration:
+          outputs/iterations/cluster_iter{N}_{YYYYmmdd_HHMMSS}.json
+        """
+        try:
+            if cr is None or cr.cluster_labels is None or cr.profiles is None:
+                return  # nothing clustered this pass (e.g. reselect_features)
+            from datetime import datetime
+            snap_dir = pathlib.Path('outputs/iterations')
+            snap_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            path = snap_dir / f'cluster_iter{iteration:02d}_{ts}.json'
+            labels = cr.cluster_labels
+            labels_list = labels.tolist() if hasattr(labels, 'tolist') else list(labels)
+            payload = {
+                'iteration': iteration,
+                'timestamp': ts,
+                'silhouette': float(cr.silhouette) if cr.silhouette is not None else None,
+                'n_leaf': cr.n_leaf,
+                'algorithm': cr.algo_name,
+                'algo_reasoning': getattr(cr, 'algo_reasoning', ''),
+                'k_scores': {str(k): v for k, v in (cr.k_scores or {}).items()},
+                'reasoning': getattr(cr, 'reasoning', ''),
+                'selected_features': list(selected_features or []),
+                'profiles': cr.profiles,
+                'lineage': {str(k): v for k, v in (cr.lineage or {}).items()},
+                'cluster_labels': labels_list,
+            }
+            # default=str guards against stray numpy scalars inside profiles.
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, indent=2, default=str)
+            print(f'  [Orchestrator] Saved iteration snapshot → {path}')
+            try:
+                self.bus.emit('iteration_snapshot_saved', iteration=iteration,
+                              path=str(path),
+                              silhouette=payload['silhouette'],
+                              n_leaf=cr.n_leaf, algorithm=cr.algo_name)
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception as exc:  # noqa: BLE001
+            # Snapshotting must never break the run it is meant to protect.
+            print(f'  [Orchestrator] Iteration snapshot skipped: {exc}')
 
     # ── Pre-modelling preview (Evidence tab: dataset after transformations) ───
 
