@@ -31,7 +31,17 @@
 
 ## ⚡ TL;DR
 
-Seven specialized agents + an LLM Decision Maker run a feedback-driven clustering pipeline that ends with **named, validated clusters** and a full reasoning trace. Every quality gate (silhouette, Clarity, classifier F1, VIF) can push the pipeline backward; the Decision Maker tunes parameters and routes each retry. A live web UI lets you watch, edit, chat with the agents per cluster, and feed corrections back into the next run (adaptive learning). One run typically completes in under an hour and costs under one dollar of API.
+**Agentic Labelling** tackles a very practical pain point in business clustering:
+
+> *The hard part of clustering was never the math; it's extracting meaning.*
+
+In real business domains, we often do not have labeled data or clear ground truth. Data scientists go through the exhausting loop of feature engineering → selection → re-clustering → validation → *"what does this mean?"* → repeat, just to find patterns that are actually meaningful.
+
+This project explores how to hand that loop to AI agents through reasoned feedback loops, with two ideas at the core:
+
+- **⚙️ Loop + Guardrails = Autonomy:** Agents self-correct their loops using strict, deterministic static code checks—no LLM marking its own homework.
+- **👥 Human-in-the-Loop = Adaptive Learning:** Agents show their analysis transparently, dynamically adapting to your guidance rather than starting from zero.
+- **💰 Incredibly Cost-Effective:** 10 full runs of discovery-to-naming costs less than **$1 USD for 1 million rows**. Because LLMs are mostly leveraged to name the final handful of clusters (rather than processing thousands of rows blindly), it remains highly efficient and cheap.
 
 ---
 
