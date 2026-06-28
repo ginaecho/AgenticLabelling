@@ -39,9 +39,11 @@ In real business domains, we often do not have labeled data or clear ground trut
 
 This project explores how to hand that loop to AI agents through reasoned feedback loops, with two ideas at the core:
 
-- **⚙️ Loop + Guardrails = Autonomy:** Agents self-correct their loops using strict, deterministic static code checks—no LLM marking its own homework.
+When we say *loop*, we don't mean letting agents wander **non-deterministically** until something sticks. The pipeline is a **pre-defined loop**: every valid path and quality gate is wired up front in static `if`/`else` logic (see [`run_pipeline.py`](run_pipeline.py) and the Orchestrator). Deterministic code evaluates **feedback** (silhouette, Clarity, classifier F1, VIF) against the run's **goal**; the LLM's job is narrower—given that feedback, **choose which pre-defined branch to loop back to** (e.g. re-select features vs. re-cluster). Software engineering owns the structure and gates; the LLM supplies routing judgment. That split is a key reason token cost stays so low.
+
+- **⚙️ Loop + Guardrails = Autonomy:** Agents operate inside that fixed, feedback-driven loop—static code enforces every gate; the LLM picks among pre-defined retry paths, never marking its own homework.
 - **👥 Human-in-the-Loop = Adaptive Learning:** Agents show their analysis transparently, dynamically adapting to your guidance rather than starting from zero.
-- **💰 Incredibly Cost-Effective:** 10 full runs of discovery-to-naming costs less than **$1 USD for 1 million rows**. Because LLMs are mostly leveraged to name the final handful of clusters (rather than processing thousands of rows blindly), it remains highly efficient and cheap.
+- **💰 Incredibly Cost-Effective:** 10 full runs of discovery-to-naming costs less than **$1 USD for 1 million rows**. LLMs are invoked for targeted reasoning and naming the final handful of clusters—not for blindly processing millions of rows—so the pipeline stays highly efficient and cheap.
 
 ---
 
