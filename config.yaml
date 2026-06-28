@@ -16,6 +16,12 @@ dataset_path: ~
 # pipeline run. Real errors (e.g. 400 bad request, 401 auth) are NOT retried.
 llm_max_retries: 5
 
+# ── Per-iteration output archival ────────────────────────────────────────────
+# When true, every orchestrator iteration writes a full artifact bundle under
+# outputs/iterations/{run_id}/iter_{NN}/ (clustering, naming, classifier metrics,
+# agent logs, pipeline events). Root outputs/ still holds only the final best run.
+save_every_iteration: true
+
 # ── Data cleaning (column sanitisation at load) ──────────────────────────────
 # Wide, sparse exports (e.g. a 150-column "features" CSV where 60+ columns are
 # ~99% null and 50+ are constant) otherwise stall the pipeline: NaNs crash the

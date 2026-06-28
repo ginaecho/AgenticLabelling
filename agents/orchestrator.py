@@ -272,29 +272,58 @@ def human_checkpoint(personas: dict, cluster_result, classifier_result, bus: Orc
     return _collect_human_decision(summary, bus)
 
 
-def save_outputs(cluster_result, naming_result, classifier_result, bus: OrchestratorBus) -> None:
-    """Save all pipeline outputs including the orchestrator bus log."""
-    pathlib.Path('outputs').mkdir(exist_ok=True)
+def _empty_classifier_result(iteration: int, *, reason: str = 'classifier skipped') -> 'ClassifierResult':
+    from agents.state import ClassifierResult
+    return ClassifierResult(
+        action='skipped',
+        cv_accuracy=0.0,
+        cv_f1_macro=0.0,
+        cv_f1_weighted=0.0,
+        feature_importances={},
+        per_class_f1={},
+        reasoning=reason,
+        iteration=iteration,
+    )
 
-    with open('outputs/cluster_profiles.json', 'w') as f:
+
+def save_outputs(
+    cluster_result,
+    naming_result,
+    classifier_result,
+    bus: OrchestratorBus,
+    *,
+    output_dir: str | pathlib.Path = 'outputs',
+    quiet: bool = False,
+    include_bus_log: bool = True,
+) -> None:
+    """Save pipeline outputs including the orchestrator bus log."""
+    out = pathlib.Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    prefix = f'{output_dir}/' if str(output_dir) != 'outputs' else 'outputs/'
+
+    with open(out / 'cluster_profiles.json', 'w') as f:
         json.dump(cluster_result.profiles, f, indent=2)
-    print('  Saved outputs/cluster_profiles.json')
+    if not quiet:
+        print(f'  Saved {prefix}cluster_profiles.json')
 
-    with open('outputs/cluster_lineage.json', 'w') as f:
+    with open(out / 'cluster_lineage.json', 'w') as f:
         lineage_str = {str(k): v for k, v in cluster_result.lineage.items()}
         json.dump(lineage_str, f, indent=2)
-    print('  Saved outputs/cluster_lineage.json')
+    if not quiet:
+        print(f'  Saved {prefix}cluster_lineage.json')
 
+    personas = naming_result.personas if naming_result and naming_result.personas else {}
     combined = {
         cid: {
             'cluster_stats': cluster_result.profiles[cid],
-            'persona': naming_result.personas.get(cid, {}),
+            'persona': personas.get(cid, {}),
         }
         for cid in cluster_result.profiles
     }
-    with open('outputs/personas.json', 'w') as f:
+    with open(out / 'personas.json', 'w') as f:
         json.dump(combined, f, indent=2)
-    print('  Saved outputs/personas.json')
+    if not quiet:
+        print(f'  Saved {prefix}personas.json')
 
     if cluster_result.cluster_labels is not None:
         try:
@@ -302,41 +331,49 @@ def save_outputs(cluster_result, naming_result, classifier_result, bus: Orchestr
             _labels = cluster_result.cluster_labels
             _df = _pd.DataFrame({'row_index': range(len(_labels)),
                                   'cluster_id': list(_labels)})
-            _df.to_csv('outputs/cluster_labels.csv', index=False)
-            print('  Saved outputs/cluster_labels.csv')
+            _df.to_csv(out / 'cluster_labels.csv', index=False)
+            if not quiet:
+                print(f'  Saved {prefix}cluster_labels.csv')
         except Exception as _e:
             print(f'  [warn] could not save cluster_labels.csv: {_e}')
 
+    clf = classifier_result or _empty_classifier_result(
+        getattr(naming_result, 'iteration', 0) if naming_result else 0,
+    )
     metrics = {
-        'cv_accuracy':     classifier_result.cv_accuracy,
-        'cv_f1_macro':     classifier_result.cv_f1_macro,
-        'cv_f1_weighted':  classifier_result.cv_f1_weighted,
-        'cv_kappa':        getattr(classifier_result, 'cv_kappa', 0.0),
-        'per_class_f1':    classifier_result.per_class_f1,
+        'cv_accuracy':     clf.cv_accuracy,
+        'cv_f1_macro':     clf.cv_f1_macro,
+        'cv_f1_weighted':  clf.cv_f1_weighted,
+        'cv_kappa':        getattr(clf, 'cv_kappa', 0.0),
+        'per_class_f1':    clf.per_class_f1,
         'top20_features':  dict(
-            sorted(classifier_result.feature_importances.items(),
+            sorted(clf.feature_importances.items(),
                    key=lambda x: -x[1])[:20]
         ),
-        'reasoning': classifier_result.reasoning,
+        'reasoning': clf.reasoning,
+        'action': clf.action,
     }
-    with open('outputs/classifier_metrics.json', 'w') as f:
+    with open(out / 'classifier_metrics.json', 'w') as f:
         json.dump(metrics, f, indent=2)
-    print('  Saved outputs/classifier_metrics.json')
+    if not quiet:
+        print(f'  Saved {prefix}classifier_metrics.json')
 
     # Save k-selection silhouette scores
     if cluster_result.k_scores:
-        with open('outputs/silhouette_curve.json', 'w') as f:
+        with open(out / 'silhouette_curve.json', 'w') as f:
             json.dump({
                 "algorithm": cluster_result.algo_name,
                 "best_k": max(cluster_result.k_scores, key=lambda k: cluster_result.k_scores[k]),
                 "scores": {str(k): v for k, v in cluster_result.k_scores.items()},
                 "algo_reasoning": cluster_result.algo_reasoning,
             }, f, indent=2)
-        print('  Saved outputs/silhouette_curve.json')
+        if not quiet:
+            print(f'  Saved {prefix}silhouette_curve.json')
 
     # Save pipeline log (JSON + human-readable .txt for agent conversations)
-    bus.save_log('outputs/pipeline_log.json')
-    bus.save_log_txt('outputs/agents_conversation.txt')
+    if include_bus_log:
+        bus.save_log(str(out / 'pipeline_log.json'), quiet=quiet)
+        bus.save_log_txt(str(out / 'agents_conversation.txt'), quiet=quiet)
 
 
 class Orchestrator:
@@ -667,6 +704,7 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         print(f'Classifier F1 threshold: {ClassifierAgent.F1_THRESHOLD}')
 
         run_history = []
+        self._iteration_manifest = []
         self._timings = defaultdict(list)
         self._pipeline_start = time.perf_counter()
 
@@ -1411,6 +1449,14 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     'reasoning': cr.reasoning,
                     'tuning_applied': new_params,
                 })
+                self._save_iteration_outputs(
+                    iteration,
+                    cr,
+                    None,
+                    None,
+                    outcome='clustering_only',
+                    next_action='reselect_features',
+                )
                 continue
 
             _sil = cr.silhouette if cr.silhouette is not None else -1.0
@@ -1524,6 +1570,16 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
                     f'(F1={clf.cv_f1_macro:.3f}, Sil={cr.silhouette:.3f}, '
                     f'maxVIF={max_vif_now:.2f}, score={state.best_composite_score:.2f})'
                 )
+
+            self._save_iteration_outputs(
+                iteration,
+                cr,
+                nr,
+                clf,
+                outcome='scored',
+                became_best=became_best,
+                max_vif=max_vif_now,
+            )
 
             # ── Apply escalation rules AFTER scoring ───────────────────────────
             # (a) silhouette miss → reselect features (+ tiered escalations)
@@ -1853,6 +1909,130 @@ CLASSIFIER ALGORITHMS KNOWLEDGE:
         except Exception as exc:  # noqa: BLE001
             # Snapshotting must never break the run it is meant to protect.
             print(f'  [Orchestrator] Iteration snapshot skipped: {exc}')
+
+    def _should_save_every_iteration(self) -> bool:
+        return bool(self.config.get('save_every_iteration', True))
+
+    def _iteration_storage_root(self) -> pathlib.Path:
+        return pathlib.Path('outputs/iterations') / self.bus.run_id
+
+    def _save_iteration_outputs(
+        self,
+        iteration: int,
+        cr,
+        nr,
+        clf,
+        *,
+        outcome: str,
+        next_action: str | None = None,
+        became_best: bool = False,
+        max_vif: float | None = None,
+    ) -> None:
+        """Persist a full artifact bundle for one pipeline iteration.
+
+        Unlike the lightweight cluster snapshot (pre-naming crash safety) or the
+        final save_outputs() call (best/approved run only), this writes every
+        iteration's clustering, naming, classifier metrics, and agent logs under:
+
+          outputs/iterations/{run_id}/iter_{NN}/
+        """
+        if not self._should_save_every_iteration():
+            return
+        if cr is None or cr.cluster_labels is None or cr.profiles is None:
+            return
+        try:
+            iter_dir = self._iteration_storage_root() / f'iter_{iteration:02d}'
+            iter_dir.mkdir(parents=True, exist_ok=True)
+
+            save_outputs(
+                cr,
+                nr,
+                clf,
+                self.bus,
+                output_dir=iter_dir,
+                quiet=True,
+                include_bus_log=False,
+            )
+
+            self.bus.save_log(
+                str(iter_dir / 'pipeline_log_iter.json'),
+                iteration=iteration,
+                quiet=True,
+            )
+            self.bus.save_log(str(iter_dir / 'pipeline_log_cumulative.json'), quiet=True)
+            self.bus.save_log_txt(
+                str(iter_dir / 'agents_conversation_iter.txt'),
+                iteration=iteration,
+                quiet=True,
+            )
+            self.bus.save_log_txt(str(iter_dir / 'agents_conversation_cumulative.txt'), quiet=True)
+            self.bus.save_events_snapshot(
+                str(iter_dir / 'pipeline_events_iter.jsonl'),
+                iteration=iteration,
+                quiet=True,
+            )
+            self.bus.save_events_snapshot(
+                str(iter_dir / 'pipeline_events_cumulative.jsonl'),
+                quiet=True,
+            )
+
+            pca_path = pathlib.Path('outputs/pca_iterations.json')
+            if pca_path.exists():
+                try:
+                    all_pca = json.loads(pca_path.read_text(encoding='utf-8'))
+                    slice_pca = [e for e in all_pca if e.get('iteration') == iteration]
+                    if slice_pca:
+                        (iter_dir / 'pca_projection.json').write_text(
+                            json.dumps(slice_pca, ensure_ascii=False),
+                            encoding='utf-8',
+                        )
+                except Exception:  # noqa: BLE001
+                    pass
+
+            meta = {
+                'run_id': self.bus.run_id,
+                'iteration': iteration,
+                'outcome': outcome,
+                'next_action': next_action,
+                'silhouette': float(cr.silhouette) if cr.silhouette is not None else None,
+                'n_leaf': cr.n_leaf,
+                'algorithm': cr.algo_name,
+                'naming_passed': nr.passed if nr else None,
+                'avg_confidence': nr.avg_confidence if nr else None,
+                'cv_f1_macro': clf.cv_f1_macro if clf else None,
+                'max_vif': max_vif,
+                'became_best': became_best,
+                'saved_to': str(iter_dir),
+            }
+            (iter_dir / 'iteration_meta.json').write_text(
+                json.dumps(meta, indent=2, default=str),
+                encoding='utf-8',
+            )
+
+            if not hasattr(self, '_iteration_manifest'):
+                self._iteration_manifest = []
+            self._iteration_manifest.append(meta)
+
+            manifest_path = self._iteration_storage_root() / 'manifest.json'
+            manifest_path.write_text(
+                json.dumps(
+                    {'run_id': self.bus.run_id, 'iterations': self._iteration_manifest},
+                    indent=2,
+                    default=str,
+                ),
+                encoding='utf-8',
+            )
+
+            print(f'  [Orchestrator] Saved full iteration outputs → {iter_dir}')
+            self.bus.emit(
+                'iteration_outputs_saved',
+                iteration=iteration,
+                path=str(iter_dir),
+                outcome=outcome,
+                next_action=next_action,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f'  [Orchestrator] Iteration output save skipped: {exc}')
 
     # ── Pre-modelling preview (Evidence tab: dataset after transformations) ───
 

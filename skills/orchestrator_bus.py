@@ -464,12 +464,25 @@ class OrchestratorBus:
             for m in self._log
         )
 
-    def save_log(self, path: str = "outputs/pipeline_log.json") -> None:
-        """Persist the full message log and LLM query log to JSON."""
+    def _messages_for_iteration(self, iteration: int | None) -> list:
+        if iteration is None:
+            return list(self._log)
+        return [m for m in self._log if m.iteration == iteration]
+
+    def save_log(self, path: str = "outputs/pipeline_log.json", *,
+                 iteration: int | None = None, quiet: bool = False) -> None:
+        """Persist the message log and LLM query log to JSON.
+
+        When *iteration* is set, only status messages for that iteration are
+        included. LLM queries are always written in full (they are not tagged
+        per-iteration on the bus).
+        """
         pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+        messages = self._messages_for_iteration(iteration)
         # JSON omits full prompt/response to keep file size down; full text is in .txt log
         serialisable = {
-            "status_messages": [asdict(m) for m in self._log],
+            "iteration": iteration,
+            "status_messages": [asdict(m) for m in messages],
             "llm_queries": [
                 {k: v for k, v in q.items() if k in ("agent", "purpose", "prompt_chars", "response_chars")}
                 for q in self._query_log
@@ -477,19 +490,25 @@ class OrchestratorBus:
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(serialisable, f, indent=2, default=str)
-        print(
-            f"  [Bus] Pipeline log saved → {path}  "
-            f"({len(self._log)} status messages, {len(self._query_log)} LLM queries)"
-        )
+        if not quiet:
+            print(
+                f"  [Bus] Pipeline log saved → {path}  "
+                f"({len(messages)} status messages, {len(self._query_log)} LLM queries)"
+            )
 
-    def save_log_txt(self, path: str = "outputs/agents_conversation.txt") -> None:
+    def save_log_txt(self, path: str = "outputs/agents_conversation.txt", *,
+                     iteration: int | None = None, quiet: bool = False) -> None:
         """Write a human-readable .txt log of agent status messages and full LLM conversations."""
         pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+        messages = self._messages_for_iteration(iteration)
         lines = []
         lines.append("=" * 80)
-        lines.append("AGENT STATUS MESSAGES")
+        if iteration is not None:
+            lines.append(f"AGENT STATUS MESSAGES (iteration {iteration})")
+        else:
+            lines.append("AGENT STATUS MESSAGES")
         lines.append("=" * 80)
-        for m in self._log:
+        for m in messages:
             lines.append(f"\n[{m.agent}] Iteration {m.iteration}  Status: {m.status.upper()}  Recommendation: {m.recommendation}")
             lines.append(f"  Done:     {m.what_was_done}")
             if m.what_was_not_done:
@@ -513,4 +532,36 @@ class OrchestratorBus:
             lines.append("")
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
-        print(f"  [Bus] Agents conversation log saved → {path}")
+        if not quiet:
+            print(f"  [Bus] Agents conversation log saved → {path}")
+
+    def save_events_snapshot(self, path: str, *,
+                             iteration: int | None = None,
+                             quiet: bool = False) -> None:
+        """Copy matching lines from pipeline_events.jsonl into *path*."""
+        if self._event_log_path is None or not self._event_log_path.exists():
+            return
+        dest = pathlib.Path(path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        kept: list[dict] = []
+        try:
+            for line in self._event_log_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("run_id") != self.run_id:
+                    continue
+                if iteration is None or record.get("iteration") == iteration:
+                    kept.append(record)
+            dest.write_text(
+                "\n".join(json.dumps(r, ensure_ascii=False, default=str) for r in kept) + ("\n" if kept else ""),
+                encoding="utf-8",
+            )
+            if not quiet:
+                print(f"  [Bus] Event snapshot saved → {path} ({len(kept)} events)")
+        except OSError as exc:
+            print(f"  [Bus] WARNING: event snapshot failed: {exc}")
